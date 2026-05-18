@@ -287,8 +287,9 @@ class Tower:
         E, rho, nu : isotropic material (default ASTM-A572 steel:
             200 GPa, 7850 kg/m^3, 0.3).
         outfitting_factor : non-structural mass multiplier (internals
-            / flanges / paint / bolts). Scales mass density and rotary
-            inertia only — never stiffness. This is the WindIO-native
+            / flanges / paint / bolts). Scales the distributed mass
+            density only — *not* rotary inertia (a structural section
+            property) and never stiffness. This is the WindIO-native
             way to "account for internals/flanges"; for a single
             discrete tower-top mass pass ``tip_mass``.
         hub_conn : root BC — 1 cantilever (default; the basis

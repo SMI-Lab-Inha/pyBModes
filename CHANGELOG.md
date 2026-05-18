@@ -66,6 +66,52 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     (a colormap name or explicit list) on ``plot_mode_shapes`` /
     ``bir_mode_shape_plot`` / ``bir_mode_shape_subplot`` for full
     control.
+  - ``plot_campbell`` draws the floating-platform 6-DOF rigid-body
+    modes (surge / sway / heave / roll / pitch / yaw) as **legend
+    entries**, each with its own colour and line style and a
+    frequency + period label, instead of crowded right-margin
+    annotations — so on a FOWT the six modes (≈ 0.008–0.12 Hz, all
+    squeezed into the bottom sliver of a multi-Hz axis) are
+    individually identifiable. The per-rev rays (1P / 2P / 3P / 6P /
+    9P) remain in the legend. The remaining tower-bending right-margin
+    labels are decluttered (spread apart with a thin leader to their
+    unmoved line) so they can't stack either.
+  - ``plot_environmental_spectra`` accepts ``rpm_constraint=False`` to
+    suppress the wider placement-envelope band (and its legend
+    entries) and draw only the operating *design* band — for callers
+    with a fixed operating range but no separate constraint window.
+    ``None`` still auto-draws the ±15 % band (unchanged default).
+
+### Fixed
+
+- **WindIO blade static-review hardening (Frazer & Nash).**
+
+  - **Blade twist units are now auto-detected.** ``np.degrees`` was
+    applied to ``outer_shape*.twist`` unconditionally. That is correct
+    for radian-convention windIO files (IEA-3.4: root ≈ 0.349 rad) but
+    turned a degree-convention file's 15.6° root twist (IEA-15-240-RWT
+    ships degrees) into ≈ 894°. ``_twist_to_degrees`` now decides by
+    magnitude (a physical blade twist never exceeds ~2 rad), so both
+    conventions yield the correct structural twist. Previously
+    uncaught because the unit tests all used zero twist.
+  - **A present-but-unparseable published elastic block no longer
+    silently degrades.** ``_read_blade_elastic`` now distinguishes
+    "absent" (silent PreComp fallback — correct) from "present but
+    malformed / schema-drifted" (recorded on
+    ``WindIOBlade.elastic_parse_error``). ``elastic="auto"`` emits a
+    ``UserWarning`` naming the parse problem before falling back;
+    ``elastic="file"`` raises — so a typo can't hide behind a
+    plausible lower-fidelity result.
+  - **Single-airfoil blades parse.** A constant-profile blade with one
+    airfoil definition hit ``len(af_grid) - 2 = -1`` indexing; an
+    empty schedule failed obscurely. Both are handled (reuse the one
+    profile / clear ``ValueError``).
+- **``outfitting_factor`` docs now match the implementation.**
+  ``Tower.from_geometry`` and ``tubular_section_props`` documented
+  scaling "mass density and rotary inertia"; the implementation
+  deliberately scales only the distributed mass density (rotary
+  inertia is a structural section property and stays unscaled). The
+  docstrings now say so — behaviour unchanged.
 
 ### Changed
 

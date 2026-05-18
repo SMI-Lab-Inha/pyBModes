@@ -824,6 +824,28 @@ def campbell_sweep(
     )
 
 
+# Distinct (colour, linestyle) per floating-platform DOF so each of
+# the six rigid-body modes is individually legible in the *legend*
+# (issue #47 follow-up: the modes were requested as styled legend
+# entries, not right-margin annotations). Keyed in OpenFAST DOF order;
+# an unrecognised name falls back to the cycle below by encounter
+# order so a non-standard label still gets a unique style.
+_PLAT_LINE_STYLES: dict[str, tuple[tuple[float, float, float], str]] = {
+    "surge": ((0.85, 0.00, 0.00), ":"),
+    "sway":  ((0.00, 0.00, 0.85), ":"),
+    "heave": ((0.00, 0.60, 0.00), "--"),
+    "roll":  ((0.80, 0.00, 0.80), "--"),
+    "pitch": ((0.00, 0.70, 0.70), "-."),
+    "yaw":   ((0.40, 0.30, 0.00), "-."),
+}
+_PLAT_FALLBACK_STYLES: list[tuple[tuple[float, float, float], str]] = [
+    ((0.30, 0.30, 0.30), ":"),
+    ((0.60, 0.40, 0.00), "--"),
+    ((0.00, 0.45, 0.70), "-."),
+    ((0.55, 0.00, 0.55), ":"),
+]
+
+
 def plot_campbell(
     result: CampbellResult,
     excitation_orders: list[int] | None = None,
@@ -875,27 +897,27 @@ def plot_campbell(
     platform_modes :
         Optional ``[(dof_name, freq_hz), ...]`` for a floating
         turbine's 6 rigid-body modes (surge / sway / heave / roll /
-        pitch / yaw). Drawn as rotor-speed-independent horizontal
-        lines — dotted navy, visually distinct from the tower
-        dashed-grey lines — with right-margin labels carrying both
-        frequency (Hz) and period (s), since the natural period is the
-        design-relevant quantity for a floater. Near-degenerate pairs
-        (surge ≈ sway, roll ≈ pitch on a symmetric platform) are
-        merged into one label.
+        pitch / yaw). Each DOF is drawn as a rotor-speed-independent
+        horizontal line with its **own colour and line style** and a
+        **legend entry** carrying both frequency (Hz) and period (s)
+        — the natural period being the design-relevant quantity for a
+        floater (issue #47: the modes were requested as styled legend
+        entries, not crowded right-margin annotations). The first
+        occurrence of a DOF name wins, so a mode named by both the
+        native classification and an explicit ``platform_modes`` is
+        drawn once.
 
         Note (issue #47): for a *coupled floating tower* fed straight
         into :func:`campbell_sweep` you no longer need to pass this —
-        the sweep now carries the FEM's own classified platform-DOF
-        names (``ModalResult.mode_labels``, the BModes-cross-validated
+        the sweep carries the FEM's own classified platform-DOF names
+        (``ModalResult.mode_labels``, the BModes-cross-validated
         classifier) through ``CampbellResult.labels``, and any tower
-        column named ``surge`` … ``yaw`` is auto-drawn in this navy
-        platform family with its period label. ``platform_modes`` is
-        still honoured (and merged into the same family, deduplicated
-        by the 2 % frequency-merge) for the *screening* path, where
-        platform frequencies were estimated separately and there are
-        no platform columns in the result to relabel. ``None``
-        (default) with a non-floating result leaves the diagram
-        byte-identical to the pre-existing behaviour.
+        column named ``surge`` … ``yaw`` is auto-styled into the
+        legend. ``platform_modes`` is still honoured for the
+        *screening* path, where platform frequencies were estimated
+        separately and there are no platform columns in the result.
+        ``None`` (default) with a non-floating result leaves the
+        diagram byte-identical to the pre-existing behaviour.
     log_freq :
         Use a log-scaled frequency axis. Useful when overlaying the
         ~0.007–0.05 Hz platform rigid-body modes and the ~0.3–5 Hz
@@ -1026,19 +1048,17 @@ def plot_campbell(
         if not merged:
             tower_groups.append({"f": f, "names": [short]})
 
+    # Right-margin labels are collected here and drawn last, after the
+    # y-limits are known, so a declutter pass can spread overlapping
+    # ones apart (a FOWT stacks six rigid-body modes inside the bottom
+    # ~0.1 Hz of a multi-Hz axis — issue #47 follow-up).
+    margin_labels: list[dict] = []
     for g in tower_groups:
         text = " / ".join(g["names"]) + f" ({g['f']:.2f} Hz)"
-        ax.text(
-            label_x,
-            g["f"],
-            f" {text}",
-            color=(0.20, 0.20, 0.20),
-            fontsize=8,
-            va="bottom",
-            ha="left",
-            zorder=4,
-            clip_on=False,
-        )
+        margin_labels.append({
+            "y": g["f"], "text": f" {text}",
+            "color": (0.20, 0.20, 0.20),
+        })
 
     # Floating-platform rigid-body modes: rotor-speed-independent, so
     # horizontal like the tower modes, but dotted navy to read as a
@@ -1049,47 +1069,42 @@ def plot_campbell(
     # classified tower columns above, plus any explicit
     # ``platform_modes`` the caller passed (deduplicated by the 2 %
     # frequency-merge so a DOF named by both routes appears once).
+    # Floating-platform rigid-body modes: rotor-speed-independent, so
+    # horizontal lines — but each DOF gets its own colour + linestyle
+    # and a *legend* entry (frequency + period) rather than a
+    # right-margin annotation, so on a FOWT the six modes are
+    # individually identifiable without crowding the plot margin
+    # (issue #47 follow-up). Sources: the natively classified tower
+    # columns above, plus any explicit ``platform_modes`` the caller
+    # passed; the first occurrence of a DOF name wins so a mode named
+    # by both routes is drawn once.
     if platform_modes:
         platform_pairs = platform_pairs + list(platform_modes)
-    if platform_pairs:
-        plat_groups: list[dict] = []
-        for name, f in platform_pairs:
-            f = float(f)
-            if not np.isfinite(f) or f <= 0.0:
-                continue
-            ax.axhline(
-                f,
-                linestyle=":",
-                color=(0.0, 0.0, 0.55),
-                linewidth=1.2,
-                zorder=2,
-            )
-            merged = False
-            for g in plat_groups:
-                if abs(g["f"] - f) / max(g["f"], 1e-9) < 0.02:
-                    if str(name) not in g["names"]:
-                        g["names"].append(str(name))
-                    g["f"] = 0.5 * (g["f"] + f)
-                    merged = True
-                    break
-            if not merged:
-                plat_groups.append({"f": f, "names": [str(name)]})
-
-        for g in plat_groups:
-            period = 1.0 / g["f"] if g["f"] > 0.0 else float("inf")
-            text = (" / ".join(g["names"])
-                    + f" ({g['f']:.4f} Hz, {period:.0f} s)")
-            ax.text(
-                label_x,
-                g["f"],
-                f" {text}",
-                color=(0.0, 0.0, 0.55),
-                fontsize=8,
-                va="bottom",
-                ha="left",
-                zorder=4,
-                clip_on=False,
-            )
+    seen_dofs: set[str] = set()
+    fallback_i = 0
+    for name, f in platform_pairs:
+        f = float(f)
+        if not np.isfinite(f) or f <= 0.0:
+            continue
+        nm = str(name)
+        if nm in seen_dofs:
+            continue
+        seen_dofs.add(nm)
+        style = _PLAT_LINE_STYLES.get(nm.lower())
+        if style is None:
+            style = _PLAT_FALLBACK_STYLES[
+                fallback_i % len(_PLAT_FALLBACK_STYLES)]
+            fallback_i += 1
+        col, ls = style
+        period = 1.0 / f if f > 0.0 else float("inf")
+        ax.axhline(
+            f,
+            color=col,
+            linestyle=ls,
+            linewidth=1.5,
+            zorder=2,
+            label=f"{nm} ({f:.4f} Hz, {period:.0f} s)",
+        )
 
     if rated_rpm is not None:
         ax.axvline(
@@ -1116,6 +1131,51 @@ def plot_campbell(
         ax.set_ylim(bottom=floor)
     else:
         ax.set_ylim(bottom=0.0)
+
+    # Draw the right-margin tower / platform labels now that the
+    # y-limits are fixed, spreading any that would overlap. A FOWT
+    # crowds six rigid-body modes (≈ 0.008–0.12 Hz) into the bottom
+    # sliver of an axis that runs to several Hz, so without this the
+    # navy period labels stack illegibly. The horizontal lines stay at
+    # the true frequency; only the text is nudged, with a thin leader
+    # back to the line, and the exact Hz is in the text so the mapping
+    # is never ambiguous.
+    if margin_labels:
+        ymin, ymax = ax.get_ylim()
+        log_scale = log_freq and ymin > 0.0 and ymax > ymin
+
+        def _to_frac(yv: float) -> float:
+            if log_scale:
+                return (np.log10(yv) - np.log10(ymin)) / (
+                    np.log10(ymax) - np.log10(ymin))
+            return (yv - ymin) / (ymax - ymin) if ymax > ymin else 0.0
+
+        def _from_frac(fr: float) -> float:
+            if log_scale:
+                return float(10.0 ** (np.log10(ymin) + fr * (
+                    np.log10(ymax) - np.log10(ymin))))
+            return ymin + fr * (ymax - ymin)
+
+        ordered = sorted(margin_labels, key=lambda e: e["y"])
+        min_gap = 0.05          # ≥ 5 % of the axis height between labels
+        prev_fr: float | None = None
+        for e in ordered:
+            tf = _to_frac(float(e["y"]))
+            cur = tf if prev_fr is None else max(tf, prev_fr + min_gap)
+            prev_fr = cur
+            text_y = _from_frac(min(cur, 0.985))
+            if abs(_to_frac(text_y) - tf) > 1.0e-3:
+                ax.plot(
+                    [label_x, label_x], [e["y"], text_y],
+                    color=e["color"], linewidth=0.6, alpha=0.45,
+                    zorder=3, clip_on=False,
+                )
+            ax.text(
+                label_x, text_y, e["text"],
+                color=e["color"], fontsize=8, va="center", ha="left",
+                zorder=4, clip_on=False,
+            )
+
     ax.legend(loc="upper left", fontsize=8, ncol=2)
     return fig
 

@@ -60,8 +60,10 @@ def tubular_section_props(
     E, rho, nu : isotropic material — Young's modulus (Pa), density
         (kg/m^3), Poisson's ratio.
     outfitting_factor : non-structural mass multiplier (internals,
-        flanges, paint, bolts). Multiplies mass density and rotary
-        inertia ONLY — never stiffness.
+        flanges, paint, bolts). Multiplies the distributed mass
+        density ONLY. Rotary inertia is treated as a structural
+        section property and is *not* scaled (it stays ``rho *
+        i_area``); stiffness is never scaled.
 
     Returns
     -------

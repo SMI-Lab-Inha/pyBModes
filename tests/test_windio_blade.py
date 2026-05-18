@@ -957,6 +957,146 @@ def test_windio_blade_elastic_mode_guards(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Static-review hardening (Frazer & Nash): twist units, malformed
+# published block, single-airfoil schedule
+# ---------------------------------------------------------------------------
+
+def test_twist_unit_autodetect_radians_vs_degrees() -> None:
+    """``_twist_to_degrees`` converts a radian-convention table
+    (IEA-3.4: max ≈ 0.35) but leaves a degree-convention one
+    (IEA-15: max ≈ 15.6) untouched — the old unconditional
+    ``np.degrees`` turned 15.6° into ≈ 894°."""
+    from pybmodes.io.windio_blade import _twist_to_degrees
+
+    rad = np.array([0.349, 0.20, 0.0, -0.081])      # IEA-3.4 style
+    np.testing.assert_allclose(_twist_to_degrees(rad), np.degrees(rad))
+
+    deg = np.array([15.594, 8.55, 0.04, -1.24])     # IEA-15 style
+    np.testing.assert_allclose(_twist_to_degrees(deg), deg)
+
+    assert _twist_to_degrees(np.array([])).size == 0
+
+
+def _blade_yaml(*, twist_vals="[0.0, 0.0]", labels="[circ, circ]",
+                af_grid="[0.0, 1.0]", elastic_block="") -> str:
+    fx, fy = _circ_xy_yaml()
+    return textwrap.dedent(f"""\
+        components:
+          blade:
+            outer_shape_bem:
+              reference_axis:
+                z: {{grid: [0.0, 1.0], values: [0.0, 50.0]}}
+              airfoil_position: {{grid: {af_grid}, labels: {labels}}}
+              chord: {{grid: [0.0, 1.0], values: [2.0, 2.0]}}
+              twist: {{grid: [0.0, 1.0], values: {twist_vals}}}
+              pitch_axis: {{grid: [0.0, 1.0], values: [0.5, 0.5]}}
+            internal_structure_2d_fem:
+              webs: []
+              layers:
+                - name: skin
+                  material: glass
+                  thickness: {{grid: [0.0, 1.0], values: [0.01, 0.01]}}
+                  fiber_orientation: {{grid: [0.0, 1.0], values: [0.0, 0.0]}}
+                  start_nd_arc: {{grid: [0.0, 1.0], values: [0.0, 0.0]}}
+                  end_nd_arc: {{grid: [0.0, 1.0], values: [1.0, 1.0]}}
+{elastic_block}
+        airfoils:
+          - name: circ
+            coordinates: {{x: {fx}, y: {fy}}}
+        materials:
+          - {{name: glass, E: 7.0e10, nu: 0.3, G: 2.6923e10, rho: 2600.0}}
+        """)
+
+
+def test_windio_blade_twist_degrees_not_double_converted(tmp_path) -> None:
+    """A degree-convention twist table (15.6° root) round-trips to
+    ~15.6° structural twist, not ~894° (issue #47 follow-up)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio_blade import read_windio_blade
+
+    p = tmp_path / "deg.yaml"
+    p.write_text(_blade_yaml(twist_vals="[15.594, -1.242]"),
+                 encoding="utf-8")
+    blade = read_windio_blade(p, n_span=5)
+    assert float(np.max(np.abs(blade.twist_deg))) < 20.0   # not ~894
+
+    p2 = tmp_path / "rad.yaml"
+    p2.write_text(_blade_yaml(twist_vals="[0.349, -0.081]"),
+                  encoding="utf-8")
+    blade2 = read_windio_blade(p2, n_span=5)
+    np.testing.assert_allclose(np.max(blade2.twist_deg),
+                               np.degrees(0.349), rtol=1e-6)
+
+
+def test_windio_blade_single_airfoil_schedule(tmp_path) -> None:
+    """A constant-profile blade with ONE airfoil definition parses
+    (the old ``len(af_grid) - 2`` indexing crashed); every station
+    reuses the single profile."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio_blade import read_windio_blade
+
+    p = tmp_path / "one_af.yaml"
+    p.write_text(_blade_yaml(labels="[circ]", af_grid="[0.0]"),
+                 encoding="utf-8")
+    blade = read_windio_blade(p, n_span=6)
+    assert len(blade.profiles) == 6
+    first = blade.profiles[0]
+    # The guard caches and reuses the single profile for every station.
+    for prof in blade.profiles[1:]:
+        assert prof is first
+
+
+def test_windio_blade_malformed_elastic_block_not_silent(tmp_path) -> None:
+    """A *present but unparseable* published block must not silently
+    degrade to PreComp (issue #47 follow-up): ``read_windio_blade``
+    records the parse error, ``auto`` warns then falls back, ``file``
+    raises, and a genuinely absent block stays silent."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio_blade import (
+        read_windio_blade,
+        windio_blade_section_props,
+    )
+
+    # stiffness_matrix present but K33 missing -> KeyError on parse.
+    bad = textwrap.indent(textwrap.dedent("""\
+        elastic_properties:
+          inertia_matrix:
+            grid: [0.0, 1.0]
+            mass: [100.0, 100.0]
+            i_flap: [5.0, 5.0]
+            i_edge: [7.0, 7.0]
+          stiffness_matrix:
+            grid: [0.0, 1.0]
+            K44: [3.0e8, 3.0e8]
+        """), " " * 14)
+    p = tmp_path / "bad_ep.yaml"
+    p.write_text(_blade_yaml(elastic_block=bad), encoding="utf-8")
+    blade = read_windio_blade(p, n_span=5)
+    assert blade.elastic is None
+    assert blade.elastic_parse_error is not None
+    assert "could not be parsed" in blade.elastic_parse_error
+
+    with pytest.warns(UserWarning, match="could not be parsed"):
+        sp = windio_blade_section_props(blade, n_perim=120,
+                                        elastic="auto")
+    np.testing.assert_array_less(0.0, sp.mass_den)   # PreComp fallback
+
+    with pytest.raises(ValueError, match="unusable"):
+        windio_blade_section_props(blade, elastic="file")
+
+    # A genuinely absent block: no error recorded, no warning on auto.
+    p2 = tmp_path / "no_ep.yaml"
+    p2.write_text(_blade_yaml(), encoding="utf-8")
+    blade2 = read_windio_blade(p2, n_span=5)
+    assert blade2.elastic is None
+    assert blade2.elastic_parse_error is None
+    import warnings as _w
+    with _w.catch_warnings():
+        _w.simplefilter("error")            # any warning => failure
+        windio_blade_section_props(blade2, n_perim=120, elastic="auto")
+
+
+# ---------------------------------------------------------------------------
 # Integration — real WindIO blades vs companion BeamDyn 6×6
 #
 # The companion `*_BeamDyn_blade.dat` tables were WISDEM-PreComp-

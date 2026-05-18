@@ -27,6 +27,7 @@ floating ones) and older ``outer_shape_bem`` /
 from __future__ import annotations
 
 import pathlib
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -65,6 +66,13 @@ class WindIOBlade:
     #: Keys: ``mass_den``/``flp_iner``/``edge_iner``/``flp_stff``/
     #: ``edge_stff``/``tor_stff``/``axial_stff``/``cg_offst``.
     elastic: "dict | None" = None
+    #: Non-``None`` when a published block *was* present but could not
+    #: be parsed (schema drift / malformed). ``elastic`` is then
+    #: ``None`` too, but this distinguishes "absent" (silent PreComp
+    #: fallback is correct) from "present-but-broken" (``"auto"``
+    #: warns; ``"file"`` raises) — so a typo can't hide behind a
+    #: plausible lower-fidelity result.
+    elastic_parse_error: "str | None" = None
 
 
 def _blade_shape_and_structure(comp: dict, component: str):
@@ -104,12 +112,47 @@ def _curve(spec: dict, at: np.ndarray) -> np.ndarray:
 # form): K11,K22,K33,K44,K55,K66.
 _SYM6_DIAG = (0, 6, 11, 15, 18, 20)
 
+# Blade aerodynamic/structural twist is at most ~25–30° anywhere on a
+# modern blade. The windIO ontology *nominally* stores twist in
+# radians (IEA-3.4-130-RWT: root ≈ 0.349 rad), but real WISDEM
+# reference files ship it in degrees (IEA-15-240-RWT: root ≈ 15.6).
+# A radian-convention twist therefore never exceeds ~0.6; anything
+# past ~2 rad (≈ 115°) is unphysical as radians and must already be
+# in degrees. Decide by magnitude rather than trusting the spec.
+_TWIST_RADIAN_CEILING = 2.0
+
+
+def _twist_to_degrees(twist_raw: np.ndarray) -> np.ndarray:
+    """Return blade twist in **degrees**, auto-detecting the source
+    unit (issue #47 follow-up — Frazer & Nash static review).
+
+    ``np.degrees`` was previously applied unconditionally, which is
+    correct for radian-convention windIO files (IEA-3.4) but turned a
+    degree-convention file's 15.6° root twist (IEA-15) into ≈ 894°.
+    """
+    arr = np.asarray(twist_raw, dtype=float)
+    if arr.size and float(np.nanmax(np.abs(arr))) > _TWIST_RADIAN_CEILING:
+        return arr                 # already degrees (WISDEM IEA-15 style)
+    return np.degrees(arr)         # radians (windIO spec / IEA-3.4 style)
+
 
 def _read_blade_elastic(
     holders: "tuple[dict, ...]", span: np.ndarray
-) -> "dict | None":
+) -> "tuple[dict | None, str | None]":
     """Parse the WindIO blade *published* distributed beam properties
-    onto ``span``, or ``None`` if the file carries only the layup.
+    onto ``span``.
+
+    Returns ``(props, error)``:
+
+    * ``(dict, None)`` — a published block was present and parsed;
+    * ``(None, None)`` — the file genuinely carries *no* published
+      block (only a layup) → silent PreComp fallback is correct;
+    * ``(None, str)`` — a published block *is* present but could not
+      be parsed (schema drift / malformed data). The caller must not
+      silently degrade to the approximate PreComp path on this case
+      (it would hide a typo behind a plausible but lower-fidelity
+      result, issue #47 follow-up — Frazer & Nash static review): in
+      ``elastic="auto"`` it warns, in ``"file"`` it raises.
 
     ``holders`` are the candidate dicts the block may live under —
     the modern ``elastic_properties`` is nested in the ``structure``
@@ -133,17 +176,24 @@ def _read_blade_elastic(
     The off-diagonal coupling terms are intentionally not modelled
     (the documented diagonal-beam limitation) — the point here is to
     reproduce the *reference* diagonal exactly rather than re-derive
-    it. Any structural surprise returns ``None`` (graceful fall back
-    to the PreComp reduction — never a hard failure)."""
+    it."""
     def _find(key: str):
         for h in holders:
             if isinstance(h, dict) and isinstance(h.get(key), dict):
                 return h[key]
         return None
 
+    ep = _find("elastic_properties")
+    ep_present = isinstance(ep, dict) and "stiffness_matrix" in ep
+    mb = _find("elastic_properties_mb")
+    s6 = mb.get("six_x_six") if isinstance(mb, dict) else None
+    mb_present = isinstance(s6, dict) and "stiff_matrix" in s6
+
+    if not ep_present and not mb_present:
+        return None, None          # genuinely absent — layup only
+
     try:
-        ep = _find("elastic_properties")
-        if isinstance(ep, dict) and "stiffness_matrix" in ep:
+        if ep_present:
             km = ep["stiffness_matrix"]
             im = ep.get("inertia_matrix", {})
 
@@ -157,40 +207,42 @@ def _read_blade_elastic(
                                  np.asarray(im["grid"], float),
                                  np.asarray(im[name], float))
 
-            out = {
+            return {
                 "axial_stff": _k("K33"), "flp_stff": _k("K44"),
                 "edge_stff": _k("K55"), "tor_stff": _k("K66"),
                 "mass_den": _i("mass"),
                 "flp_iner": _i("i_flap"), "edge_iner": _i("i_edge"),
                 "cg_offst": (_i("cm_x") if "cm_x" in im
                              else np.zeros_like(span)),
-            }
-            return out
+            }, None
 
-        mb = _find("elastic_properties_mb")
-        s6 = mb.get("six_x_six") if isinstance(mb, dict) else None
-        if isinstance(s6, dict) and "stiff_matrix" in s6:
-            def _diag(block: dict) -> np.ndarray:
-                g = np.asarray(block["grid"], float)
-                rows = np.asarray(block["values"], float)  # (n, 21)
-                d = rows[:, _SYM6_DIAG]                     # (n, 6)
-                return np.stack(
-                    [np.interp(span, g, d[:, j]) for j in range(6)],
-                    axis=1,
-                )                                          # (len, 6)
+        def _diag(block: dict) -> np.ndarray:
+            g = np.asarray(block["grid"], float)
+            rows = np.asarray(block["values"], float)  # (n, 21)
+            d = rows[:, _SYM6_DIAG]                     # (n, 6)
+            return np.stack(
+                [np.interp(span, g, d[:, j]) for j in range(6)],
+                axis=1,
+            )                                          # (len, 6)
 
-            kd = _diag(s6["stiff_matrix"])
-            md = _diag(s6["inertia_matrix"])
-            return {
-                "axial_stff": kd[:, 2], "flp_stff": kd[:, 3],
-                "edge_stff": kd[:, 4], "tor_stff": kd[:, 5],
-                "mass_den": md[:, 0],
-                "flp_iner": md[:, 3], "edge_iner": md[:, 4],
-                "cg_offst": np.zeros_like(span),
-            }
-    except (KeyError, TypeError, ValueError, IndexError):
-        return None
-    return None
+        assert isinstance(s6, dict)   # narrowed by mb_present above
+        kd = _diag(s6["stiff_matrix"])
+        md = _diag(s6["inertia_matrix"])
+        return {
+            "axial_stff": kd[:, 2], "flp_stff": kd[:, 3],
+            "edge_stff": kd[:, 4], "tor_stff": kd[:, 5],
+            "mass_den": md[:, 0],
+            "flp_iner": md[:, 3], "edge_iner": md[:, 4],
+            "cg_offst": np.zeros_like(span),
+        }, None
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        # Block is *present* but unparseable — never silently degrade.
+        return None, (
+            "WindIO blade carries a published elastic-properties block "
+            f"that could not be parsed ({type(exc).__name__}: {exc}); "
+            "this usually means schema drift or a malformed grid/values "
+            "table."
+        )
 
 
 def read_windio_blade(
@@ -224,7 +276,7 @@ def read_windio_blade(
     span = np.linspace(float(z_grid[0]), float(z_grid[-1]), n_span)
 
     chord = _curve(shape["chord"], span)
-    twist_deg = np.degrees(_curve(shape["twist"], span))
+    twist_deg = _twist_to_degrees(_curve(shape["twist"], span))
     if "pitch_axis" in shape:                    # older: chord fraction
         ref_xc = _curve(shape["pitch_axis"], span)
     elif "section_offset_y" in shape:            # modern: metres / chord
@@ -248,9 +300,22 @@ def read_windio_blade(
         af_grid = np.asarray([a["spanwise_position"] for a in afs], float)
         af_labels = [a["name"] for a in afs]
 
+    if af_grid.size == 0 or not af_labels:
+        raise ValueError(
+            f"WindIO blade {component!r} has no airfoil schedule "
+            "(empty airfoil_position / airfoils)."
+        )
+
     cache: dict[str, Profile] = {}
 
     def _blended(s: float) -> Profile:
+        # A single-airfoil blade (constant profile) is a valid input
+        # shape; without this guard ``len(af_grid) - 2 = -1`` makes
+        # ``np.clip`` and the ``j + 1`` index misbehave (Frazer & Nash
+        # static review). Reuse the one profile everywhere.
+        if len(af_grid) < 2:
+            only = af_labels[0]
+            return cache.setdefault(only, _profile(only))
         j = int(np.clip(np.searchsorted(af_grid, s) - 1, 0,
                         len(af_grid) - 2))
         nlo, nhi = af_labels[j], af_labels[j + 1]
@@ -270,11 +335,14 @@ def read_windio_blade(
     materials = {m["name"]: m for m in doc.get("materials", [])
                  if "name" in m}
 
+    elastic, elastic_err = _read_blade_elastic(
+        (comp, structure, shape), span
+    )
     return WindIOBlade(
         span_grid=span, flexible_length=flexible_length, chord=chord,
         twist_deg=twist_deg, ref_axis_xc=ref_xc, profiles=profiles,
         resolved=resolved, materials=materials,
-        elastic=_read_blade_elastic((comp, structure, shape), span),
+        elastic=elastic, elastic_parse_error=elastic_err,
     )
 
 
@@ -299,7 +367,14 @@ def windio_blade_section_props(
     * ``"precomp"`` — always run the PreComp reduction (the pre-1.5
       behaviour), even when published properties exist.
     * ``"file"`` — require the published properties; raise
-      ``ValueError`` if the file has only the layup.
+      ``ValueError`` if the file has only the layup *or* carries a
+      published block that could not be parsed.
+
+    If a published block is **present but unparseable** (schema drift
+    / malformed), ``"auto"`` does not silently fall back to the
+    lower-fidelity PreComp result — it emits a ``UserWarning`` naming
+    the parse problem before reducing the layup, and ``"file"``
+    raises (issue #47 follow-up — Frazer & Nash static review).
     """
     if elastic not in ("auto", "precomp", "file"):
         raise ValueError(
@@ -312,11 +387,26 @@ def windio_blade_section_props(
         elastic != "precomp" and blade.elastic is not None
     )
     if elastic == "file" and blade.elastic is None:
+        if blade.elastic_parse_error is not None:
+            raise ValueError(
+                "elastic='file' but the WindIO blade's published "
+                f"block is unusable: {blade.elastic_parse_error}"
+            )
         raise ValueError(
             "elastic='file' but the WindIO blade carries no "
             "elastic_properties / elastic_properties_mb block "
             "(only a layup) — use elastic='auto' or 'precomp' to "
             "reduce the layup via PreComp."
+        )
+    if (elastic == "auto" and blade.elastic is None
+            and blade.elastic_parse_error is not None):
+        warnings.warn(
+            f"{blade.elastic_parse_error} Falling back to the "
+            "approximate PreComp layup reduction; pass "
+            "elastic='precomp' to silence this, or fix the block / "
+            "use elastic='file' to require it.",
+            UserWarning,
+            stacklevel=2,
         )
     if use_published:
         e = blade.elastic
