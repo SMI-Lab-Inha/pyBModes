@@ -150,6 +150,6 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("pybmodes")
 except PackageNotFoundError:
-    __version__ = "1.5.1-dev"
+    __version__ = "1.5.2-dev"
 
 __all__ = ["__version__"]

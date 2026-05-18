@@ -10,6 +10,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 (nothing yet)
 
+## [1.5.2] — 2026-05-18
+
+### Added
+
+- **``campbell_sweep`` accepts already-loaded models (issue #51,
+  Kieran Mercer, Frazer & Nash).** ``input_path`` (and
+  ``tower_input``) now take a path **or** a constructed
+  :class:`~pybmodes.models.RotatingBlade` /
+  :class:`~pybmodes.models.Tower` from *any* constructor —
+  ``__init__``, ``from_elastodyn``, ``from_windio``,
+  ``from_windio_floating``, … The model is used verbatim with **no
+  disk re-read**, so there is a single point of load-in
+  (``blade = RotatingBlade(...); campbell_sweep(blade, ω,
+  tower_input=tower)``) and — crucially — a ``from_windio`` /
+  ``from_elastodyn`` model, whose pre-built section properties no
+  path can re-read, can finally be swept (previously ``.bmi`` /
+  ElastoDyn ``.dat`` only). Routed to blade/tower by ``beam_type`` so
+  either may be passed as the primary argument. Fully backward
+  compatible — existing path / string calls are unchanged
+  (non-breaking overload; the 1.x public signature is preserved).
+
+### Fixed
+
+- **Modern ``elastic_properties`` named flap/edge inertia is no
+  longer silently swapped (issue #50 follow-up — Frazer & Nash
+  static review).** The parametrised ``inertia_matrix`` principal
+  moments were taken as the closed-form ``½(i_f+i_e) ∓ rad``
+  eigenvalues, which for ``i_cp`` absent / zero reduces to
+  ``min``/``max`` — so a schema-labelled blade with ``i_flap >
+  i_edge`` had its rotary inertias transposed (``flp_iner`` ↔
+  ``edge_iner``), shifting modal results. The 2×2 ``[[i_flap, i_cp],
+  [i_cp, i_edge]]`` is now eigen-decomposed and assigned to the
+  *named* axes by principal-axis alignment — the same label-
+  preserving rule the full-6×6 path uses — so a diagonal
+  (``i_cp = 0``) input passes through with its schema labels intact
+  and a rotated one keeps flap/edge attached to the correct axis.
+
 ## [1.5.1] — 2026-05-18
 
 ### Fixed

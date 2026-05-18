@@ -286,6 +286,13 @@ result = campbell_sweep(
     n_tower_modes=4,    # 1st/2nd FA + 1st/2nd SS (default)
 )
 
+# Or pass already-loaded models — a single point of load-in, no disk
+# re-read, and the only way to sweep a from_windio / from_elastodyn
+# model whose section properties no path can re-read (issue #51):
+#   blade = RotatingBlade.from_windio("IEA-15-240-RWT.yaml")
+#   tower = Tower.from_windio("IEA-15-240-RWT.yaml")
+#   result = campbell_sweep(blade, rpm, tower_input=tower)
+
 # Blade modes are MAC-tracked across rotor speeds, so
 # result.frequencies[:, k] is the same physical mode at every speed.
 print(result.labels)
