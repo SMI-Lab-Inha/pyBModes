@@ -263,7 +263,8 @@ class Tower:
         nu: float = 0.3,
         outfitting_factor: float = 1.0,
         hub_conn: int = 1,
-        tip_mass: "TipMassProps | None" = None,
+        tip_mass: "TipMassProps | float | None" = None,
+        n_nodes: "int | None" = None,
     ) -> "Tower":
         """Build a tower model from tubular **geometry** instead of
         pre-computed structural properties (issue #35).
@@ -295,8 +296,24 @@ class Tower:
         hub_conn : root BC — 1 cantilever (default; the basis
             ElastoDyn polynomial coefficients require), 3 soft
             monopile, etc.
-        tip_mass : optional :class:`pybmodes.io.bmi.TipMassProps` for
-            an RNA / tower-top lump; ``None`` -> zero tip mass.
+        tip_mass : optional RNA / tower-top lump — a
+            :class:`pybmodes.io.bmi.TipMassProps`, **or a bare float**
+            (the RNA mass in kg; the inertia / offset terms default to
+            zero — the common case, issue #35). ``None`` -> zero tip
+            mass.
+        n_nodes : optional FE-mesh refinement (issue #35). When given,
+            the geometry is **re-gridded onto ``n_nodes`` evenly-
+            spaced stations over the normalised span** and the outer
+            diameter / wall thickness are linearly interpolated onto
+            it before the closed-form tube reduction (so each refined
+            station still gets *exact* tube properties, not
+            interpolated ones). A finer mesh resolves the higher
+            tower-bending mode shapes; frequencies are unbiased
+            (convergent) — see ``tests/test_geometry_windio.py``.
+            ``None`` keeps the supplied grid verbatim. Note: a
+            uniform resample linearly smooths a deliberately *stepped*
+            geometry (e.g. a wall-thickness jump); omit ``n_nodes`` to
+            preserve such steps exactly.
 
         Notes
         -----
@@ -316,15 +333,47 @@ class Tower:
         from pybmodes.io.geometry import tubular_section_props
 
         grid = _np.asarray(station_grid, dtype=float)
+        od = _np.asarray(outer_diameter, dtype=float)
+        wt = _np.asarray(wall_thickness, dtype=float)
+
+        if n_nodes is not None:
+            if not isinstance(n_nodes, int) or isinstance(n_nodes, bool) \
+                    or n_nodes < 2:
+                raise ValueError(
+                    f"n_nodes must be an integer >= 2; got {n_nodes!r}"
+                )
+            # Re-grid onto a uniform span and linearly interpolate the
+            # *geometry* (not the derived props) so each refined
+            # station still gets exact closed-form tube properties.
+            fine = _np.linspace(float(grid[0]), float(grid[-1]), n_nodes)
+            od = _np.interp(fine, grid, od)
+            wt = _np.interp(fine, grid, wt)
+            grid = fine
+
         sp = tubular_section_props(
-            grid,
-            _np.asarray(outer_diameter, dtype=float),
-            _np.asarray(wall_thickness, dtype=float),
+            grid, od, wt,
             E=E, rho=rho, nu=nu, outfitting_factor=outfitting_factor,
         )
         if tip_mass is None:
             tip_mass = TipMassProps(
                 mass=0.0, cm_offset=0.0, cm_axial=0.0,
+                ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
+            )
+        elif not isinstance(tip_mass, TipMassProps):
+            # Bare-scalar convenience: a tower-top RNA *mass* in kg.
+            try:
+                m = float(tip_mass)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "tip_mass must be a TipMassProps or a float "
+                    f"(RNA mass in kg); got {tip_mass!r}"
+                ) from exc
+            if not _np.isfinite(m) or m < 0.0:
+                raise ValueError(
+                    f"tip_mass (kg) must be finite and >= 0; got {m!r}"
+                )
+            tip_mass = TipMassProps(
+                mass=m, cm_offset=0.0, cm_axial=0.0,
                 ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
             )
         el_loc = _tower_element_boundaries(grid)
@@ -355,6 +404,8 @@ class Tower:
         component: str = "tower",
         thickness_interp: str = "linear",
         hub_conn: int = 1,
+        tip_mass: "TipMassProps | float | None" = None,
+        n_nodes: "int | None" = None,
     ) -> "Tower":
         """Build a tower (or monopile) model directly from a **WindIO**
         ontology ``.yaml`` (issue #35).
@@ -377,6 +428,18 @@ class Tower:
             ``tests/test_windio.py``.
         hub_conn : root BC (default 1 cantilever; use 3 for a
             soil-flexible monopile).
+        tip_mass : optional tower-top RNA lump (issue #35) — a
+            :class:`pybmodes.io.bmi.TipMassProps` **or a bare float**
+            (RNA mass in kg). Replaces the
+            ``tower._bmi.tip_mass = …`` workaround and mirrors
+            :meth:`from_windio_floating`'s ``rna_tip``. ``None`` ->
+            zero tip mass.
+        n_nodes : optional FE-mesh refinement (issue #35) — re-grid
+            the tower onto ``n_nodes`` evenly-spaced stations
+            (geometry linearly interpolated, properties recomputed
+            exactly), to resolve higher tower-bending mode shapes.
+            ``None`` keeps the WindIO grid. (The WindIO *blade* path
+            has the analogous ``n_span``.)
 
         Requires the optional ``[windio]`` extra (PyYAML). This is the
         tubular tower / monopile path; for a WindIO *blade* composite
@@ -396,6 +459,8 @@ class Tower:
             E=g.E, rho=g.rho, nu=g.nu,
             outfitting_factor=g.outfitting_factor,
             hub_conn=hub_conn,
+            tip_mass=tip_mass,
+            n_nodes=n_nodes,
         )
 
     @classmethod
