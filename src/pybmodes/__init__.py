@@ -63,7 +63,10 @@ minor releases.
     #   Tower.from_geometry(station_grid, outer_diameter,
     #                       wall_thickness, *, flexible_length,
     #                       E, rho, nu, outfitting_factor)
-    #   Tower.from_windio(yaml_path, *, component, thickness_interp)
+    #   Tower.from_windio(yaml_path, *, component, thickness_interp,
+    #       hub_conn, tip_mass, n_nodes)
+    #     tip_mass: TipMassProps | float (RNA mass kg); n_nodes:
+    #     refine the FE mesh onto N even stations (issue #35)
     #   Tower.from_windio_floating(yaml_path, *, water_depth,
     #                              hydrodyn_dat, moordyn_dat,
     #                              elastodyn_dat)  # coupled FOWT
@@ -150,6 +153,6 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("pybmodes")
 except PackageNotFoundError:
-    __version__ = "1.5.2-dev"
+    __version__ = "1.6.0-dev"
 
 __all__ = ["__version__"]

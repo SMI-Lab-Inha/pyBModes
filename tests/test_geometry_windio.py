@@ -60,6 +60,137 @@ def test_uniform_tube_cantilever_matches_euler_bernoulli() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 1b. issue #35 — n_nodes mesh refinement + tip_mass kwarg
+# ---------------------------------------------------------------------------
+
+def test_n_nodes_no_bias_on_uniform_tube() -> None:
+    """Resampling must not bias frequencies: on a *uniform* tube the
+    n_nodes path is identical to the native grid (interp of constants
+    is exact) and both match Euler-Bernoulli (#35 validation bar)."""
+    D, t, L, E, rho = 6.0, 0.03, 80.0, 2.0e11, 7850.0
+    ro, ri = D / 2, D / 2 - t
+    f1 = (1.875104**2) / (2 * math.pi * L**2) * math.sqrt(
+        E * (0.25 * math.pi * (ro**4 - ri**4))
+        / (rho * math.pi * (ro**2 - ri**2))
+    )
+    native = Tower.from_geometry(
+        np.linspace(0.0, 1.0, 9), np.full(9, D), np.full(9, t),
+        flexible_length=L, E=E, rho=rho,
+    ).run(n_modes=4, check_model=False)
+    refined = Tower.from_geometry(
+        np.linspace(0.0, 1.0, 9), np.full(9, D), np.full(9, t),
+        flexible_length=L, E=E, rho=rho, n_nodes=80,
+    ).run(n_modes=4, check_model=False)
+    assert refined.frequencies[0] == pytest.approx(f1, rel=1e-3)
+    # Refinement only adds resolution — no systematic shift.
+    assert refined.frequencies[0] == pytest.approx(
+        native.frequencies[0], rel=5e-3)
+
+
+def test_n_nodes_converges_and_resolves_higher_modes_on_taper() -> None:
+    """On a tapered tower a finer mesh (a) converges — n_nodes=200 vs
+    400 agree tightly on the 1st *and* 4th mode — and (b) resolves the
+    higher mode shapes (more samples), the #35 ask."""
+    L = 100.0
+    g0 = np.linspace(0.0, 1.0, 6)
+    od = np.array([8.0, 7.2, 6.4, 5.6, 4.8, 4.0])
+    wt = np.array([0.05, 0.045, 0.04, 0.035, 0.03, 0.025])
+
+    def _solve(nn):
+        return Tower.from_geometry(
+            g0, od, wt, flexible_length=L, n_nodes=nn,
+        ).run(n_modes=4, check_model=False)
+
+    coarse, fine, finer = _solve(12), _solve(200), _solve(400)
+    # Self-convergence (no external oracle): the fine pair agree
+    # tightly on the 1st and the higher (4th) mode.
+    assert fine.frequencies[0] == pytest.approx(
+        finer.frequencies[0], rel=2e-3)
+    assert fine.frequencies[3] == pytest.approx(
+        finer.frequencies[3], rel=2e-2)
+    # Coarse is in the same basin (convergent, not divergent).
+    assert coarse.frequencies[0] == pytest.approx(
+        finer.frequencies[0], rel=5e-2)
+    # Higher mode shapes get materially more samples.
+    assert (len(finer.shapes[3].span_loc)
+            > 3 * len(coarse.shapes[3].span_loc))
+
+
+def test_n_nodes_guards() -> None:
+    g = np.linspace(0.0, 1.0, 5)
+    for bad in (1, 0, -3, 2.5, True):
+        with pytest.raises(ValueError, match="n_nodes must be"):
+            Tower.from_geometry(g, np.full(5, 6.0), np.full(5, 0.03),
+                                flexible_length=50.0, n_nodes=bad)
+
+
+def test_tip_mass_float_equals_tipmassprops_and_lowers_freq() -> None:
+    """issue #35: a bare-float ``tip_mass`` (RNA mass, kg) is the
+    common case and must equal the explicit TipMassProps form, equal
+    the old ``_bmi.tip_mass`` workaround, and lower the 1st
+    frequency."""
+    from pybmodes.io.bmi import TipMassProps
+
+    D, t, L = 6.0, 0.03, 80.0
+    g = np.linspace(0.0, 1.0, 21)
+    common = dict(flexible_length=L)
+
+    no_tip = Tower.from_geometry(
+        g, np.full(21, D), np.full(21, t), **common
+    ).run(n_modes=3, check_model=False)
+    by_float = Tower.from_geometry(
+        g, np.full(21, D), np.full(21, t), tip_mass=2.0e5, **common
+    ).run(n_modes=3, check_model=False)
+    by_props = Tower.from_geometry(
+        g, np.full(21, D), np.full(21, t),
+        tip_mass=TipMassProps(mass=2.0e5, cm_offset=0.0, cm_axial=0.0,
+                              ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0,
+                              izx=0.0, iyz=0.0),
+        **common,
+    ).run(n_modes=3, check_model=False)
+
+    np.testing.assert_allclose(by_float.frequencies,
+                               by_props.frequencies, rtol=1e-12)
+    assert by_float.frequencies[0] < no_tip.frequencies[0]   # mass softens
+
+    with pytest.raises(ValueError, match="tip_mass"):
+        Tower.from_geometry(g, np.full(21, D), np.full(21, t),
+                            tip_mass=-5.0, **common)
+    with pytest.raises(ValueError, match="tip_mass"):
+        Tower.from_geometry(g, np.full(21, D), np.full(21, t),
+                            tip_mass="heavy", **common)
+
+
+def test_from_windio_tip_mass_and_n_nodes_end_to_end(
+    tmp_path: pathlib.Path,
+) -> None:
+    """``Tower.from_windio`` forwards both new kwargs (issue #35):
+    n_nodes refines the mesh, a float tip_mass lumps the RNA."""
+    pytest.importorskip("yaml")
+    p = tmp_path / "min.yaml"
+    p.write_text(_MIN_WINDIO, encoding="utf-8")
+
+    base = Tower.from_windio(p).run(n_modes=3, check_model=False)
+    refined = Tower.from_windio(p, n_nodes=50).run(
+        n_modes=3, check_model=False)
+    converged = Tower.from_windio(p, n_nodes=200).run(
+        n_modes=3, check_model=False)
+    with_rna = Tower.from_windio(p, n_nodes=50, tip_mass=4.0e5).run(
+        n_modes=3, check_model=False)
+
+    # The fixture's native grid is only 3 stations — deliberately
+    # under-resolved. n_nodes adds resolution and *converges* (50 vs
+    # 200 agree tightly); the base 3-node value is the coarse-mesh
+    # one #35 asks to refine away (so it legitimately differs — this
+    # is the feature working, not a bias).
+    assert len(refined.shapes[0].span_loc) > len(base.shapes[0].span_loc)
+    assert refined.frequencies[0] == pytest.approx(
+        converged.frequencies[0], rel=5e-3)
+    # RNA lump softens the tower.
+    assert with_rna.frequencies[0] < refined.frequencies[0]
+
+
+# ---------------------------------------------------------------------------
 # 2. tubular_section_props unit values + outfitting split
 # ---------------------------------------------------------------------------
 

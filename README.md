@@ -782,7 +782,9 @@ from pybmodes.plots     import (
 #   Tower.from_geometry(station_grid, outer_diameter, wall_thickness,
 #                       *, flexible_length, E, rho, nu,
 #                       outfitting_factor)
-#   Tower.from_windio(yaml_path, *, component, thickness_interp)
+#   Tower.from_windio(yaml_path, *, component, thickness_interp,
+#       hub_conn, tip_mass, n_nodes)  # tip_mass: TipMassProps|float
+#       # (RNA kg); n_nodes: refine the FE mesh (issue #35)
 #       (read_windio_tubular / WindIOTubular need the [windio] extra)
 #   Tower.from_windio_floating(yaml_path, *, component_tower,
 #       water_depth, hydrodyn_dat, moordyn_dat, elastodyn_dat,

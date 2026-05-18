@@ -10,6 +10,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 (nothing yet)
 
+## [1.6.0] — 2026-05-18
+
+### Added
+
+- **``Tower.from_windio`` / ``Tower.from_geometry`` gain ``n_nodes``
+  and ``tip_mass`` (issue #35, Kieran Mercer, Frazer & Nash).**
+
+  - ``n_nodes`` — request an FE mesh of *N* evenly-spaced stations:
+    the tower geometry (outer diameter / wall thickness) is linearly
+    interpolated onto a uniform span and the closed-form tube
+    reduction is recomputed **exactly** at each refined station (the
+    geometry is interpolated, not the derived properties), so a finer
+    mesh resolves the higher tower-bending mode shapes. Validated
+    self-convergent and bias-free — on a uniform tube the refined
+    result is identical to the native grid and matches
+    Euler-Bernoulli; on a taper ``n_nodes=200`` vs ``400`` agree to
+    < 0.2 % (1st) / < 2 % (4th). The WindIO *blade* path already had
+    the analogous ``n_span``. ``None`` keeps the supplied grid (a
+    uniform resample linearly smooths a deliberately *stepped*
+    geometry — omit ``n_nodes`` to preserve steps).
+  - ``tip_mass`` — a tower-top RNA lump as a
+    :class:`pybmodes.io.bmi.TipMassProps` **or a bare float** (RNA
+    mass in kg; offsets/inertia default to zero — the common case).
+    Replaces the type-fragile ``tower._bmi.tip_mass = mass``
+    workaround and mirrors :meth:`from_windio_floating`'s
+    ``rna_tip``. ``from_geometry`` already accepted ``TipMassProps``;
+    the bare-float convenience now works there and on
+    ``from_windio``.
+
+  Both are additive keywords — existing call sites are unchanged.
+
 ## [1.5.2] — 2026-05-18
 
 ### Added
