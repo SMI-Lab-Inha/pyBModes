@@ -1096,6 +1096,42 @@ def test_windio_blade_malformed_elastic_block_not_silent(tmp_path) -> None:
         windio_blade_section_props(blade2, n_perim=120, elastic="auto")
 
 
+def test_windio_blade_named_inertia_labels_not_swapped(tmp_path) -> None:
+    """issue #50 follow-up: a modern ``elastic_properties`` block with
+    ``i_flap > i_edge`` and no ``i_cp`` must keep the schema's named
+    flap/edge inertias — the old min/max eigen-sort silently swapped
+    them, mislabelling rotary inertia and shifting modal results."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio_blade import (
+        read_windio_blade,
+        windio_blade_section_props,
+    )
+
+    # i_flap (12) deliberately > i_edge (4); no i_cp ⇒ already
+    # diagonal in the named frame. Diagonal stiffness so the EI/EA
+    # mapping is trivial and the test isolates the inertia labelling.
+    ep = textwrap.indent(textwrap.dedent("""\
+        elastic_properties:
+          inertia_matrix:
+            grid: [0.0, 1.0]
+            mass: [80.0, 80.0]
+            i_flap: [12.0, 12.0]
+            i_edge: [4.0, 4.0]
+          stiffness_matrix:
+            grid: [0.0, 1.0]
+            K33: [2.0e9, 2.0e9]
+            K44: [3.0e8, 3.0e8]
+            K55: [5.0e8, 5.0e8]
+            K66: [1.0e8, 1.0e8]
+        """), " " * 14)
+    p = tmp_path / "named_iner.yaml"
+    p.write_text(_blade_yaml(elastic_block=ep), encoding="utf-8")
+    blade = read_windio_blade(p, n_span=5)
+    sp = windio_blade_section_props(blade, elastic="file")
+    np.testing.assert_allclose(sp.flp_iner, 12.0)   # NOT min(12,4)
+    np.testing.assert_allclose(sp.edge_iner, 4.0)   # NOT max(12,4)
+
+
 # ---------------------------------------------------------------------------
 # Integration — real WindIO blades vs companion BeamDyn 6×6
 #

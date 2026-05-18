@@ -43,6 +43,7 @@ from __future__ import annotations
 import pathlib
 import warnings
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -50,6 +51,10 @@ from pybmodes.fem.normalize import NodeModeShape
 from pybmodes.io.bmi import BMIFile, read_bmi
 from pybmodes.io.sec_props import SectionProperties
 from pybmodes.models._pipeline import run_fem
+
+if TYPE_CHECKING:
+    from pybmodes.models.blade import RotatingBlade
+    from pybmodes.models.tower import Tower
 
 
 @dataclass
@@ -304,25 +309,91 @@ class CampbellResult:
 _Model = tuple[BMIFile, SectionProperties | None]
 
 
-def _load_models(
-    input_path: pathlib.Path,
-    tower_input: pathlib.Path | None,
-) -> tuple[_Model | None, _Model | None]:
-    """Resolve the input path(s) to (blade, tower) model pairs.
+def _model_pair(obj: object) -> "tuple[str, _Model] | None":
+    """``(role, (_bmi, _sp))`` for an already-loaded ``RotatingBlade``
+    / ``Tower`` (issue #51 — single point of load-in; also the only
+    way to Campbell a ``from_windio`` / ``from_elastodyn`` model,
+    which carry pre-built section properties no path can re-read).
+    ``None`` if ``obj`` is not a loaded model (treat as a path).
 
-    For an ElastoDyn ``.dat`` file the deck carries both, so we load
-    both unless the corresponding files can't be resolved. ``.bmi``
-    inputs are routed to blade or tower by their ``beam_type``. The
-    ``tower_input`` keyword lets a caller pair a blade ``.bmi`` with
-    an explicit tower ``.bmi``; if the primary input was an ElastoDyn
-    deck and ``tower_input`` is also given, ``tower_input`` overrides
-    the deck-supplied tower (useful when the deck's tower file points
+    Deferred import keeps ``campbell`` free of a ``models`` import
+    cycle. ``role`` is taken from ``beam_type`` so a blade or tower
+    can be passed in either positional slot."""
+    from pybmodes.models.blade import RotatingBlade
+    from pybmodes.models.tower import Tower
+
+    if not isinstance(obj, (RotatingBlade, Tower)):
+        return None
+    bmi = obj._bmi
+    sp = obj._sp
+    if bmi.beam_type == 1:
+        return "blade", (bmi, sp)
+    if bmi.beam_type == 2:
+        return "tower", (bmi, sp)
+    raise ValueError(
+        f"loaded {type(obj).__name__} has unsupported beam_type "
+        f"{bmi.beam_type} (expected 1 = blade or 2 = tower)"
+    )
+
+
+def _load_models(
+    input_path: "str | pathlib.Path | object",
+    tower_input: "str | pathlib.Path | object | None",
+) -> tuple[_Model | None, _Model | None]:
+    """Resolve the input(s) to (blade, tower) model pairs.
+
+    ``input_path`` may be a path **or an already-loaded
+    ``RotatingBlade`` / ``Tower``** (issue #51): a loaded model is
+    used directly — no disk re-read — which is the only way to sweep a
+    ``from_windio`` / ``from_elastodyn`` model and gives a single
+    point of load-in. For an ElastoDyn ``.dat`` file the deck carries
+    both, so we load both unless the corresponding files can't be
+    resolved. ``.bmi`` inputs are routed to blade or tower by their
+    ``beam_type``. The ``tower_input`` keyword (a tower ``.bmi`` path
+    *or* a loaded ``Tower``) pairs an explicit tower with a blade
+    input; if the primary input was an ElastoDyn deck and
+    ``tower_input`` is also given, ``tower_input`` overrides the
+    deck-supplied tower (useful when the deck's tower file points
     somewhere unhelpful).
     """
-    suffix = input_path.suffix.lower()
-
     blade: _Model | None = None
     tower: _Model | None = None
+
+    # Already-loaded RotatingBlade / Tower — use verbatim.
+    mp = _model_pair(input_path)
+    if mp is not None:
+        role, pair = mp
+        if role == "blade":
+            blade = pair
+        else:
+            tower = pair
+        if tower_input is not None:
+            tmp = _model_pair(tower_input)
+            if tmp is not None:
+                if tmp[0] != "tower":
+                    raise ValueError(
+                        "tower_input must be a Tower (beam_type=2) or a "
+                        "tower .bmi"
+                    )
+                tower = tmp[1]
+            else:
+                tp = pathlib.Path(tower_input)  # type: ignore[arg-type]
+                if tp.suffix.lower() != ".bmi":
+                    raise ValueError(
+                        f"tower_input must be a .bmi file; got "
+                        f"{tp.suffix!r}"
+                    )
+                tbmi = read_bmi(tp)
+                if tbmi.beam_type != 2:
+                    raise ValueError(
+                        f"tower_input {tp} has beam_type "
+                        f"{tbmi.beam_type}, expected 2 (tower)"
+                    )
+                tower = (tbmi, None)
+        return blade, tower
+
+    input_path = pathlib.Path(input_path)  # type: ignore[arg-type]
+    suffix = input_path.suffix.lower()
 
     if suffix == ".dat":
         from pybmodes.io.elastodyn_reader import (
@@ -376,17 +447,28 @@ def _load_models(
         )
 
     if tower_input is not None:
-        if tower_input.suffix.lower() != ".bmi":
-            raise ValueError(
-                f"tower_input must be a .bmi file; got {tower_input.suffix!r}"
-            )
-        tower_bmi = read_bmi(tower_input)
-        if tower_bmi.beam_type != 2:
-            raise ValueError(
-                f"tower_input {tower_input} has beam_type {tower_bmi.beam_type}, "
-                f"expected 2 (tower)"
-            )
-        tower = (tower_bmi, None)
+        tmp = _model_pair(tower_input)
+        if tmp is not None:                      # a loaded Tower
+            if tmp[0] != "tower":
+                raise ValueError(
+                    "tower_input must be a Tower (beam_type=2) or a "
+                    "tower .bmi"
+                )
+            tower = tmp[1]
+        else:
+            tpath = pathlib.Path(tower_input)    # type: ignore[arg-type]
+            if tpath.suffix.lower() != ".bmi":
+                raise ValueError(
+                    f"tower_input must be a .bmi file; got "
+                    f"{tpath.suffix!r}"
+                )
+            tower_bmi = read_bmi(tpath)
+            if tower_bmi.beam_type != 2:
+                raise ValueError(
+                    f"tower_input {tpath} has beam_type "
+                    f"{tower_bmi.beam_type}, expected 2 (tower)"
+                )
+            tower = (tower_bmi, None)
 
     return blade, tower
 
@@ -681,12 +763,12 @@ def _solve_tower_once(
 # ---------------------------------------------------------------------------
 
 def campbell_sweep(
-    input_path: str | pathlib.Path,
+    input_path: "str | pathlib.Path | RotatingBlade | Tower",
     omega_rpm: np.ndarray,
     n_blade_modes: int = 4,
     n_tower_modes: int = 4,
     *,
-    tower_input: str | pathlib.Path | None = None,
+    tower_input: "str | pathlib.Path | Tower | None" = None,
     track_by_mac: bool = True,
 ) -> CampbellResult:
     """Build a Campbell-diagram dataset for the given turbine.
@@ -694,7 +776,7 @@ def campbell_sweep(
     Parameters
     ----------
     input_path :
-        Path to either:
+        Either a path **or an already-loaded model** (issue #51):
 
         - an OpenFAST ElastoDyn main ``.dat`` file — the function
           loads the blade *and* the tower from the deck and runs both;
@@ -702,7 +784,16 @@ def campbell_sweep(
           unless ``tower_input`` is also supplied;
         - a tower ``.bmi`` (``beam_type = 2``) — tower-only result
           (frequencies are constant across ``omega_rpm``; the result
-          is mostly useful for overlay against the per-rev family).
+          is mostly useful for overlay against the per-rev family);
+        - an already-constructed :class:`~pybmodes.models.RotatingBlade`
+          or :class:`~pybmodes.models.Tower` (from *any* constructor —
+          ``__init__``, ``from_elastodyn``, ``from_windio``,
+          ``from_windio_floating``, …). The model is used **verbatim,
+          with no disk re-read**, so a single load point feeds both
+          ``.run()`` and the sweep, and a ``from_windio`` /
+          ``from_elastodyn`` model (whose section properties no path
+          can re-read) can finally be swept. Routed to blade/tower by
+          its ``beam_type`` so either may be passed here.
     omega_rpm :
         1-D array of rotor speeds in rpm. ``Ω = 0`` is fine and
         produces the parked-rotor frequencies.
@@ -720,9 +811,13 @@ def campbell_sweep(
         higher for offshore decks where 3rd-mode crossings matter.
         Ignored when no tower model is available.
     tower_input :
-        Optional explicit tower ``.bmi`` (keyword-only). Useful when
-        ``input_path`` is a blade-only deck. Overrides the deck-
-        supplied tower if ``input_path`` was an ElastoDyn ``.dat``.
+        Optional explicit tower — a tower ``.bmi`` path **or a loaded
+        :class:`~pybmodes.models.Tower`** (keyword-only). Useful when
+        ``input_path`` is a blade-only deck or a loaded
+        ``RotatingBlade``. Overrides the deck-supplied tower if
+        ``input_path`` was an ElastoDyn ``.dat``. So the
+        single-load-point form is
+        ``campbell_sweep(blade, omega, tower_input=tower)``.
     track_by_mac :
         Whether to use MAC across consecutive rotor speeds to keep
         each blade output column corresponding to the same physical
@@ -734,9 +829,10 @@ def campbell_sweep(
     -------
     :class:`CampbellResult`.
     """
-    path = pathlib.Path(input_path)
-    tower_path = pathlib.Path(tower_input) if tower_input is not None else None
-    blade, tower = _load_models(path, tower_path)
+    # ``_load_models`` accepts a path *or* a loaded RotatingBlade /
+    # Tower for either argument (issue #51) — do not coerce to Path
+    # here (that would break a model object).
+    blade, tower = _load_models(input_path, tower_input)
 
     omega_rpm = np.asarray(omega_rpm, dtype=float).ravel()
     if omega_rpm.size == 0:

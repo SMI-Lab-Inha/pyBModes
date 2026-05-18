@@ -174,9 +174,22 @@ def _read_blade_elastic(
     the 21-element flatten), so the coupling is honoured, not dropped.
     """
     from pybmodes.io._precomp.decouple import (
+        _assign_flap_edge,
+        _principal_2x2,
         decouple_inertia,
         decouple_stiffness,
     )
+
+    def _principal_pair(a: float, b: float, c: float) -> tuple[float, float]:
+        """(flap, edge) principal moments of the symmetric 2×2
+        ``[[a, c], [c, b]]``, assigned to the *named* axes (axis-1 =
+        flap) by principal-axis alignment — the same rule the full-6×6
+        path uses — **not** magnitude-sorted. A schema-labelled
+        ``i_flap > i_edge`` (or ``i_cp = 0``, already diagonal) is
+        therefore preserved, never silently swapped (issue #50
+        follow-up — Frazer & Nash static review)."""
+        la, lb, _ang, V = _principal_2x2(np.array([[a, c], [c, b]]))
+        return _assign_flap_edge(la, lb, V)
 
     def _find(key: str):
         for h in holders:
@@ -252,11 +265,12 @@ def _read_blade_elastic(
             cm_x = (np.asarray(im["cm_x"], float)
                     if "cm_x" in im else np.zeros_like(mass))
             # Principal mass moments from the 2×2 [[i_flap,i_cp],
-            # [i_cp,i_edge]] (about the c.g.; i_cp ≠ 0 ⇒ not principal).
-            half = 0.5 * (i_fl + i_ed)
-            rad = np.sqrt(np.maximum(
-                (0.5 * (i_fl - i_ed)) ** 2 + i_cp ** 2, 0.0))
-            i_flap_p, i_edge_p = half - rad, half + rad
+            # [i_cp,i_edge]] (about the c.g.; i_cp ≠ 0 ⇒ not
+            # principal), assigned to flap/edge by axis alignment so
+            # the schema labels survive (no magnitude sort).
+            fe = np.array([_principal_pair(fl, ed, cp)
+                           for fl, ed, cp in zip(i_fl, i_ed, i_cp)])
+            i_flap_p, i_edge_p = fe[:, 0], fe[:, 1]
             # Tension centre evaluated on the inertia grid.
             tc_on_ig = np.interp(ig, kg, dec["x_tc"])
             return {

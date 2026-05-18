@@ -774,3 +774,63 @@ def test_plot_campbell_skips_nonfinite_platform_freq() -> None:
     assert any(t.startswith("surge (") for t in leg)
     assert not any(t.startswith(("bad", "zero")) for t in leg)
     plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# issue #51 — campbell_sweep accepts already-loaded models
+# ---------------------------------------------------------------------------
+
+_SAMPLES = _resolve_examples_root() / "sample_inputs"
+_BLADE_BMI = _SAMPLES / "03_rotating_uniform_blade" / "rotating_blade.bmi"
+_TOWER_BMI = _SAMPLES / "02_tower_topmass" / "tower_topmass.bmi"
+
+
+def test_campbell_accepts_loaded_models_equivalent_to_paths() -> None:
+    """Passing constructed RotatingBlade / Tower objects is equivalent
+    to passing their paths — a single load point, no disk re-read
+    (issue #51)."""
+    from pybmodes.models import RotatingBlade, Tower
+
+    rpm = np.array([0.0, 4.0, 8.0])
+    by_path = campbell_sweep(_BLADE_BMI, rpm, n_blade_modes=3,
+                             n_tower_modes=2, tower_input=_TOWER_BMI)
+
+    blade = RotatingBlade(_BLADE_BMI)
+    tower = Tower(_TOWER_BMI)
+    by_model = campbell_sweep(blade, rpm, n_blade_modes=3,
+                              n_tower_modes=2, tower_input=tower)
+
+    assert by_model.labels == by_path.labels
+    assert (by_model.n_blade_modes, by_model.n_tower_modes) == (
+        by_path.n_blade_modes, by_path.n_tower_modes)
+    np.testing.assert_allclose(by_model.frequencies,
+                               by_path.frequencies, rtol=1e-10)
+    # The sweep must not leave the caller's loaded model mutated.
+    assert float(blade._bmi.rot_rpm) == pytest.approx(
+        float(RotatingBlade(_BLADE_BMI)._bmi.rot_rpm))
+
+
+def test_campbell_loaded_blade_or_tower_routes_by_beam_type() -> None:
+    """Either a loaded blade or a loaded tower may be the primary
+    argument; routing is by beam_type."""
+    from pybmodes.models import RotatingBlade, Tower
+
+    rpm = np.array([0.0, 6.0])
+    b = campbell_sweep(RotatingBlade(_BLADE_BMI), rpm, n_blade_modes=2,
+                       n_tower_modes=2)
+    assert b.n_blade_modes == 2 and b.n_tower_modes == 0
+
+    t = campbell_sweep(Tower(_TOWER_BMI), rpm, n_blade_modes=2,
+                       n_tower_modes=3)
+    assert t.n_blade_modes == 0 and t.n_tower_modes == 3
+    # Tower modes are rotor-speed independent.
+    np.testing.assert_allclose(t.frequencies[0], t.frequencies[-1])
+
+
+def test_campbell_loaded_blade_as_tower_input_rejected() -> None:
+    """A loaded blade passed as tower_input is rejected (beam_type)."""
+    from pybmodes.models import RotatingBlade
+
+    with pytest.raises(ValueError, match="tower_input must be a Tower"):
+        campbell_sweep(_TOWER_BMI, np.array([0.0, 5.0]),
+                       tower_input=RotatingBlade(_BLADE_BMI))
