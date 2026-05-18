@@ -165,7 +165,7 @@ def plot_environmental_spectra(
     tower_fa_hz: float | None = None,
     tower_ss_hz: float | None = None,
     rpm_design: tuple[float, float] | None = None,
-    rpm_constraint: tuple[float, float] | None = None,
+    rpm_constraint: "tuple[float, float] | bool | None" = None,
     harmonics: Sequence[int] = (1, 3),
     wind: dict | None = None,
     wave: dict | None = None,
@@ -188,7 +188,11 @@ def plot_environmental_spectra(
     rpm_constraint :
         ``(rpm_min, rpm_max)`` of the allowable placement window — the
         lighter solid *constraint* band drawn behind the design band.
-        Defaults to the design range widened by +/-15 % when omitted.
+        Defaults to the design range widened by +/-15 % when omitted
+        (``None``). Pass ``False`` to suppress the constraint band (and
+        its legend entries) entirely and draw only the operating
+        *design* band — for callers who have a fixed operating range
+        but no separate placement envelope.
     harmonics :
         Per-rev orders to draw (default ``(1, 3)`` -> 1P and 3P).
     wind :
@@ -232,7 +236,10 @@ def plot_environmental_spectra(
             )
     for nm, band in (("rpm_design", rpm_design),
                      ("rpm_constraint", rpm_constraint)):
-        if band is not None:
+        # ``rpm_constraint`` also accepts a bool: False = suppress the
+        # band, True is treated like the None auto-default. Bools carry
+        # no (rpm_min, rpm_max) to validate, so skip them here.
+        if band is not None and not isinstance(band, bool):
             if len(band) != 2:
                 raise ValueError(f"{nm} must be a (rpm_min, rpm_max) "
                                  f"pair; got {band!r}")
@@ -255,14 +262,27 @@ def plot_environmental_spectra(
     light = (0.78, 0.78, 0.78)
     legend: list[tuple[object, str]] = []
     if rpm_design is not None:
-        if rpm_constraint is None:
+        # rpm_constraint: False suppresses the band entirely; None/True
+        # auto-widen the design range by +/-15 %; a tuple is used
+        # as-is. Resolve to a concrete (lo, hi) tuple or None so the
+        # draw loop has no bool to unpack.
+        constraint_band: tuple[float, float] | None
+        if rpm_constraint is False:
+            constraint_band = None
+        elif rpm_constraint is None or rpm_constraint is True:
             lo, hi = sorted(rpm_design)
-            rpm_constraint = (lo * 0.85, hi * 1.15)
+            constraint_band = (lo * 0.85, hi * 1.15)
+        else:
+            constraint_band = (float(rpm_constraint[0]),
+                               float(rpm_constraint[1]))
         for idx, order in enumerate(harmonics):
             face = dark if idx == 0 else light
-            c_lo, c_hi = _rev_band(*rpm_constraint, order)
-            d_lo, d_hi = _rev_band(*rpm_design, order)
-            ax.axvspan(c_lo, c_hi, color=face, alpha=0.45, lw=0, zorder=1)
+            d_lo, d_hi = _rev_band(rpm_design[0], rpm_design[1], order)
+            if constraint_band is not None:
+                c_lo, c_hi = _rev_band(constraint_band[0],
+                                       constraint_band[1], order)
+                ax.axvspan(c_lo, c_hi, color=face, alpha=0.45, lw=0,
+                           zorder=1)
             ax.axvspan(
                 d_lo, d_hi, facecolor=face, edgecolor=(0.2, 0.2, 0.2),
                 hatch="//", alpha=0.85, lw=0.0, zorder=2,
@@ -272,10 +292,11 @@ def plot_environmental_spectra(
                                hatch="//"),
                 f"{order}P Design",
             ))
-            legend.append((
-                mpatches.Patch(facecolor=face, alpha=0.45),
-                f"{order}P Constraint",
-            ))
+            if constraint_band is not None:
+                legend.append((
+                    mpatches.Patch(facecolor=face, alpha=0.45),
+                    f"{order}P Constraint",
+                ))
 
     # Tower natural-frequency reference lines.
     if tower_ss_hz is not None:

@@ -72,7 +72,11 @@ minor releases.
     #   RotatingBlade.from_bmi(bmi_path)
     #   RotatingBlade.from_elastodyn(main_dat)
     #   RotatingBlade.from_windio(yaml_path, *, component, n_span,
-    #                             rot_rpm)   # composite layup -> beam
+    #                             rot_rpm, elastic)
+    #     elastic="auto" (default) uses the WindIO *published*
+    #     distributed elastic properties when present, else the
+    #     PreComp-class layup reduction; "precomp" forces the
+    #     reduction; "file" requires the published properties.
 
     from pybmodes.io.geometry import tubular_section_props
     # WindIO .yaml input needs the optional [windio] extra (PyYAML);
@@ -143,6 +147,6 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("pybmodes")
 except PackageNotFoundError:
-    __version__ = "1.4.8-dev"
+    __version__ = "1.5.0-dev"
 
 __all__ = ["__version__"]

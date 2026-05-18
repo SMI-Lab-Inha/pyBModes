@@ -171,15 +171,22 @@ class RotatingBlade:
         n_span: int = 30,
         rot_rpm: float = 0.0,
         n_perim: int = 300,
+        elastic: str = "auto",
     ) -> "RotatingBlade":
         """Build a blade model from a WindIO ontology ``.yaml`` (issue #35).
 
-        The composite layup is reduced to distributed beam properties
-        by the PreComp-class thin-wall cross-section reduction
-        (:mod:`pybmodes.io.windio_blade`); the blade is clamped at the
-        root (``hub_conn = 1``). ``rot_rpm`` sets the centrifugal
-        stiffening (default 0 = parked). Needs the optional
-        ``[windio]`` extra (PyYAML).
+        ``elastic`` (issue #48) selects the beam-property source:
+        ``"auto"`` (default) uses the WindIO *published* distributed
+        properties (``elastic_properties`` /
+        ``elastic_properties_mb``) when present so the model matches
+        the reference exactly, and reduces the composite layup via the
+        PreComp-class thin-wall cross-section reduction
+        (:mod:`pybmodes.io.windio_blade`) only when they are absent;
+        ``"precomp"`` always reduces the layup (the pre-1.5
+        behaviour); ``"file"`` requires the published properties. The
+        blade is clamped at the root (``hub_conn = 1``); ``rot_rpm``
+        sets the centrifugal stiffening (default 0 = parked). Needs
+        the optional ``[windio]`` extra (PyYAML).
 
         Unlike :meth:`from_elastodyn`, this keeps the *physical*
         section properties (twist, offsets, torsion / axial) — the
@@ -198,7 +205,8 @@ class RotatingBlade:
 
         blade = read_windio_blade(yaml_path, component=component,
                                   n_span=n_span)
-        sp = windio_blade_section_props(blade, n_perim=n_perim)
+        sp = windio_blade_section_props(blade, n_perim=n_perim,
+                                        elastic=elastic)
 
         el_loc = _tower_element_boundaries(blade.span_grid)
         bmi = _build_bmi_skeleton(

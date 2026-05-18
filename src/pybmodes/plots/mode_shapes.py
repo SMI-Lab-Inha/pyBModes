@@ -58,15 +58,38 @@ def _apply_style(ax, xlabel: str, ylabel: str, title: str | None = None) -> None
     ax.spines[["top", "right"]].set_visible(False)
 
 
-def _mode_colors(n: int):
-    """Pick *n* line colours from the active rcParams prop_cycle.
+def _mode_colors(n: int, override: "list | str | None" = None):
+    """Pick *n* visually distinct line colours.
 
-    Honors :func:`pybmodes.plots.apply_style` (which sets the cycle to
-    the Okabe-Ito colour-blind-safe palette). Falls back to matplotlib's
-    ``tab10`` colormap if the active cycle is empty.
+    ``override`` lets the caller take full control: a colormap name
+    (e.g. ``"turbo"``, ``"viridis"``) sampled into *n* colours, or an
+    explicit list of matplotlib colours (used verbatim, cycled if
+    shorter than *n*).
+
+    Otherwise the active rcParams ``prop_cycle`` is used (honouring
+    :func:`pybmodes.plots.apply_style`'s engineering-paper palette) —
+    but **only while it has at least *n* distinct entries**. The
+    styled palette is 7 colours; with ``apply_style()`` active and 8+
+    modes, wrapping the cycle made mode 8 reuse mode 1's colour (the
+    issue #47 "first and last mode are the same colour" collision).
+    Once *n* exceeds the palette, a perceptually-ordered continuous
+    colormap is sampled instead so every mode gets a unique hue. Falls
+    back to ``tab10`` if no cycle is configured.
     """
     import matplotlib as mpl
     import matplotlib.pyplot as plt
+
+    if override is not None:
+        if isinstance(override, str):
+            cmap = plt.get_cmap(override)
+            return [cmap(i / max(n - 1, 1)) for i in range(n)]
+        ov = list(override)
+        if not ov:
+            raise ValueError(
+                "colors override must be a non-empty list of colours "
+                "or a matplotlib colormap name"
+            )
+        return [ov[i % len(ov)] for i in range(n)]
 
     cycle = mpl.rcParams.get("axes.prop_cycle")
     palette: list = []
@@ -74,8 +97,14 @@ def _mode_colors(n: int):
         palette = [entry.get("color") for entry in cycle if entry.get("color")]
     if not palette:
         cmap = plt.get_cmap("tab10")
-        palette = [cmap(i % 10) for i in range(max(n, 10))]
-    return [palette[i % len(palette)] for i in range(n)]
+        palette = [cmap(i) for i in range(10)]
+    if n <= len(palette):
+        return [palette[i] for i in range(n)]
+    # More modes than distinct palette colours — wrapping the cycle
+    # would repeat a hue. Sample a perceptually-ordered continuous map
+    # so all n modes stay distinguishable (issue #47).
+    cmap = plt.get_cmap("turbo")
+    return [cmap(i / max(n - 1, 1)) for i in range(n)]
 
 
 def _smooth_curve(
@@ -114,6 +143,9 @@ def plot_mode_shapes(
     component: str = "both",
     title: str | None = None,
     figsize: tuple[float, float] | None = None,
+    *,
+    normalize: str = "mode",
+    colors: "list | str | None" = None,
 ) -> Figure:
     """Plot normalised mode shape displacements vs normalised span.
 
@@ -132,6 +164,29 @@ def plot_mode_shapes(
     figsize :
         Matplotlib figure size ``(width_in, height_in)``.  Defaults to
         ``(9, 4)`` for one panel and ``(14, 4)`` for two panels.
+    normalize :
+        How each mode's two curves are scaled (issue #47):
+
+        - ``"mode"`` (default) — both panels share **one** scale per
+          mode, the peak ``|displacement|`` across flap *and* lag. The
+          dominant direction then reaches ±1 and the minor direction
+          stays proportionally small, so a fore-aft mode reads as a
+          full-amplitude curve in the flap panel and a flat near-zero
+          line in the lag panel. This is what makes FA vs SS (and a
+          rigid platform DOF vs a real bending mode) visually
+          distinguishable.
+        - ``"component"`` — the legacy behaviour: each panel is
+          normalised independently to its own peak, so even a 1 %
+          cross-coupling component is blown up to full height and a
+          predominantly-flap mode looks identical in both panels. Kept
+          for reproducing pre-1.5 figures.
+    colors :
+        Optional colour control passed to the internal palette picker:
+        a matplotlib colormap name (sampled into ``n_modes`` distinct
+        colours) or an explicit list of colours. ``None`` (default)
+        uses the styled ``prop_cycle``, automatically switching to a
+        continuous colormap when there are more modes than distinct
+        palette colours so no two modes collide on the same hue.
 
     Returns
     -------
@@ -143,10 +198,26 @@ def plot_mode_shapes(
     component = component.lower()
     if component not in ("flap", "lag", "both"):
         raise ValueError(f"component must be 'flap', 'lag', or 'both'; got {component!r}")
+    if normalize not in ("mode", "component"):
+        raise ValueError(
+            f"normalize must be 'mode' or 'component'; got {normalize!r}"
+        )
 
     shapes = result.shapes[: min(n_modes, len(result.shapes))]
     n = len(shapes)
-    colors = _mode_colors(n)
+    colors = _mode_colors(n, override=colors)
+
+    # One shared scale per mode for the "mode" convention: the peak
+    # |displacement| over both transverse components. Falls back to 1
+    # for a null shape so the division is safe.
+    def _shared_scale(shape) -> float:
+        peak = max(
+            float(np.max(np.abs(shape.flap_disp))) if shape.flap_disp.size else 0.0,
+            float(np.max(np.abs(shape.lag_disp))) if shape.lag_disp.size else 0.0,
+        )
+        return peak if peak > 0.0 else 1.0
+
+    mode_scales = [_shared_scale(s) for s in shapes]
 
     two_panels = component == "both"
     if figsize is None:
@@ -164,6 +235,12 @@ def plot_mode_shapes(
         peak = np.max(np.abs(arr))
         return arr / peak if peak > 0 else arr
 
+    def _disp(shape, comp: str, i: int) -> np.ndarray:
+        raw = shape.flap_disp if comp == "flap" else shape.lag_disp
+        if normalize == "mode":
+            return raw / mode_scales[i]
+        return _normalise(raw)
+
     panel_specs = []
     if component in ("flap", "both"):
         panel_specs.append(("flap", "Flap (fore-aft) displacement"))
@@ -178,9 +255,7 @@ def plot_mode_shapes(
 
     for ax, (comp, panel_title) in zip(axes, panel_specs):
         for i, shape in enumerate(shapes):
-            disp = _normalise(
-                shape.flap_disp if comp == "flap" else shape.lag_disp
-            )
+            disp = _disp(shape, comp, i)
             label = f"Mode {shape.mode_number}  ({shape.freq_hz:.4f} Hz)"
             if mode_labels is not None and i < len(mode_labels):
                 dof = mode_labels[i]
@@ -372,6 +447,7 @@ def bir_mode_shape_plot(
     coupling_overlay: list[ModeSpec] | None = None,
     figsize: tuple[float, float] = (5.5, 6.5),
     xlim: tuple[float, float] | None = None,
+    colors: "list | str | None" = None,
 ) -> Figure:
     """Plot mode shapes in the Bir 2010 figure convention.
 
@@ -402,6 +478,12 @@ def bir_mode_shape_plot(
         Matplotlib figure size in inches.
     xlim :
         Optional ``(xmin, xmax)``; auto-fits with a small pad if omitted.
+    colors :
+        Optional colour control (issue #47): a matplotlib colormap
+        name or an explicit list of colours. ``None`` (default) uses
+        the styled palette, switching to a continuous colormap when
+        there are more curves than distinct palette colours so no two
+        modes share a hue.
 
     Returns
     -------
@@ -413,7 +495,7 @@ def bir_mode_shape_plot(
     fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
 
     n_solid = len(mode_specs)
-    colors = _mode_colors(max(n_solid, 1))
+    colors = _mode_colors(max(n_solid, 1), override=colors)
 
     def _component(shape, comp: str) -> np.ndarray:
         if comp == "flap":
@@ -502,6 +584,7 @@ def bir_mode_shape_subplot(
     x_label: str = "Modal displacement",
     annotations: dict[str, float] | None = None,
     figsize: tuple[float, float] | None = None,
+    colors: "list | str | None" = None,
 ) -> Figure:
     """Multi-panel Bir-convention plot (matches Bir Fig 8 layout).
 
@@ -511,6 +594,12 @@ def bir_mode_shape_subplot(
         List of ``(panel_title, mode_specs)`` tuples; one subplot per entry.
     annotations :
         Drawn on every panel (e.g. MSL + Mud Line).
+    colors :
+        Optional colour control (issue #47): a matplotlib colormap
+        name or an explicit list of colours, applied per panel.
+        ``None`` (default) uses the styled palette, switching to a
+        continuous colormap when a panel has more curves than distinct
+        palette colours.
 
     Returns
     -------
@@ -531,7 +620,7 @@ def bir_mode_shape_subplot(
         axes = [axes]
 
     for ax, (panel_title, mode_specs) in zip(axes, panels):
-        colors = _mode_colors(max(len(mode_specs), 1))
+        panel_colors = _mode_colors(max(len(mode_specs), 1), override=colors)
         all_x: list[np.ndarray] = []
         for i, (mode_idx, comp, label) in enumerate(mode_specs):
             shape = next(
@@ -547,7 +636,8 @@ def bir_mode_shape_subplot(
             else:
                 raise ValueError(f"unsupported component {comp!r}")
             y_smooth, x_smooth = _smooth_curve(y_nodes, x_nodes)
-            ax.plot(x_smooth, y_smooth, color=colors[i % len(colors)],
+            ax.plot(x_smooth, y_smooth,
+                    color=panel_colors[i % len(panel_colors)],
                     linewidth=1.8,
                     label=f"{label}  ({shape.freq_hz:.4f} Hz)")
             all_x.append(x_nodes)

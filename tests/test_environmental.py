@@ -113,6 +113,38 @@ def test_plot_environmental_spectra_structure() -> None:
     plt.close(fig)
 
 
+def test_plot_environmental_spectra_constraint_false_suppresses_band() -> None:
+    """rpm_constraint=False draws only the operating *design* band —
+    no wider constraint band and no Constraint legend entries (issue
+    #47 plot-iteration). None keeps the auto +/-15 % band."""
+    pytest.importorskip("matplotlib")
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from pybmodes.plots import plot_environmental_spectra
+
+    fig = plot_environmental_spectra(
+        rpm_design=(6.9, 12.1), rpm_constraint=False, harmonics=(1, 3),
+    )
+    ax = fig.axes[0]
+    txt = {t.get_text() for t in ax.get_legend().get_texts()}
+    assert {"1P Design", "3P Design"} <= txt
+    assert not any("Constraint" in t for t in txt)
+    # 1P + 3P design spans only (no constraint spans).
+    assert len(list(ax.patches)) == 2
+    plt.close(fig)
+
+    # Default (None) still auto-draws the constraint band + legend.
+    fig2 = plot_environmental_spectra(
+        rpm_design=(6.9, 12.1), harmonics=(1, 3),
+    )
+    txt2 = {t.get_text() for t in fig2.axes[0].get_legend().get_texts()}
+    assert any("Constraint" in t for t in txt2)
+    assert len(list(fig2.axes[0].patches)) == 4
+    plt.close(fig2)
+
+
 def test_plot_environmental_spectra_optional_layers_and_guards() -> None:
     pytest.importorskip("matplotlib")
     import matplotlib

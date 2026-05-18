@@ -13,6 +13,7 @@ from pybmodes.campbell import (
     _hungarian_assignment,
     _label_blade_modes,
     _label_tower_modes,
+    _label_tower_modes_with_overrides,
     _ordinal,
     _participation,
 )
@@ -79,6 +80,58 @@ def test_label_tower_modes_uses_fa_ss_torsion_names() -> None:
         "2nd tower SS",
         "1st tower torsion",
     ]
+
+
+def test_tower_overrides_none_matches_plain_labeller() -> None:
+    """mode_labels=None (every cantilever / monopile tower) reproduces
+    _label_tower_modes exactly — the pre-#47 contract is unchanged."""
+    participation = np.array([
+        [0.6, 0.3, 0.1],
+        [0.2, 0.7, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.2, 0.1, 0.7],
+    ])
+    assert _label_tower_modes_with_overrides(
+        participation, None
+    ) == _label_tower_modes(participation)
+
+
+def test_tower_overrides_use_classified_platform_dofs() -> None:
+    """For a floating tower the FEM-classified platform DOFs are used
+    verbatim and the flexible bending modes get a *bending-only*
+    ordinal (issue #47): the first real bending mode is '1st tower FA'
+    even though six rigid modes precede it."""
+    # 6 rigid (named by classify_platform_modes) + 2 flexible bending.
+    participation = np.array([
+        [0.5, 0.3, 0.2],   # surge   (override wins; participation moot)
+        [0.3, 0.5, 0.2],   # sway
+        [0.4, 0.4, 0.2],   # heave
+        [0.4, 0.3, 0.3],   # roll
+        [0.3, 0.4, 0.3],   # pitch
+        [0.2, 0.3, 0.5],   # yaw
+        [0.8, 0.1, 0.1],   # 1st tower FA  (flexible)
+        [0.1, 0.8, 0.1],   # 1st tower SS  (flexible)
+    ])
+    mode_labels = ["surge", "sway", "heave", "roll", "pitch", "yaw",
+                   None, None]
+    assert _label_tower_modes_with_overrides(participation, mode_labels) == [
+        "surge", "sway", "heave", "roll", "pitch", "yaw",
+        "1st tower FA", "1st tower SS",
+    ]
+
+
+def test_tower_overrides_partial_none_falls_back() -> None:
+    """A None entry (classifier stayed conservative on a rotated pair)
+    falls back to the participation label, counted over flexible modes
+    only."""
+    participation = np.array([
+        [0.5, 0.3, 0.2],   # surge
+        [0.9, 0.05, 0.05],  # None -> participation -> 1st tower FA
+        [0.05, 0.9, 0.05],  # None -> participation -> 1st tower SS
+    ])
+    assert _label_tower_modes_with_overrides(
+        participation, ["surge", None, None]
+    ) == ["surge", "1st tower FA", "1st tower SS"]
 
 
 def test_participation_returns_axis_energy_fractions() -> None:

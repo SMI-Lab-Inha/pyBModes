@@ -10,6 +10,146 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 (nothing yet)
 
+## [1.5.0] — 2026-05-18
+
+### Added
+
+- **WindIO blades now prefer the file's *published* distributed beam
+  properties over the PreComp reduction (issue #48, requested by
+  Kieran Mercer, Frazer & Nash).** When a WindIO blade carries an
+  ``elastic_properties`` block (modern, named ``K11``..``K66`` /
+  ``mass`` / ``i_flap`` / ``i_edge`` — e.g. IEA-15) **or** an
+  ``elastic_properties_mb.six_x_six`` block (the 21-element
+  upper-triangular 6×6 flatten — e.g. IEA-22 / IEA-10),
+  ``RotatingBlade.from_windio`` / ``windio_blade_section_props`` now
+  use those distributed properties directly so pyBmodes matches the
+  reference model exactly, instead of re-deriving them from the
+  layup. New keyword ``elastic`` (default ``"auto"``): ``"auto"`` =
+  published when present else PreComp; ``"precomp"`` = always reduce
+  the layup (the pre-1.5 behaviour); ``"file"`` = require the
+  published block. The decoupled-beam mapping is
+  ``K33→EA, K44→EI_flap, K55→EI_edge, K66→GJ``;
+  ``M11→mass/length, M44/M55→flap/edge inertia`` (off-diagonal
+  coupling stays intentionally unmodelled — the documented
+  diagonal-beam limitation; the point is to reproduce the *reference
+  diagonal* exactly, not re-derive it).
+
+- **Campbell / mode-shape plotting fixes (issue #47, reported by
+  Kieran Mercer, Frazer & Nash).** Three defects in the floating-case
+  plots are fixed and two new opt-in knobs added:
+
+  - ``plot_campbell(..., log_freq=True)`` no longer drops the per-rev
+    excitation rays (1P / 2P / …). They were sampled on a two-point
+    ``[0, rpm_max]`` grid, which is a straight line only on a linear
+    axis — on a log-frequency axis the ``rpm = 0`` endpoint is
+    ``log(0)`` and the segment collapsed. The rays are now sampled on
+    a dense grid (and started just above zero on a log axis) so they
+    render as the correct curve at either scale.
+  - ``campbell_sweep`` now carries the FEM's own BModes-cross-
+    validated platform-mode classification
+    (``ModalResult.mode_labels``) through ``CampbellResult.labels``
+    for a coupled floating tower: the six lowest tower columns come
+    out named ``surge`` / ``sway`` / ``heave`` / ``roll`` / ``pitch``
+    / ``yaw`` instead of the meaningless participation-derived
+    ``"1st tower FA"`` …, and the flexible bending modes keep a
+    *bending-only* ordinal (the first real bending mode is
+    ``"1st tower FA"`` even with six rigid modes ahead of it).
+    ``plot_campbell`` auto-draws those columns in the navy platform
+    family with a period label — you no longer have to pass
+    ``platform_modes`` by hand for the coupled case (it is still
+    honoured, and merged/deduplicated, for the screening path).
+  - ``plot_mode_shapes`` mode-line colours no longer collide: the
+    styled ``apply_style`` palette is 7 colours, so 8+ modes wrapped
+    the cycle and mode 8 reused mode 1's hue. Once the mode count
+    exceeds the palette a perceptually-ordered continuous colormap is
+    sampled so every mode is a distinct hue. New ``colors=`` kwarg
+    (a colormap name or explicit list) on ``plot_mode_shapes`` /
+    ``bir_mode_shape_plot`` / ``bir_mode_shape_subplot`` for full
+    control.
+  - ``plot_campbell`` draws the floating-platform 6-DOF rigid-body
+    modes (surge / sway / heave / roll / pitch / yaw) as **legend
+    entries**, each with its own colour and line style and a
+    frequency + period label, instead of crowded right-margin
+    annotations — so on a FOWT the six modes (≈ 0.008–0.12 Hz, all
+    squeezed into the bottom sliver of a multi-Hz axis) are
+    individually identifiable. The per-rev rays (1P / 2P / 3P / 6P /
+    9P) remain in the legend. The remaining tower-bending right-margin
+    labels are decluttered (spread apart with a thin leader to their
+    unmoved line) so they can't stack either.
+  - ``plot_environmental_spectra`` accepts ``rpm_constraint=False`` to
+    suppress the wider placement-envelope band (and its legend
+    entries) and draw only the operating *design* band — for callers
+    with a fixed operating range but no separate constraint window.
+    ``None`` still auto-draws the ±15 % band (unchanged default).
+
+### Fixed
+
+- **WindIO blade static-review hardening (Frazer & Nash).**
+
+  - **Blade twist units are now auto-detected.** ``np.degrees`` was
+    applied to ``outer_shape*.twist`` unconditionally. That is correct
+    for radian-convention windIO files (IEA-3.4: root ≈ 0.349 rad) but
+    turned a degree-convention file's 15.6° root twist (IEA-15-240-RWT
+    ships degrees) into ≈ 894°. ``_twist_to_degrees`` now decides by
+    magnitude (a physical blade twist never exceeds ~2 rad), so both
+    conventions yield the correct structural twist. Previously
+    uncaught because the unit tests all used zero twist.
+  - **A present-but-unparseable published elastic block no longer
+    silently degrades.** ``_read_blade_elastic`` now distinguishes
+    "absent" (silent PreComp fallback — correct) from "present but
+    malformed / schema-drifted" (recorded on
+    ``WindIOBlade.elastic_parse_error``). ``elastic="auto"`` emits a
+    ``UserWarning`` naming the parse problem before falling back;
+    ``elastic="file"`` raises — so a typo can't hide behind a
+    plausible lower-fidelity result.
+  - **Single-airfoil blades parse.** A constant-profile blade with one
+    airfoil definition hit ``len(af_grid) - 2 = -1`` indexing; an
+    empty schedule failed obscurely. Both are handled (reuse the one
+    profile / clear ``ValueError``).
+- **``outfitting_factor`` docs now match the implementation.**
+  ``Tower.from_geometry`` and ``tubular_section_props`` documented
+  scaling "mass density and rotary inertia"; the implementation
+  deliberately scales only the distributed mass density (rotary
+  inertia is a structural section property and stays unscaled). The
+  docstrings now say so — behaviour unchanged.
+
+### Changed
+
+- **``plot_mode_shapes`` now shares one amplitude scale per mode
+  (issue #47).** Previously each panel was normalised to its own
+  peak, so a 95 %-flap / 5 %-lag mode looked full-height in *both*
+  the flap and lag panels and you could not tell FA from SS (or a
+  rigid platform DOF from a real bending mode). The new default
+  ``normalize="mode"`` scales both panels by the single peak
+  ``|displacement|`` across flap *and* lag, so the dominant direction
+  reaches ±1 and the minor one stays proportionally small. Pass
+  ``normalize="component"`` to reproduce pre-1.5 figures exactly.
+- **Default WindIO-blade numerics shift for turbines that ship
+  published elastic properties.** With the new ``elastic="auto"``
+  default, IEA-15 (and any blade with an ``elastic_properties`` /
+  ``elastic_properties_mb`` block) now uses the published stiffness /
+  inertia rather than the PreComp diagonal reduction — *by design*,
+  to minimise deltas to the reference model. Pass
+  ``elastic="precomp"`` to recover the exact pre-1.5 behaviour. The
+  PreComp reduction itself is unchanged, and its BeamDyn-class
+  validation (``tests/test_windio_blade.py::
+  test_windio_blade_vs_beamdyn_precomp_class``) is pinned to
+  ``elastic="precomp"`` so it still validates the layup path.
+
+### Notes
+
+- Honest ecosystem-drift observation: IEA-15's published
+  ``elastic_properties`` reproduces its companion BeamDyn 6×6
+  diagonal tightly (mass / EA median < 3 %, EI / GJ < 5 % — verified
+  in ``test_windio_blade_published_matches_beamdyn_far_tighter``),
+  but **IEA-10's published ``elastic_properties_mb`` diverges ~50 %
+  from its own companion BeamDyn deck** — the same
+  reference-blocks-not-mutually-consistent pattern documented in
+  ``cases/ECOSYSTEM_FINDING.md``. ``elastic="auto"`` treats the
+  WindIO ontology as the canonical reference (issue #48's intent);
+  use ``elastic="precomp"`` if you specifically want the
+  layup-derived properties.
+
 ## [1.4.8] — 2026-05-17
 
 ### Changed
