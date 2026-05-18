@@ -58,6 +58,13 @@ class WindIOBlade:
     profiles: list[Profile]        # blended airfoil per station
     resolved: ResolvedBladeStructure
     materials: dict
+    #: Pre-computed distributed beam properties parsed straight from
+    #: the WindIO ``elastic_properties`` / ``elastic_properties_mb``
+    #: block (the published reference), interpolated onto
+    #: ``span_grid``; ``None`` when the file carries only the layup.
+    #: Keys: ``mass_den``/``flp_iner``/``edge_iner``/``flp_stff``/
+    #: ``edge_stff``/``tor_stff``/``axial_stff``/``cg_offst``.
+    elastic: "dict | None" = None
 
 
 def _blade_shape_and_structure(comp: dict, component: str):
@@ -90,6 +97,100 @@ def _curve(spec: dict, at: np.ndarray) -> np.ndarray:
     g = np.asarray(spec["grid"], dtype=float)
     v = np.asarray(spec["values"], dtype=float)
     return np.interp(at, g, v)
+
+
+# Diagonal positions in a row-major upper-triangular flatten of a
+# symmetric 6×6 (the ``elastic_properties_mb.six_x_six`` ``values``
+# form): K11,K22,K33,K44,K55,K66.
+_SYM6_DIAG = (0, 6, 11, 15, 18, 20)
+
+
+def _read_blade_elastic(
+    holders: "tuple[dict, ...]", span: np.ndarray
+) -> "dict | None":
+    """Parse the WindIO blade *published* distributed beam properties
+    onto ``span``, or ``None`` if the file carries only the layup.
+
+    ``holders`` are the candidate dicts the block may live under —
+    the modern ``elastic_properties`` is nested in the ``structure``
+    block (IEA-15), while ``elastic_properties_mb`` is a direct
+    ``components.blade`` child (IEA-22); search both.
+
+    Supports both dialects:
+
+    * modern ``components.blade.<...>.elastic_properties`` —
+      ``inertia_matrix`` (named ``mass`` / ``i_flap`` / ``i_edge`` /
+      ``cm_x`` arrays) + ``stiffness_matrix`` (named ``K11``..``K66``);
+    * ``components.blade.elastic_properties_mb.six_x_six`` —
+      ``stiff_matrix`` / ``inertia_matrix`` as a ``{grid, values}``
+      with each ``values`` row the 21-element upper-triangular
+      flatten of the symmetric 6×6.
+
+    The 6×6 sectional convention (BeamDyn / WISDEM / WindIO) maps the
+    diagonal to pyBmodes' decoupled Euler-Bernoulli beam:
+    ``K33→EA``, ``K44→EI_flap``, ``K55→EI_edge``, ``K66→GJ``;
+    ``M11→mass/length``, ``M44→flap inertia``, ``M55→edge inertia``.
+    The off-diagonal coupling terms are intentionally not modelled
+    (the documented diagonal-beam limitation) — the point here is to
+    reproduce the *reference* diagonal exactly rather than re-derive
+    it. Any structural surprise returns ``None`` (graceful fall back
+    to the PreComp reduction — never a hard failure)."""
+    def _find(key: str):
+        for h in holders:
+            if isinstance(h, dict) and isinstance(h.get(key), dict):
+                return h[key]
+        return None
+
+    try:
+        ep = _find("elastic_properties")
+        if isinstance(ep, dict) and "stiffness_matrix" in ep:
+            km = ep["stiffness_matrix"]
+            im = ep.get("inertia_matrix", {})
+
+            def _k(name: str) -> np.ndarray:
+                return np.interp(span,
+                                 np.asarray(km["grid"], float),
+                                 np.asarray(km[name], float))
+
+            def _i(name: str) -> np.ndarray:
+                return np.interp(span,
+                                 np.asarray(im["grid"], float),
+                                 np.asarray(im[name], float))
+
+            out = {
+                "axial_stff": _k("K33"), "flp_stff": _k("K44"),
+                "edge_stff": _k("K55"), "tor_stff": _k("K66"),
+                "mass_den": _i("mass"),
+                "flp_iner": _i("i_flap"), "edge_iner": _i("i_edge"),
+                "cg_offst": (_i("cm_x") if "cm_x" in im
+                             else np.zeros_like(span)),
+            }
+            return out
+
+        mb = _find("elastic_properties_mb")
+        s6 = mb.get("six_x_six") if isinstance(mb, dict) else None
+        if isinstance(s6, dict) and "stiff_matrix" in s6:
+            def _diag(block: dict) -> np.ndarray:
+                g = np.asarray(block["grid"], float)
+                rows = np.asarray(block["values"], float)  # (n, 21)
+                d = rows[:, _SYM6_DIAG]                     # (n, 6)
+                return np.stack(
+                    [np.interp(span, g, d[:, j]) for j in range(6)],
+                    axis=1,
+                )                                          # (len, 6)
+
+            kd = _diag(s6["stiff_matrix"])
+            md = _diag(s6["inertia_matrix"])
+            return {
+                "axial_stff": kd[:, 2], "flp_stff": kd[:, 3],
+                "edge_stff": kd[:, 4], "tor_stff": kd[:, 5],
+                "mass_den": md[:, 0],
+                "flp_iner": md[:, 3], "edge_iner": md[:, 4],
+                "cg_offst": np.zeros_like(span),
+            }
+    except (KeyError, TypeError, ValueError, IndexError):
+        return None
+    return None
 
 
 def read_windio_blade(
@@ -173,6 +274,7 @@ def read_windio_blade(
         span_grid=span, flexible_length=flexible_length, chord=chord,
         twist_deg=twist_deg, ref_axis_xc=ref_xc, profiles=profiles,
         resolved=resolved, materials=materials,
+        elastic=_read_blade_elastic((comp, structure, shape), span),
     )
 
 
@@ -181,9 +283,64 @@ def windio_blade_section_props(
     *,
     n_perim: int = 300,
     title: str = "WindIO composite-blade section properties",
+    elastic: str = "auto",
 ) -> SectionProperties:
-    """Reduce every span station to the FEM section-property table."""
+    """Reduce every span station to the FEM section-property table.
+
+    ``elastic`` selects the property source (issue #48 — keep deltas
+    to the reference model small):
+
+    * ``"auto"`` (default) — use the WindIO *published* distributed
+      beam properties (``elastic_properties`` /
+      ``elastic_properties_mb``) when the file carries them, so
+      pyBmodes matches the reference model's stiffness/inertia
+      exactly; fall back to the PreComp thin-wall reduction of the
+      layup only when they are absent.
+    * ``"precomp"`` — always run the PreComp reduction (the pre-1.5
+      behaviour), even when published properties exist.
+    * ``"file"`` — require the published properties; raise
+      ``ValueError`` if the file has only the layup.
+    """
+    if elastic not in ("auto", "precomp", "file"):
+        raise ValueError(
+            f"elastic must be 'auto', 'precomp' or 'file'; got "
+            f"{elastic!r}"
+        )
     n = len(blade.span_grid)
+
+    use_published = (
+        elastic != "precomp" and blade.elastic is not None
+    )
+    if elastic == "file" and blade.elastic is None:
+        raise ValueError(
+            "elastic='file' but the WindIO blade carries no "
+            "elastic_properties / elastic_properties_mb block "
+            "(only a layup) — use elastic='auto' or 'precomp' to "
+            "reduce the layup via PreComp."
+        )
+    if use_published:
+        e = blade.elastic
+        assert e is not None        # narrowed by use_published
+        z = np.asarray(blade.span_grid, dtype=float)
+        zeros = np.zeros(n)
+        return SectionProperties(
+            title=title + " (WindIO published elastic properties)",
+            n_secs=n,
+            span_loc=z,
+            str_tw=np.asarray(blade.twist_deg, dtype=float),
+            tw_iner=zeros.copy(),
+            mass_den=np.asarray(e["mass_den"], float),
+            flp_iner=np.asarray(e["flp_iner"], float),
+            edge_iner=np.asarray(e["edge_iner"], float),
+            flp_stff=np.asarray(e["flp_stff"], float),
+            edge_stff=np.asarray(e["edge_stff"], float),
+            tor_stff=np.asarray(e["tor_stff"], float),
+            axial_stff=np.asarray(e["axial_stff"], float),
+            cg_offst=np.asarray(e["cg_offst"], float),
+            sc_offst=zeros.copy(),     # decoupled beam: coupling
+            tc_offst=zeros.copy(),     # terms intentionally not modelled
+        )
+
     cols = {k: np.zeros(n) for k in (
         "mass_den", "flp_iner", "edge_iner", "flp_stff", "edge_stff",
         "tor_stff", "axial_stff", "cg_offst", "sc_offst", "tc_offst",

@@ -500,6 +500,47 @@ def _label_tower_modes(participation_row: np.ndarray) -> list[str]:
     return out
 
 
+def _label_tower_modes_with_overrides(
+    participation: np.ndarray,
+    mode_labels: "list[str | None] | None",
+) -> list[str]:
+    """Tower-column labels, preferring the FEM's own classification.
+
+    For a free-free floating tower the leading modes are the platform
+    rigid-body modes (surge / sway / heave / roll / pitch / yaw), which
+    :func:`pybmodes.fem.platform_modes.classify_platform_modes`
+    already names on the :class:`~pybmodes.models.result.ModalResult`
+    (``mode_labels``) and which BModes-cross-validates. Participation
+    argmax (flap/edge/torsion energy) is meaningless for those rigid
+    modes — it produced spurious ``"1st tower FA"`` … names for the
+    platform DOFs (issue #47). So: where ``mode_labels[i]`` is a
+    classified platform DOF, use it verbatim; everywhere else fall
+    back to the participation-derived ``"Nth tower FA/SS/torsion"``
+    label, with the ordinal counted over the *flexible* tower modes
+    only so the first real bending mode is ``"1st tower FA"`` even
+    when six rigid modes precede it. ``mode_labels=None`` (every
+    cantilever / monopile tower) reproduces :func:`_label_tower_modes`
+    exactly.
+    """
+    n = participation.shape[0]
+    counts = [0, 0, 0]
+    names = ("FA", "SS", "torsion")
+    out: list[str] = []
+    for i in range(n):
+        plat = (
+            mode_labels[i]
+            if mode_labels is not None and i < len(mode_labels)
+            else None
+        )
+        if plat is not None:
+            out.append(str(plat))
+            continue
+        axis = int(np.argmax(participation[i]))
+        counts[axis] += 1
+        out.append(f"{_ordinal(counts[axis])} tower {names[axis]}")
+    return out
+
+
 def _solve_blade_sweep(
     blade: _Model,
     omega_rpm: np.ndarray,
@@ -627,7 +668,11 @@ def _solve_tower_once(
 
     freqs = np.broadcast_to(tfreqs, (n_steps, n_modes)).copy()
     parts = np.broadcast_to(tparts, (n_steps, n_modes, 3)).copy()
-    labels = _label_tower_modes(tparts)
+    # Prefer the FEM's own platform-mode classification for a floating
+    # tower (``ModalResult.mode_labels`` — populated only for
+    # ``hub_conn == 2``); fall back to participation argmax for
+    # cantilever / monopile towers and for flexible bending modes.
+    labels = _label_tower_modes_with_overrides(tparts, modal.mode_labels)
     return freqs, parts, labels
 
 
@@ -836,16 +881,28 @@ def plot_campbell(
         frequency (Hz) and period (s), since the natural period is the
         design-relevant quantity for a floater. Near-degenerate pairs
         (surge ≈ sway, roll ≈ pitch on a symmetric platform) are
-        merged into one label. The frequencies are expected to come
-        from the coupled solve (``Tower.from_windio_floating`` /
-        ``from_elastodyn_with_mooring`` → ``ModalResult.mode_labels``),
-        which is BModes-cross-validated; this function only renders
-        them. ``None`` (default) leaves the diagram byte-identical to
-        the pre-existing behaviour.
+        merged into one label.
+
+        Note (issue #47): for a *coupled floating tower* fed straight
+        into :func:`campbell_sweep` you no longer need to pass this —
+        the sweep now carries the FEM's own classified platform-DOF
+        names (``ModalResult.mode_labels``, the BModes-cross-validated
+        classifier) through ``CampbellResult.labels``, and any tower
+        column named ``surge`` … ``yaw`` is auto-drawn in this navy
+        platform family with its period label. ``platform_modes`` is
+        still honoured (and merged into the same family, deduplicated
+        by the 2 % frequency-merge) for the *screening* path, where
+        platform frequencies were estimated separately and there are
+        no platform columns in the result to relabel. ``None``
+        (default) with a non-floating result leaves the diagram
+        byte-identical to the pre-existing behaviour.
     log_freq :
         Use a log-scaled frequency axis. Useful when overlaying the
         ~0.007–0.05 Hz platform rigid-body modes and the ~0.3–5 Hz
-        tower / blade modes on one figure. Default ``False`` (linear,
+        tower / blade modes on one figure. The per-rev excitation rays
+        (1P, 2P, …) are sampled on a dense grid so they render as the
+        correct curve on the log axis instead of disappearing (the
+        issue #47 two-point-sample bug). Default ``False`` (linear,
         unchanged behaviour).
 
     Returns
@@ -870,7 +927,6 @@ def plot_campbell(
 
     rpm = result.omega_rpm
     rpm_max = float(rpm.max()) if rpm.size > 0 else 0.0
-    rpm_grid = np.array([0.0, rpm_max])
 
     # Per-rev excitation rays — drawn behind the mode lines but in red
     # so they read as the resonance-warning lines they are. Sample the
@@ -878,13 +934,27 @@ def plot_campbell(
     # visually distinguishable without a legend lookup; thicker stroke
     # than the structural-mode lines so the rays stay legible when they
     # cross dense mode clusters.
+    #
+    # The ray ``f = order · rpm / 60`` is a straight line through the
+    # origin only on a *linear* frequency axis. On a log axis it is a
+    # curve, and its ``rpm = 0`` endpoint (``f = 0`` → ``log(-inf)``)
+    # is undefined — a two-point ``[0, rpm_max]`` sample then collapses
+    # to nothing or a wrong straight segment, which is why ``1P`` /
+    # ``2P`` … vanished under ``log_freq`` (issue #47). Sample a dense
+    # grid instead (and start it just above zero on a log axis) so the
+    # rays render as the correct curve at either scale.
+    n_ray = 256
+    if log_freq and rpm_max > 0.0:
+        ray_rpm = np.linspace(rpm_max * 1.0e-3, rpm_max, n_ray)
+    else:
+        ray_rpm = np.linspace(0.0, rpm_max if rpm_max > 0.0 else 1.0, n_ray)
     n_orders = max(len(excitation_orders), 1)
     cmap = plt.get_cmap("Reds")
     for i, order in enumerate(excitation_orders):
         shade = cmap(0.45 + 0.50 * (i / max(n_orders - 1, 1)))
         ax.plot(
-            rpm_grid,
-            order * rpm_grid / 60.0,
+            ray_rpm,
+            order * ray_rpm / 60.0,
             ":",
             color=shade,
             linewidth=1.4,
@@ -906,18 +976,36 @@ def plot_campbell(
             zorder=3,
         )
 
-    # Tower modes: horizontal dashed dark-grey lines.
+    # Tower columns split into two families by their label:
     #
-    # Right-margin labels replace per-line legend entries — the dashed-
-    # grey style already encodes "this is tower" and the legend would
-    # otherwise carry redundant rows. Modes within 2 % of each other in
-    # frequency get a single merged label (e.g. "1st FA / SS") so a
-    # near-symmetric tower (FA ≈ SS, common case) doesn't stack two
-    # text labels on top of each other.
+    #   * a *rigid-body platform* DOF (surge / sway / heave / roll /
+    #     pitch / yaw) — for a coupled floating tower the FEM's own
+    #     classifier (``ModalResult.mode_labels``, BModes-cross-
+    #     validated) names the six lowest modes, and ``campbell_sweep``
+    #     now carries those names straight through (issue #47). These
+    #     are drawn in the navy *platform* family, not as grey tower
+    #     dashes, so the diagram self-describes without the caller
+    #     having to pass ``platform_modes`` by hand;
+    #   * a *flexible tower* bending / torsion mode ("1st tower FA" …)
+    #     — drawn as the horizontal dashed dark-grey lines, with a
+    #     right-margin merged label (a near-symmetric tower gives
+    #     FA ≈ SS, merged within 2 % so the two labels don't stack).
+    #
+    # The explicit ``platform_modes`` argument still works and is
+    # merged into the same navy family (the screening path supplies it
+    # when there are no platform columns in the result at all).
+    from pybmodes.fem.platform_modes import _PLATFORM_DOF_NAMES
+
+    plat_name_set = set(_PLATFORM_DOF_NAMES)
     label_x = rpm_max if rpm_max > 0 else 1.0
     tower_groups: list[dict] = []
+    platform_pairs: list[tuple[str, float]] = []
     for k in range(n_blade, n_blade + n_tower):
         f = float(result.frequencies[0, k])
+        lbl = result.labels[k]
+        if lbl in plat_name_set:
+            platform_pairs.append((lbl, f))
+            continue
         ax.axhline(
             f,
             linestyle="--",
@@ -925,7 +1013,7 @@ def plot_campbell(
             linewidth=1.1,
             zorder=2,
         )
-        short = result.labels[k].replace("tower ", "")
+        short = lbl.replace("tower ", "")
         merged = False
         for g in tower_groups:
             if abs(g["f"] - f) / max(g["f"], 1e-9) < 0.02:
@@ -957,10 +1045,15 @@ def plot_campbell(
     # distinct family. Right-margin labels carry frequency AND period
     # (the period is what a floater is characterised by). Symmetric
     # platforms give surge ≈ sway and roll ≈ pitch — merged like the
-    # tower FA/SS pair so the labels don't stack.
+    # tower FA/SS pair so the labels don't stack. Sources: the natively
+    # classified tower columns above, plus any explicit
+    # ``platform_modes`` the caller passed (deduplicated by the 2 %
+    # frequency-merge so a DOF named by both routes appears once).
     if platform_modes:
+        platform_pairs = platform_pairs + list(platform_modes)
+    if platform_pairs:
         plat_groups: list[dict] = []
-        for name, f in platform_modes:
+        for name, f in platform_pairs:
             f = float(f)
             if not np.isfinite(f) or f <= 0.0:
                 continue
@@ -974,7 +1067,8 @@ def plot_campbell(
             merged = False
             for g in plat_groups:
                 if abs(g["f"] - f) / max(g["f"], 1e-9) < 0.02:
-                    g["names"].append(str(name))
+                    if str(name) not in g["names"]:
+                        g["names"].append(str(name))
                     g["f"] = 0.5 * (g["f"] + f)
                     merged = True
                     break

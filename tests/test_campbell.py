@@ -622,6 +622,73 @@ def test_plot_campbell_default_unchanged_without_platform_modes() -> None:
     plt.close(fig)
 
 
+def test_plot_campbell_log_freq_excitation_rays_render(
+) -> None:
+    """Issue #47: under log_freq the per-rev rays must still render as
+    the correct curve (the old two-point [0, rpm_max] sample collapsed
+    on a log axis). The 1P line is now densely sampled, strictly
+    positive, and tracks f = 1·rpm/60."""
+    pytest.importorskip("matplotlib")
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from pybmodes.campbell import plot_campbell
+
+    fig = plot_campbell(_small_campbell(), excitation_orders=[1, 3],
+                        log_freq=True)
+    ax = fig.axes[0]
+    one_p = [ln for ln in ax.lines if ln.get_label() == "1P"]
+    assert len(one_p) == 1
+    x = np.asarray(one_p[0].get_xdata(), dtype=float)
+    y = np.asarray(one_p[0].get_ydata(), dtype=float)
+    # Densely sampled (not the old 2-point segment) and log-safe.
+    assert x.size >= 64
+    assert np.all(y > 0.0)
+    np.testing.assert_allclose(y, x / 60.0, rtol=1e-9)
+    plt.close(fig)
+
+
+def test_plot_campbell_native_platform_labels_styled_navy() -> None:
+    """Issue #47: tower columns the FEM classified as platform DOFs
+    (surge/sway/.../yaw, carried through CampbellResult.labels) are
+    drawn in the navy platform family with a period label, *without*
+    the caller passing platform_modes by hand."""
+    pytest.importorskip("matplotlib")
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgb
+
+    from pybmodes.campbell import plot_campbell
+
+    res = _small_campbell()
+    # Relabel the two "tower" columns as classified rigid-body DOFs,
+    # the exact shape campbell_sweep now produces for a floating tower.
+    res.frequencies[:, 2] = 0.0074   # surge
+    res.frequencies[:, 3] = 0.0492   # heave
+    res.labels = ["1st flap", "1st edge", "surge", "heave"]
+
+    fig = plot_campbell(res)   # no platform_modes passed
+    ax = fig.axes[0]
+    navy = [
+        ln for ln in ax.lines
+        if np.allclose(to_rgb(ln.get_color()), (0.0, 0.0, 0.55),
+                       atol=1e-3)
+    ]
+    assert len(navy) == 2          # surge + heave drawn navy
+    grey = [
+        ln for ln in ax.lines
+        if np.allclose(to_rgb(ln.get_color()), (0.25, 0.25, 0.25),
+                       atol=1e-3)
+    ]
+    assert grey == []              # no flexible tower columns left
+    joined = " | ".join(t.get_text() for t in ax.texts)
+    assert "surge" in joined and "heave" in joined
+    assert "Hz," in joined and " s)" in joined   # period annotated
+    plt.close(fig)
+
+
 def test_plot_campbell_skips_nonfinite_platform_freq() -> None:
     pytest.importorskip("matplotlib")
     import matplotlib

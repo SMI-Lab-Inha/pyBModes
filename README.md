@@ -15,10 +15,10 @@
 - build a tower / monopile from **geometry alone** — `Tower.from_geometry(...)` takes outer diameter + wall thickness + isotropic steel `(E, ρ, ν)` + an `outfitting_factor` and derives every distributed structural property (mass, EI, GJ, EA) by the exact closed-form circular-tube identities, eliminating hand-computation error; `Tower.from_windio(...)` reads a [WindIO](https://windio.readthedocs.io/) ontology `.yaml` (both the modern `outer_shape`/`structure` and the older `outer_shape_bem`/`internal_structure_2d_fem` dialects, tolerant of WISDEM's duplicate-anchor files) and feeds it through the same path — needs the optional `[windio]` extra (PyYAML);
 - solve rotating blade modal problems with centrifugal stiffening, tip masses, and pre-twist;
 - solve onshore and offshore tower modal problems with eight pre-solve sanity checks via `pybmodes.checks.check_model` (non-monotonic span, zero / negative mass, stiffness jumps, FA/SS ratio, RNA mass dominance, singular support matrix, `n_modes` overrun, polynomial-fit conditioning) — runs automatically on `.run()`, suppress with `check_model=False`;
-- go **one-click from a WISDEM/WindIO ontology** `.yaml` (or an RWT directory) to the full modal picture — `pybmodes windio <yaml>` discovers the ontology and any companion HydroDyn/MoorDyn/ElastoDyn decks (scoped to that turbine), then solves the composite-layup blade, the tubular tower, and — for a `floating_platform` — the coupled platform rigid-body modes, with an optional Campbell sweep and a bundled report. The blade is reduced from its **composite layup** by a PreComp-class thin-wall multi-cell classical-lamination reduction (`RotatingBlade.from_windio(...)`), not a deck shortcut. The floating path is **two-tier**: with the companion decks present `Tower.from_windio_floating(...)` is the BModes-JJ-validated industry-grade coupled model (all six platform rigid-body modes + 1st tower bending within 0.0–0.3 % of `from_elastodyn_with_mooring`); without them it degrades to a member-Morison + catenary screening preview that says so via a `UserWarning`. Needs the optional `[windio]` extra (PyYAML);
+- go **one-click from a WISDEM/WindIO ontology** `.yaml` (or an RWT directory) to the full modal picture — `pybmodes windio <yaml>` discovers the ontology and any companion HydroDyn/MoorDyn/ElastoDyn decks (scoped to that turbine), then solves the composite-layup blade, the tubular tower, and — for a `floating_platform` — the coupled platform rigid-body modes, with an optional Campbell sweep and a bundled report. The blade defaults to its WindIO **published distributed elastic properties** when the ontology carries them (the common case — minimises deltas against the reference model) and falls back to a PreComp-class thin-wall multi-cell classical-lamination reduction of the **composite layup** only when they are absent (`RotatingBlade.from_windio(..., elastic="auto")`, issue #48); `elastic="precomp"` forces the layup reduction, `"file"` requires the published properties. The floating path is **two-tier**: with the companion decks present `Tower.from_windio_floating(...)` is the BModes-JJ-validated industry-grade coupled model (all six platform rigid-body modes + 1st tower bending within 0.0–0.3 % of `from_elastodyn_with_mooring`); without them it degrades to a member-Morison + catenary screening preview that says so via a `UserWarning`. Needs the optional `[windio]` extra (PyYAML);
 - fit ElastoDyn-compatible 6th-order blade and tower mode-shape polynomials, with design-matrix condition-number reporting, automatic resolution of degenerate FA/SS eigenpairs on symmetric structures, and a torsion-contamination filter that drops candidates with `T_tor ≥ 10 %` from the family selection;
 - patch OpenFAST ElastoDyn input files with fitted coefficients in three modes: in-place (with optional `.bak` backup), `--dry-run` (compute + summarise, write nothing), `--diff` (PR-ready coefficient-only diff with per-block RMS-improvement ratios), or `--output-dir DIR` (write to a separate directory, originals untouched);
-- assemble a Campbell diagram from a single OpenFAST deck — blade modes swept across rotor speed with Hungarian MAC-based tracking, tower modes overlaid as horizontal lines, plus the per-rev (1P, 3P, 6P, …) excitation family — for resonance checks like NREL 5MW's *3P × 1st-tower-FA at ~6–7 rpm*; per-step MAC confidence is exposed as `CampbellResult.mac_to_previous` for tracking-quality audits. For a floating turbine `plot_campbell(..., platform_modes=[(dof, f), …], log_freq=True)` overlays the six platform rigid-body modes (surge / sway / heave / roll / pitch / yaw) as labelled horizontal references — frequency and period — against the per-rev rays; the `pybmodes windio` floating path wires this automatically from the BModes-cross-validated coupled solve;
+- assemble a Campbell diagram from a single OpenFAST deck — blade modes swept across rotor speed with Hungarian MAC-based tracking, tower modes overlaid as horizontal lines, plus the per-rev (1P, 3P, 6P, …) excitation family — for resonance checks like NREL 5MW's *3P × 1st-tower-FA at ~6–7 rpm*; per-step MAC confidence is exposed as `CampbellResult.mac_to_previous` for tracking-quality audits. For a coupled floating tower the six lowest tower columns come out natively named `surge` / `sway` / `heave` / `roll` / `pitch` / `yaw` (the FEM's own BModes-cross-validated classification carried through `CampbellResult.labels`) and `plot_campbell` auto-draws them in the navy platform family with frequency-and-period labels — no need to pass `platform_modes` by hand (it is still honoured for the screening path). `log_freq=True` renders correctly, including the per-rev rays (issue #47); the `pybmodes windio` floating path wires all of this automatically;
 - compare two modal results mode-by-mode via `pybmodes.mac.compare_modes` — full MAC matrix, Hungarian-optimal pairing, per-pair % frequency shift, heatmap plotting via `plot_mac`;
 - serialise results to disk: `ModalResult.save(.npz)` / `to_json(.json)` round-trips frequencies + mode shapes + optional participation + fit residuals + pyBmodes-version / timestamp / source-file / git-hash metadata; `CampbellResult.save(.npz)` / `to_csv(.csv)` similarly;
 - emit bundled reports via `pybmodes.report.generate_report` — Markdown / HTML / CSV summary covering model assumptions, frequencies, mode classification, polynomial coefficients with fit residuals, validation verdict, `check_model` warnings, and optional Campbell-sweep first/last frequencies per mode;
@@ -493,20 +493,40 @@ geometry — the documented coefficient drift lives entirely in the
 
 ### WindIO composite blade — cross-code beam-property reproduction
 
-`RotatingBlade.from_windio(...)` reduces the blade's composite layup
-through a PreComp-class thin-wall multi-cell classical-lamination
-analysis. It is anchored against each turbine's own
-WISDEM-PreComp-generated **BeamDyn 6×6** stiffness/inertia matrices
-across IEA-3.4 / 10 / 15 / 22 over span 0.15–0.90: distributed `mass`
-and `EA` reproduce the BeamDyn reference to PreComp class (mass ≈
-1.5–4 % median, EA ≈ 1–8 % median); `GJ` and `EI` are
-diagonal-reduction approximate (≈ 3–18 % / 2–27 % median — a
-documented limitation, since the membrane reduction omits
-spar-cap-offset and bend-twist coupling). The closed-form CLT
-primitives, the airfoil `nd_arc` profile spine, and the single- /
-multi-cell thin-wall reductions are independently gated against
-textbook Bredt–Batho / Jones *Mechanics of Composite Materials*
-forms.
+`RotatingBlade.from_windio(..., elastic="auto")` (the default,
+issue #48) prefers the WindIO **published distributed elastic
+properties**
+when the ontology carries them — both dialects: the modern
+`elastic_properties` (`K33/K44/K55/K66`, `mass`, `i_flap/i_edge`,
+`cm_x`) and the `elastic_properties_mb.six_x_six` 21-element
+upper-triangular flatten of the symmetric sectional 6×6. Mapped
+decoupled-beam-wise (`K33→EA`, `K44→EI_flap`, `K55→EI_edge`,
+`K66→GJ`; `M11→mass`, `M44/M55→flap/edge inertia`), this reproduces
+the turbine's own **BeamDyn 6×6** far tighter than the layup
+reduction (IEA-15 published path: mass / EA median < 3 %, EI / GJ
+< 5 %), so the model matches the reference exactly where the
+reference exists. Only when the published properties are absent does
+it fall back to the PreComp-class thin-wall multi-cell
+classical-lamination reduction (`elastic="precomp"` forces it; the
+pre-1.5 behaviour). The PreComp path is anchored against each
+turbine's own WISDEM-PreComp-generated **BeamDyn 6×6**
+stiffness/inertia matrices across IEA-3.4 / 10 / 15 / 22 over span
+0.15–0.90: distributed `mass` and `EA` reproduce the BeamDyn
+reference to PreComp class (mass ≈ 1.5–4 % median, EA ≈ 1–8 %
+median); `GJ` and `EI` are diagonal-reduction approximate (≈ 3–18 %
+/ 2–27 % median — a documented limitation, since the membrane
+reduction omits spar-cap-offset and bend-twist coupling). The
+closed-form CLT primitives, the airfoil `nd_arc` profile spine, and
+the single- / multi-cell thin-wall reductions are independently
+gated against textbook Bredt–Batho / Jones *Mechanics of Composite
+Materials* forms. (An honest caveat: a turbine's published
+`elastic_properties_mb` is not always mutually consistent with its
+own companion BeamDyn deck — IEA-10's `_mb` diverges ≈ 50 % from its
+BeamDyn 6×6, the same ecosystem-drift pattern documented in
+[`cases/ECOSYSTEM_FINDING.md`](cases/ECOSYSTEM_FINDING.md). `auto`
+treats the WindIO ontology as the canonical reference, per #48's
+intent of minimising deltas against the WindIO model the user
+supplied.)
 
 ### WindIO floating platform — two-tier fidelity
 
@@ -764,7 +784,11 @@ from pybmodes.plots     import (
 #   RotatingBlade.from_bmi(bmi_path)
 #   RotatingBlade.from_elastodyn(main_dat)
 #   RotatingBlade.from_windio(yaml_path, *, component, n_span,
-#       rot_rpm, n_perim)  # composite layup -> PreComp-class beam
+#       rot_rpm, n_perim, elastic)  # elastic="auto" prefers the
+#       # WindIO published distributed elastic properties when
+#       # present (minimises deltas vs the reference model), else
+#       # the PreComp-class layup reduction; "precomp" forces the
+#       # reduction; "file" requires the published properties
 #
 # Mooring:
 #   MooringSystem.from_moordyn(dat_path)
@@ -780,10 +804,14 @@ lines, no time-domain dynamics); `pybmodes.io.WamitReader` extracts
 prediction, not ElastoDyn polynomial-coefficient generation (use
 `Tower.from_elastodyn` for the latter regardless of platform
 configuration — see `cases/ECOSYSTEM_FINDING.md` for the source-code
-citation); `RotatingBlade.from_windio`'s composite reduction is
-PreComp-class on mass / EA but diagonal-reduction approximate on
-GJ / EI (it omits spar-cap-offset and bend-twist coupling — see the
-*WindIO composite blade* validation note); and the yaml-only tier of
+citation); `RotatingBlade.from_windio`'s PreComp **fallback**
+(`elastic="precomp"`, or `"auto"` when the ontology has no published
+distributed elastic properties) is PreComp-class on mass / EA but
+diagonal-reduction approximate on GJ / EI (it omits spar-cap-offset
+and bend-twist coupling — see the *WindIO composite blade*
+validation note); the default `elastic="auto"` avoids this entirely
+whenever the WindIO file publishes its own elastic properties; and
+the yaml-only tier of
 `Tower.from_windio_floating` is a screening estimate, not
 industry-grade — it emits a `UserWarning` saying so, and you supply
 the companion HydroDyn / MoorDyn / ElastoDyn decks (or let
