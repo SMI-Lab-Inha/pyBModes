@@ -1269,16 +1269,26 @@ def test_windio_blade_published_matches_beamdyn_far_tighter(tmp_path) -> None:
     pub = windio_blade_section_props(blade, n_perim=240, elastic="file")
     pc = windio_blade_section_props(blade, n_perim=240, elastic="precomp")
 
-    # Published path tracks BeamDyn to a small residual (grid / interp
-    # only) — and the flap/edge mapping is correct (a swap would blow
-    # these EI numbers up).
+    # issue #50: both the WindIO 6×6 and the companion BeamDyn 6×6 are
+    # referenced at the blade axis, so the apples-to-apples oracle is
+    # the *decoupled* BeamDyn (elastic/shear centre + principal axes),
+    # not its raw diagonal. The two matrices share a WISDEM-PreComp
+    # origin, so decoupled-vs-decoupled is tight (grid/interp only).
     assert _med(pub, "mass_den", bd.mpl) < 0.03
-    assert _med(pub, "axial_stff", bd.EA) < 0.03
-    assert _med(pub, "flp_stff", bd.EI_a) < 0.05
-    assert _med(pub, "edge_stff", bd.EI_b) < 0.05
-    assert _med(pub, "tor_stff", bd.GJ) < 0.05
+    assert _med(pub, "axial_stff", bd.EA) < 0.03      # EA is invariant
+    assert _med(pub, "flp_stff", bd.EI_flap_dec) < 0.05
+    assert _med(pub, "edge_stff", bd.EI_edge_dec) < 0.05
+    assert _med(pub, "tor_stff", bd.GJ_dec) < 0.08
 
-    # The whole point of #48: the published path is materially closer
-    # to the reference than the PreComp diagonal reduction.
-    assert _med(pub, "flp_stff", bd.EI_a) < _med(pc, "flp_stff", bd.EI_a)
-    assert _med(pub, "tor_stff", bd.GJ) < _med(pc, "tor_stff", bd.GJ)
+    # The #50 fix must matter: the decoupled published EI is materially
+    # different from (and closer to the decoupled reference than) the
+    # raw reference-axis diagonal it used to copy.
+    raw_vs_dec = float(np.median(_relerr(bd.EI_flap_dec[sel],
+                                         bd.EI_a[sel])))
+    assert raw_vs_dec > 0.05, (
+        "raw vs decoupled BeamDyn EI should differ materially — "
+        "otherwise this turbine wouldn't exercise #50"
+    )
+    # And the published path stays far tighter than PreComp.
+    assert (_med(pub, "flp_stff", bd.EI_flap_dec)
+            < _med(pc, "flp_stff", bd.EI_flap_dec))
