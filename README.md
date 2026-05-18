@@ -499,13 +499,18 @@ properties**
 when the ontology carries them — both dialects: the modern
 `elastic_properties` (`K33/K44/K55/K66`, `mass`, `i_flap/i_edge`,
 `cm_x`) and the `elastic_properties_mb.six_x_six` 21-element
-upper-triangular flatten of the symmetric sectional 6×6. Mapped
-decoupled-beam-wise (`K33→EA`, `K44→EI_flap`, `K55→EI_edge`,
-`K66→GJ`; `M11→mass`, `M44/M55→flap/edge inertia`), this reproduces
-the turbine's own **BeamDyn 6×6** far tighter than the layup
-reduction (IEA-15 published path: mass / EA median < 3 %, EI / GJ
-< 5 %), so the model matches the reference exactly where the
-reference exists. Only when the published properties are absent does
+upper-triangular flatten of the symmetric sectional 6×6 — both
+ship the **full** 6×6 (the modern `stiffness_matrix` carries the
+`K11..K66` upper triangle). The 6×6 is **decoupled** to the
+Euler–Bernoulli `EA / EI_flap / EI_edge / GJ` at the elastic /
+shear centres and principal elastic axes
+(`pybmodes.io._precomp.decouple`, issue #50) — *not* read off the
+raw reference-axis diagonal, which is not the physical `EI` for an
+offset / pre-twisted blade. Validated *decoupled-vs-decoupled*
+against the turbine's own **BeamDyn 6×6** (also reference-axis, so
+decoupled the same way): IEA-15 mass / EA median < 3 %, EI < 5 %,
+GJ < 8 % — far tighter than the layup reduction, so the model
+matches the reference where the reference exists. Only when the published properties are absent does
 it fall back to the PreComp-class thin-wall multi-cell
 classical-lamination reduction (`elastic="precomp"` forces it; the
 pre-1.5 behaviour). The PreComp path is anchored against each

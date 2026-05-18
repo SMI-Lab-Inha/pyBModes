@@ -107,11 +107,6 @@ def _curve(spec: dict, at: np.ndarray) -> np.ndarray:
     return np.interp(at, g, v)
 
 
-# Diagonal positions in a row-major upper-triangular flatten of a
-# symmetric 6×6 (the ``elastic_properties_mb.six_x_six`` ``values``
-# form): K11,K22,K33,K44,K55,K66.
-_SYM6_DIAG = (0, 6, 11, 15, 18, 20)
-
 # Blade aerodynamic/structural twist is at most ~25–30° anywhere on a
 # modern blade. The windIO ontology *nominally* stores twist in
 # radians (IEA-3.4-130-RWT: root ≈ 0.349 rad), but real WISDEM
@@ -169,19 +164,67 @@ def _read_blade_elastic(
       with each ``values`` row the 21-element upper-triangular
       flatten of the symmetric 6×6.
 
-    The 6×6 sectional convention (BeamDyn / WISDEM / WindIO) maps the
-    diagonal to pyBmodes' decoupled Euler-Bernoulli beam:
-    ``K33→EA``, ``K44→EI_flap``, ``K55→EI_edge``, ``K66→GJ``;
-    ``M11→mass/length``, ``M44→flap inertia``, ``M55→edge inertia``.
-    The off-diagonal coupling terms are intentionally not modelled
-    (the documented diagonal-beam limitation) — the point here is to
-    reproduce the *reference* diagonal exactly rather than re-derive
-    it."""
+    The 6×6 is **decoupled** to pyBmodes' Euler–Bernoulli beam at the
+    elastic / shear centres and principal elastic axes (issue #50 —
+    Kieran Mercer, Frazer & Nash): the raw reference-axis diagonal
+    ``K44``/``K55`` is *not* ``EI_flap``/``EI_edge`` for an offset /
+    pre-twisted blade — see :mod:`pybmodes.io._precomp.decouple`. Both
+    dialects carry the full 6×6 (modern ``stiffness_matrix`` ships the
+    upper triangle ``K11``..``K66``; ``elastic_properties_mb`` ships
+    the 21-element flatten), so the coupling is honoured, not dropped.
+    """
+    from pybmodes.io._precomp.decouple import (
+        decouple_inertia,
+        decouple_stiffness,
+    )
+
     def _find(key: str):
         for h in holders:
             if isinstance(h, dict) and isinstance(h.get(key), dict):
                 return h[key]
         return None
+
+    def _sym6_from_named(km: dict, gi: int) -> np.ndarray:
+        """Symmetric 6×6 at source-grid index ``gi`` from named
+        ``Kij`` arrays (upper triangle; missing entry ⇒ 0)."""
+        K = np.zeros((6, 6))
+        for i in range(6):
+            for j in range(i, 6):
+                vals = km.get(f"K{i + 1}{j + 1}")
+                if vals is None:
+                    continue
+                v = float(np.asarray(vals, float)[gi])
+                K[i, j] = K[j, i] = v
+        return K
+
+    def _sym6_from_upper21(row: np.ndarray) -> np.ndarray:
+        """Symmetric 6×6 from a 21-element row-major upper-triangular
+        flatten (``six_x_six`` ``values`` convention)."""
+        K = np.zeros((6, 6))
+        p = 0
+        for i in range(6):
+            for j in range(i, 6):
+                K[i, j] = K[j, i] = float(row[p])
+                p += 1
+        return K
+
+    def _decoupled_over_grid(
+        mats: list[np.ndarray],
+    ) -> dict[str, np.ndarray]:
+        """Decouple each source-grid 6×6 then return per-grid scalar
+        arrays (decoupling is non-linear, so decouple *before*
+        interpolating onto the output span)."""
+        ds = [decouple_stiffness(K) for K in mats]
+        return {
+            "axial_stff": np.array([d.EA for d in ds]),
+            "flp_stff": np.array([d.EI_flap for d in ds]),
+            "edge_stff": np.array([d.EI_edge for d in ds]),
+            "tor_stff": np.array([d.GJ for d in ds]),
+            "x_tc": np.array([d.x_tc for d in ds]),
+        }
+
+    def _interp_grid(g: np.ndarray, arr: np.ndarray) -> np.ndarray:
+        return np.interp(span, g, arr)
 
     ep = _find("elastic_properties")
     ep_present = isinstance(ep, dict) and "stiffness_matrix" in ep
@@ -196,44 +239,63 @@ def _read_blade_elastic(
         if ep_present:
             km = ep["stiffness_matrix"]
             im = ep.get("inertia_matrix", {})
+            kg = np.asarray(km["grid"], float)
+            kmat = [_sym6_from_named(km, gi) for gi in range(kg.size)]
+            dec = _decoupled_over_grid(kmat)
 
-            def _k(name: str) -> np.ndarray:
-                return np.interp(span,
-                                 np.asarray(km["grid"], float),
-                                 np.asarray(km[name], float))
-
-            def _i(name: str) -> np.ndarray:
-                return np.interp(span,
-                                 np.asarray(im["grid"], float),
-                                 np.asarray(im[name], float))
-
+            ig = np.asarray(im["grid"], float)
+            mass = np.asarray(im["mass"], float)
+            i_fl = np.asarray(im["i_flap"], float)
+            i_ed = np.asarray(im["i_edge"], float)
+            i_cp = (np.asarray(im["i_cp"], float)
+                    if "i_cp" in im else np.zeros_like(mass))
+            cm_x = (np.asarray(im["cm_x"], float)
+                    if "cm_x" in im else np.zeros_like(mass))
+            # Principal mass moments from the 2×2 [[i_flap,i_cp],
+            # [i_cp,i_edge]] (about the c.g.; i_cp ≠ 0 ⇒ not principal).
+            half = 0.5 * (i_fl + i_ed)
+            rad = np.sqrt(np.maximum(
+                (0.5 * (i_fl - i_ed)) ** 2 + i_cp ** 2, 0.0))
+            i_flap_p, i_edge_p = half - rad, half + rad
+            # Tension centre evaluated on the inertia grid.
+            tc_on_ig = np.interp(ig, kg, dec["x_tc"])
             return {
-                "axial_stff": _k("K33"), "flp_stff": _k("K44"),
-                "edge_stff": _k("K55"), "tor_stff": _k("K66"),
-                "mass_den": _i("mass"),
-                "flp_iner": _i("i_flap"), "edge_iner": _i("i_edge"),
-                "cg_offst": (_i("cm_x") if "cm_x" in im
-                             else np.zeros_like(span)),
+                "axial_stff": _interp_grid(kg, dec["axial_stff"]),
+                "flp_stff": _interp_grid(kg, dec["flp_stff"]),
+                "edge_stff": _interp_grid(kg, dec["edge_stff"]),
+                "tor_stff": _interp_grid(kg, dec["tor_stff"]),
+                "mass_den": np.interp(span, ig, mass),
+                "flp_iner": np.interp(span, ig, i_flap_p),
+                "edge_iner": np.interp(span, ig, i_edge_p),
+                # c.g. offset relative to the elastic (tension) centre.
+                "cg_offst": np.interp(span, ig, cm_x - tc_on_ig),
             }, None
 
-        def _diag(block: dict) -> np.ndarray:
-            g = np.asarray(block["grid"], float)
-            rows = np.asarray(block["values"], float)  # (n, 21)
-            d = rows[:, _SYM6_DIAG]                     # (n, 6)
-            return np.stack(
-                [np.interp(span, g, d[:, j]) for j in range(6)],
-                axis=1,
-            )                                          # (len, 6)
-
         assert isinstance(s6, dict)   # narrowed by mb_present above
-        kd = _diag(s6["stiff_matrix"])
-        md = _diag(s6["inertia_matrix"])
+        sk = s6["stiff_matrix"]
+        si = s6["inertia_matrix"]
+        gk = np.asarray(sk["grid"], float)
+        gi = np.asarray(si["grid"], float)
+        kmat = [_sym6_from_upper21(r)
+                for r in np.asarray(sk["values"], float)]
+        mmat = [_sym6_from_upper21(r)
+                for r in np.asarray(si["values"], float)]
+        dec = _decoupled_over_grid(kmat)
+        di = [decouple_inertia(M) for M in mmat]
+        mass = np.array([d.mass for d in di])
+        i_fl = np.array([d.i_flap for d in di])
+        i_ed = np.array([d.i_edge for d in di])
+        x_cg = np.array([d.x_cg for d in di])
+        tc_on_gi = np.interp(gi, gk, dec["x_tc"])
         return {
-            "axial_stff": kd[:, 2], "flp_stff": kd[:, 3],
-            "edge_stff": kd[:, 4], "tor_stff": kd[:, 5],
-            "mass_den": md[:, 0],
-            "flp_iner": md[:, 3], "edge_iner": md[:, 4],
-            "cg_offst": np.zeros_like(span),
+            "axial_stff": _interp_grid(gk, dec["axial_stff"]),
+            "flp_stff": _interp_grid(gk, dec["flp_stff"]),
+            "edge_stff": _interp_grid(gk, dec["edge_stff"]),
+            "tor_stff": _interp_grid(gk, dec["tor_stff"]),
+            "mass_den": np.interp(span, gi, mass),
+            "flp_iner": np.interp(span, gi, i_fl),
+            "edge_iner": np.interp(span, gi, i_ed),
+            "cg_offst": np.interp(span, gi, x_cg - tc_on_gi),
         }, None
     except (KeyError, TypeError, ValueError, IndexError) as exc:
         # Block is *present* but unparseable — never silently degrade.

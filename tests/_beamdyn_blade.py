@@ -33,10 +33,17 @@ _FLOAT = re.compile(r"[-+]?\d*\.?\d+(?:[eEdD][-+]?\d+)?")
 class BeamDynBlade:
     eta: np.ndarray      # (n,) non-dimensional station
     EA: np.ndarray       # (n,) axial stiffness, N
-    EI_a: np.ndarray     # (n,) bending stiffness K[3,3], N·m²
-    EI_b: np.ndarray     # (n,) bending stiffness K[4,4], N·m²
-    GJ: np.ndarray       # (n,) torsion stiffness K[5,5], N·m²
+    EI_a: np.ndarray     # (n,) bending stiffness K[3,3], N·m² (raw)
+    EI_b: np.ndarray     # (n,) bending stiffness K[4,4], N·m² (raw)
+    GJ: np.ndarray       # (n,) torsion stiffness K[5,5], N·m² (raw)
     mpl: np.ndarray      # (n,) mass per unit length M[0,0], kg/m
+    # Decoupled (elastic/shear centre + principal-axis) properties —
+    # the apples-to-apples oracle for the issue #50 published path
+    # (the BeamDyn 6×6 is also referenced at the blade axis, so it
+    # must be decoupled the same way before comparison).
+    EI_flap_dec: np.ndarray = None  # type: ignore[assignment]
+    EI_edge_dec: np.ndarray = None  # type: ignore[assignment]
+    GJ_dec: np.ndarray = None       # type: ignore[assignment]
 
 
 def read_beamdyn_blade(path: str | pathlib.Path) -> BeamDynBlade:
@@ -67,6 +74,10 @@ def read_beamdyn_blade(path: str | pathlib.Path) -> BeamDynBlade:
     eta = vals[:, 0]
     K = vals[:, 1:37].reshape(n, 6, 6)
     M = vals[:, 37:73].reshape(n, 6, 6)
+
+    from pybmodes.io._precomp.decouple import decouple_stiffness
+
+    dec = [decouple_stiffness(K[i]) for i in range(n)]
     return BeamDynBlade(
         eta=eta,
         EA=K[:, 2, 2],
@@ -74,4 +85,7 @@ def read_beamdyn_blade(path: str | pathlib.Path) -> BeamDynBlade:
         EI_b=K[:, 4, 4],
         GJ=K[:, 5, 5],
         mpl=M[:, 0, 0],
+        EI_flap_dec=np.array([d.EI_flap for d in dec]),
+        EI_edge_dec=np.array([d.EI_edge for d in dec]),
+        GJ_dec=np.array([d.GJ for d in dec]),
     )

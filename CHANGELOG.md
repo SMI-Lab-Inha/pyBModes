@@ -10,6 +10,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 (nothing yet)
 
+## [1.5.1] — 2026-05-18
+
+### Fixed
+
+- **WindIO published blade stiffness is now decoupled at the elastic
+  / shear centre and principal elastic axes (issue #50, reported by
+  Kieran Mercer, Frazer & Nash).** The 1.5.0 published-properties
+  path read the raw reference-axis 6×6 *diagonal*
+  (``K44→EI_flap``, ``K55→EI_edge``, ``K66→GJ``). A WindIO /
+  BeamDyn sectional 6×6 is expressed about the blade reference axis,
+  **not** the elastic centre, and is generally **not** aligned with
+  the principal elastic axes — so for any offset / pre-twisted blade
+  the raw diagonal carries the axial↔bending (``K34``/``K35``) and
+  bending↔bending (``K45``) coupling and is *not* the physical
+  ``EI_flap``/``EI_edge``. New module
+  :mod:`pybmodes.io._precomp.decouple` performs the standard
+  rigid-offset congruence reduction (tension centre → principal-axis
+  eigen-decomposition → shear centre for ``GJ``; Bauchau / the DNV
+  Bladed *WindIO to Bladed* construction), implemented clean-room in
+  numpy (the project's independence stance — no vendored reference
+  code). Both WindIO dialects already ship the **full** 6×6 (modern
+  ``stiffness_matrix`` carries the upper triangle ``K11``..``K66``;
+  ``elastic_properties_mb`` the 21-element flatten), so the coupling
+  is now honoured rather than discarded. The companion-BeamDyn
+  validation oracle is decoupled the same way (apples-to-apples):
+  decoupled-WindIO reproduces decoupled-BeamDyn to mass/EA < 3 %,
+  EI < 5 %, GJ < 8 % on IEA-15, materially tighter and more correct
+  than the 1.5.0 raw-diagonal copy where the section is offset.
+
+### Changed
+
+- **Default WindIO published-blade numerics shift for offset /
+  pre-twisted blades.** Turbines whose published 6×6 has non-trivial
+  axial/bending/twist coupling (every realistic blade) now yield the
+  *decoupled* principal ``EI``/``GJ`` instead of the raw diagonal —
+  *by design*, this is the issue #50 correctness fix. Magnitude is
+  the difference between the reference-axis diagonal and the
+  principal-elastic-axis value (can be tens of percent on coupled
+  sections). The PreComp reduction path already did its own
+  principal-axis reduction and is unchanged.
+
 ## [1.5.0] — 2026-05-18
 
 ### Added
