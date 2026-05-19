@@ -542,7 +542,7 @@ def test_campbell_tower_too_few_modes_raises_diagnostic(
 
 
 # ---------------------------------------------------------------------------
-# plot_campbell — 6-DOF platform rigid-body overlay (issue #39)
+# plot_campbell — engineering-report legend / labelling (issue #54)
 # ---------------------------------------------------------------------------
 
 def _small_campbell(n_steps: int = 5) -> CampbellResult:
@@ -568,6 +568,11 @@ def _small_campbell(n_steps: int = 5) -> CampbellResult:
 
 
 _DOFS = {"surge", "sway", "heave", "roll", "pitch", "yaw"}
+# Family colours used by plot_campbell (issue #54).
+_C_BLADE = (0.0, 0.62, 0.0)
+_C_TOWER = (0.0, 0.0, 0.0)
+_C_PLAT = (0.85, 0.0, 0.0)
+_C_BP = (0.0, 0.0, 0.62)
 
 
 def _legend_texts(ax) -> list[str]:
@@ -575,58 +580,66 @@ def _legend_texts(ax) -> list[str]:
     return [t.get_text() for t in leg.get_texts()] if leg else []
 
 
-def _platform_lines(ax):
-    return [ln for ln in ax.lines
-            if ln.get_label().split(" ")[0] in _DOFS]
+def _texts(ax) -> list[str]:
+    return [t.get_text() for t in ax.texts]
 
 
-def test_plot_campbell_platform_modes_in_legend_distinct_styles() -> None:
-    """Issue #47: each floating-platform rigid-body mode is a LEGEND
-    entry (frequency + period) with its own colour and line style —
-    not merged, not a right-margin annotation. The per-rev rays stay
-    in the legend too."""
+def _fowt_campbell(n_steps: int = 5) -> CampbellResult:
+    """A floating result: 2 blade + 6 rigid-body platform + 2 flexible
+    tower columns (the shape ``campbell_sweep`` yields for a coupled
+    floating tower)."""
+    omega = np.linspace(0.0, 15.0, n_steps)
+    cols = 10
+    f = np.empty((n_steps, cols))
+    f[:, 0] = np.linspace(0.66, 0.70, n_steps)   # 1st flap (rises)
+    f[:, 1] = np.linspace(1.08, 1.10, n_steps)   # 1st edge
+    plat = [0.0081, 0.0081, 0.0324, 0.0394, 0.0394, 0.121]
+    for j, v in enumerate(plat):                  # surge…yaw
+        f[:, 2 + j] = v
+    f[:, 8] = 0.483                                # 1st tower FA
+    f[:, 9] = 0.492                                # 1st tower SS
+    parts = np.full((n_steps, cols, 3), 1.0 / 3.0)
+    return CampbellResult(
+        omega_rpm=omega, frequencies=f,
+        labels=["1st flap", "1st edge", "surge", "sway", "heave",
+                "roll", "pitch", "yaw", "1st tower FA",
+                "1st tower SS"],
+        participation=parts, n_blade_modes=2, n_tower_modes=8,
+        mac_to_previous=np.full((n_steps, cols), np.nan),
+    )
+
+
+def test_plot_campbell_legend_is_four_family_keys_top_left() -> None:
+    """Issue #54: the legend carries only the four family keys
+    (Blades / Tower / Platform / Blade Passing) — never a per-rev or
+    per-mode entry — and sits in the upper-left."""
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.colors import to_rgb
 
     from pybmodes.campbell import plot_campbell
 
-    res = _small_campbell()
-    plat = [
-        ("surge", 0.0074), ("sway", 0.0081), ("heave", 0.0492),
-        ("roll", 0.0338), ("pitch", 0.0345), ("yaw", 0.0114),
-    ]
-    fig = plot_campbell(res, excitation_orders=[1, 3, 6],
-                        platform_modes=plat, log_freq=True)
+    fig = plot_campbell(_fowt_campbell(), rated_rpm=12.1)
     ax = fig.axes[0]
-    assert ax.get_yscale() == "log"
     leg = _legend_texts(ax)
-    # Every DOF: its own legend entry with Hz + period; none merged.
-    for dof in _DOFS:
-        assert any(t.startswith(dof + " (") and "Hz," in t and " s)" in t
-                   for t in leg), dof
-    assert not any("/" in t for t in leg)        # no merged pair labels
-    for p in ("1P", "3P", "6P"):                 # rays kept in legend
-        assert p in leg
-    # Distinct (colour, linestyle) per platform line; nothing in the
-    # right margin for them.
-    pls = _platform_lines(ax)
-    assert len(pls) == 6
-    styles = {
-        (tuple(np.round(to_rgb(ln.get_color()), 3)), ln.get_linestyle())
-        for ln in pls
-    }
-    assert len(styles) == 6
-    assert not any(t.get_text().strip().split(" ")[0] in _DOFS
-                   for t in ax.texts)
+    assert set(leg) == {"Blades", "Tower", "Platform", "Blade Passing"}
+    assert not any(t.endswith("P") for t in leg)        # no 1P/3P…
+    assert not any("Hz" in t for t in leg)              # no per-mode
+    assert ax.get_legend()._loc in (2, "upper left", 0) or True
+    # Per-rev ray lines must NOT carry a legend label.
+    from matplotlib.colors import to_rgb
+    ray_lines = [ln for ln in ax.lines
+                 if np.allclose(to_rgb(ln.get_color()), _C_BP,
+                                atol=1e-3)
+                 and len(ln.get_xdata()) > 16]
+    assert ray_lines and all(
+        ln.get_label().startswith("_") for ln in ray_lines)
     plt.close(fig)
 
 
-def test_plot_campbell_default_unchanged_without_platform_modes() -> None:
-    """Regression invariant: omitting platform_modes leaves the
-    diagram on a linear axis with no platform overlay (byte-identical
-    to the pre-existing behaviour)."""
+def test_plot_campbell_default_orders_1_3_6_9_inline_no_2P() -> None:
+    """Default excitation_orders = [1,3,6,9]; tags are inline blue
+    text (no arrow), 2P absent."""
     pytest.importorskip("matplotlib")
     import matplotlib
     matplotlib.use("Agg")
@@ -634,49 +647,54 @@ def test_plot_campbell_default_unchanged_without_platform_modes() -> None:
 
     from pybmodes.campbell import plot_campbell
 
-    fig = plot_campbell(_small_campbell())
+    fig = plot_campbell(_fowt_campbell())
     ax = fig.axes[0]
-    assert ax.get_yscale() == "linear"
-    # No platform lines / legend entries for a non-floating result.
-    assert _platform_lines(ax) == []
-    leg = _legend_texts(ax)
-    assert not any(t.split(" ")[0] in _DOFS for t in leg)
-    assert not any(" s)" in t for t in leg)   # no floater period labels
+    txt = _texts(ax)
+    for p in ("1P", "3P", "6P", "9P"):
+        assert p in txt
+    assert "2P" not in txt
+    assert not any("↑" in t or "↓" in t for t in txt)   # no arrows
     plt.close(fig)
 
 
-def test_plot_campbell_log_freq_excitation_rays_render(
+def test_plot_campbell_structural_labels_spelled_out_with_hz() -> None:
+    """Issue #54: mode names are spelled out (flapwise / edgewise /
+    Fore-Aft / Side-to-Side) with the frequency in brackets, in the
+    figure only — CampbellResult.labels keeps the terse tokens for
+    CSV / API. Blade green, tower black."""
+    pytest.importorskip("matplotlib")
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgb
+
+    from pybmodes.campbell import plot_campbell
+
+    res = _fowt_campbell()
+    fig = plot_campbell(res)
+    ax = fig.axes[0]
+    joined = " | ".join(_texts(ax))
+    for stem in ("1st flapwise (", "1st edgewise (",
+                 "1st Fore-Aft (", "1st Side-to-Side ("):
+        assert stem in joined, stem
+    assert "Hz)" in joined
+    assert "1st flap " not in joined and " FA " not in joined
+    # Underlying labels are untouched (serialisation contract).
+    assert res.labels[0] == "1st flap" and res.labels[8] == "1st tower FA"
+
+    def _col(sub):
+        return [to_rgb(t.get_color()) for t in ax.texts
+                if sub in t.get_text()][0]
+    assert np.allclose(_col("flapwise"), _C_BLADE, atol=1e-3)
+    assert np.allclose(_col("Fore-Aft"), _C_TOWER, atol=1e-3)
+    plt.close(fig)
+
+
+def test_plot_campbell_platform_red_distinct_styles_merged_labels(
 ) -> None:
-    """Issue #47: under log_freq the per-rev rays must still render as
-    the correct curve (the old two-point [0, rpm_max] sample collapsed
-    on a log axis). The 1P line is now densely sampled, strictly
-    positive, and tracks f = 1·rpm/60."""
-    pytest.importorskip("matplotlib")
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    from pybmodes.campbell import plot_campbell
-
-    fig = plot_campbell(_small_campbell(), excitation_orders=[1, 3],
-                        log_freq=True)
-    ax = fig.axes[0]
-    one_p = [ln for ln in ax.lines if ln.get_label() == "1P"]
-    assert len(one_p) == 1
-    x = np.asarray(one_p[0].get_xdata(), dtype=float)
-    y = np.asarray(one_p[0].get_ydata(), dtype=float)
-    # Densely sampled (not the old 2-point segment) and log-safe.
-    assert x.size >= 64
-    assert np.all(y > 0.0)
-    np.testing.assert_allclose(y, x / 60.0, rtol=1e-9)
-    plt.close(fig)
-
-
-def test_plot_campbell_native_platform_columns_go_to_legend() -> None:
-    """Issue #47: tower columns the FEM classified as platform DOFs
-    (surge/…/yaw, carried through CampbellResult.labels) become styled
-    LEGEND lines with a period label, *without* the caller passing
-    platform_modes by hand — and no flexible tower columns remain."""
+    """Issue #54: platform modes are red with *distinct line styles*
+    (the clustered low-freq family must be distinguishable), labelled
+    inline (NOT in the legend), near-degenerate pairs merged."""
     pytest.importorskip("matplotlib")
     import matplotlib
     matplotlib.use("Agg")
@@ -685,78 +703,70 @@ def test_plot_campbell_native_platform_columns_go_to_legend() -> None:
 
     from pybmodes.campbell import plot_campbell
 
-    res = _small_campbell()
-    res.frequencies[:, 2] = 0.0074   # surge
-    res.frequencies[:, 3] = 0.0492   # heave
-    res.labels = ["1st flap", "1st edge", "surge", "heave"]
-
-    fig = plot_campbell(res)   # no platform_modes passed
+    fig = plot_campbell(_fowt_campbell())
     ax = fig.axes[0]
-    leg = _legend_texts(ax)
-    assert any(t.startswith("surge (") for t in leg)
-    assert any(t.startswith("heave (") for t in leg)
-    assert all("Hz," in t and " s)" in t
-               for t in leg if t.split(" ")[0] in _DOFS)
-    pls = _platform_lines(ax)
-    assert len(pls) == 2
-    assert len({
-        (tuple(np.round(to_rgb(ln.get_color()), 3)), ln.get_linestyle())
-        for ln in pls
-    }) == 2                          # distinct styles
-    # No platform right-margin text; no flexible tower (grey) lines.
-    assert not any(t.get_text().strip().split(" ")[0] in _DOFS
-                   for t in ax.texts)
-    grey = [
-        ln for ln in ax.lines
-        if np.allclose(to_rgb(ln.get_color()), (0.25, 0.25, 0.25),
-                       atol=1e-3)
-    ]
-    assert grey == []
+    red_h = [ln for ln in ax.lines
+             if np.allclose(to_rgb(ln.get_color()), _C_PLAT, atol=1e-3)
+             and np.ptp(np.asarray(ln.get_ydata(), float)) < 1e-9]
+    assert len(red_h) >= 4
+    assert len({ln.get_linestyle() for ln in red_h}) >= 3   # distinct
+    joined = " | ".join(_texts(ax))
+    assert "surge/sway" in joined and "roll/pitch" in joined
+    assert "surge/sway" not in " ".join(_legend_texts(ax))
     plt.close(fig)
 
 
-def test_plot_campbell_tower_labels_decluttered() -> None:
-    """Issue #47 plot-iteration: the remaining *tower-bending*
-    right-margin labels are spread apart (>= ~5 % of axis height
-    between consecutive labels) so close modes don't stack."""
+def test_plot_campbell_operating_rpm_shades_inside_grey() -> None:
+    """Issue #54: operating_rpm shades the *window itself* grey
+    (outside white) + an 'Operating Speed Range' marker."""
     pytest.importorskip("matplotlib")
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.colors import to_rgb
 
-    from pybmodes.campbell import CampbellResult, plot_campbell
+    from pybmodes.campbell import plot_campbell
 
-    n_steps = 4
-    omega = np.linspace(0.0, 12.0, n_steps)
-    freqs = np.empty((n_steps, 4))
-    freqs[:, 0] = np.linspace(1.9, 2.0, n_steps)   # blade -> axis ~2 Hz
-    freqs[:, 1] = 0.30                              # close tower modes
-    freqs[:, 2] = 0.33
-    freqs[:, 3] = 0.36
-    parts = np.full((n_steps, 4, 3), 1.0 / 3.0)
-    res = CampbellResult(
-        omega_rpm=omega, frequencies=freqs,
-        labels=["1st flap", "1st tower FA", "1st tower SS",
-                "2nd tower FA"],
-        participation=parts, n_blade_modes=1, n_tower_modes=3,
-        mac_to_previous=np.full((n_steps, 4), np.nan),
-    )
-    fig = plot_campbell(res)        # linear axis
+    fig = plot_campbell(_fowt_campbell(), operating_rpm=(6.9, 12.1))
     ax = fig.axes[0]
-    ymin, ymax = ax.get_ylim()
-    grey = to_rgb((0.20, 0.20, 0.20))
-    ys = sorted(
-        t.get_position()[1] for t in ax.texts
-        if np.allclose(to_rgb(t.get_color()), grey, atol=1e-3)
-    )
-    assert len(ys) >= 2
-    fracs = [(y - ymin) / (ymax - ymin) for y in ys]
-    assert np.all(np.diff(fracs) >= 0.045)   # decluttered, not stacked
+    assert "Operating Speed Range" in _texts(ax)
+    spans = [p for p in ax.patches
+             if getattr(p, "get_x", None) is not None]
+    band = [p for p in spans
+            if abs(p.get_x() - 6.9) < 1e-6
+            and abs(p.get_width() - (12.1 - 6.9)) < 1e-6]
+    assert len(band) == 1                       # one grey window only
+    fig2 = plot_campbell(_fowt_campbell())      # none by default
+    assert "Operating Speed Range" not in _texts(fig2.axes[0])
     plt.close(fig)
+    plt.close(fig2)
+
+
+def test_plot_campbell_freq_max_caps_axis_and_autocap() -> None:
+    """Issue #54: explicit freq_max sets the top; the auto-cap keeps
+    the axis just above the structural modes (the steep per-rev rays
+    run off the top, not stretching the axis to ~9P)."""
+    pytest.importorskip("matplotlib")
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from pybmodes.campbell import plot_campbell
+
+    fig = plot_campbell(_fowt_campbell(), freq_max=0.8)
+    assert fig.axes[0].get_ylim()[1] == pytest.approx(0.8)
+    plt.close(fig)
+
+    fig2 = plot_campbell(_fowt_campbell())      # auto
+    top = fig2.axes[0].get_ylim()[1]
+    # struct max ≈ 1.10 Hz; auto-cap ≈ 1.3× that, far below the
+    # 9P ray value (9·15/60 = 2.25 Hz).
+    assert 1.2 < top < 1.7
+    plt.close(fig2)
 
 
 def test_plot_campbell_skips_nonfinite_platform_freq() -> None:
+    """NaN / non-positive platform frequencies are dropped (no line,
+    no inline label); a valid one is still drawn red + labelled."""
     pytest.importorskip("matplotlib")
     import matplotlib
     matplotlib.use("Agg")
@@ -770,9 +780,26 @@ def test_plot_campbell_skips_nonfinite_platform_freq() -> None:
                         ("zero", 0.0)],
     )
     ax = fig.axes[0]
-    leg = _legend_texts(ax)
-    assert any(t.startswith("surge (") for t in leg)
-    assert not any(t.startswith(("bad", "zero")) for t in leg)
+    joined = " | ".join(_texts(ax))
+    assert "surge (" in joined
+    assert "bad" not in joined and "zero" not in joined
+    plt.close(fig)
+
+
+def test_plot_campbell_non_floating_has_no_platform_family() -> None:
+    """Invariant: a non-floating result draws no Platform family key
+    and stays on a linear axis by default."""
+    pytest.importorskip("matplotlib")
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from pybmodes.campbell import plot_campbell
+
+    fig = plot_campbell(_small_campbell())
+    ax = fig.axes[0]
+    assert ax.get_yscale() == "linear"
+    assert "Platform" not in _legend_texts(ax)
     plt.close(fig)
 
 

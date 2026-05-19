@@ -18,7 +18,7 @@
 - go **one-click from a WISDEM/WindIO ontology** `.yaml` (or an RWT directory) to the full modal picture — `pybmodes windio <yaml>` discovers the ontology and any companion HydroDyn/MoorDyn/ElastoDyn decks (scoped to that turbine), then solves the composite-layup blade, the tubular tower, and — for a `floating_platform` — the coupled platform rigid-body modes, with an optional Campbell sweep and a bundled report. The blade defaults to its WindIO **published distributed elastic properties** when the ontology carries them (the common case — minimises deltas against the reference model) and falls back to a PreComp-class thin-wall multi-cell classical-lamination reduction of the **composite layup** only when they are absent (`RotatingBlade.from_windio(..., elastic="auto")`, issue #48); `elastic="precomp"` forces the layup reduction, `"file"` requires the published properties. The floating path is **two-tier**: with the companion decks present `Tower.from_windio_floating(...)` is the BModes-JJ-validated industry-grade coupled model (all six platform rigid-body modes + 1st tower bending within 0.0–0.3 % of `from_elastodyn_with_mooring`); without them it degrades to a member-Morison + catenary screening preview that says so via a `UserWarning`. Needs the optional `[windio]` extra (PyYAML);
 - fit ElastoDyn-compatible 6th-order blade and tower mode-shape polynomials, with design-matrix condition-number reporting, automatic resolution of degenerate FA/SS eigenpairs on symmetric structures, and a torsion-contamination filter that drops candidates with `T_tor ≥ 10 %` from the family selection;
 - patch OpenFAST ElastoDyn input files with fitted coefficients in three modes: in-place (with optional `.bak` backup), `--dry-run` (compute + summarise, write nothing), `--diff` (PR-ready coefficient-only diff with per-block RMS-improvement ratios), or `--output-dir DIR` (write to a separate directory, originals untouched);
-- assemble a Campbell diagram from a single OpenFAST deck — blade modes swept across rotor speed with Hungarian MAC-based tracking, tower modes overlaid as horizontal lines, plus the per-rev (1P, 3P, 6P, …) excitation family — for resonance checks like NREL 5MW's *3P × 1st-tower-FA at ~6–7 rpm*; per-step MAC confidence is exposed as `CampbellResult.mac_to_previous` for tracking-quality audits. For a coupled floating tower the six lowest tower columns come out natively named `surge` / `sway` / `heave` / `roll` / `pitch` / `yaw` (the FEM's own BModes-cross-validated classification carried through `CampbellResult.labels`) and `plot_campbell` auto-draws them in the navy platform family with frequency-and-period labels — no need to pass `platform_modes` by hand (it is still honoured for the screening path). `log_freq=True` renders correctly, including the per-rev rays (issue #47); the `pybmodes windio` floating path wires all of this automatically;
+- assemble a Campbell diagram from a single OpenFAST deck — blade modes swept across rotor speed with Hungarian MAC-based tracking, tower modes overlaid as horizontal lines, plus the per-rev (1P, 3P, 6P, …) excitation family — for resonance checks like NREL 5MW's *3P × 1st-tower-FA at ~6–7 rpm*; per-step MAC confidence is exposed as `CampbellResult.mac_to_previous` for tracking-quality audits. For a coupled floating tower the six lowest tower columns come out natively named `surge` / `sway` / `heave` / `roll` / `pitch` / `yaw` (the FEM's own BModes-cross-validated classification carried through `CampbellResult.labels`) — no need to pass `platform_modes` by hand. `plot_campbell` follows an engineering-report convention (issue #54): the legend carries only the four **family** keys (Blades / Tower / Platform / Blade Passing); every structural mode is named inline along its line, spelled out with its frequency (`1st Fore-Aft (0.48 Hz)`, `surge/sway (0.008 Hz)`); `operating_rpm=(lo, hi)` shades the operating window and `freq_max` (or the auto-cap) frames the modes of interest. `log_freq=True` renders correctly, including the per-rev rays; the `pybmodes windio` floating path wires all of this automatically;
 - compare two modal results mode-by-mode via `pybmodes.mac.compare_modes` — full MAC matrix, Hungarian-optimal pairing, per-pair % frequency shift, heatmap plotting via `plot_mac`;
 - serialise results to disk: `ModalResult.save(.npz)` / `to_json(.json)` round-trips frequencies + mode shapes + optional participation + fit residuals + pyBmodes-version / timestamp / source-file / git-hash metadata; `CampbellResult.save(.npz)` / `to_csv(.csv)` similarly;
 - emit bundled reports via `pybmodes.report.generate_report` — Markdown / HTML / CSV summary covering model assumptions, frequencies, mode classification, polynomial coefficients with fit residuals, validation verdict, `check_model` warnings, and optional Campbell-sweep first/last frequencies per mode;
@@ -303,18 +303,25 @@ print(result.n_blade_modes, result.n_tower_modes)  # 4 4
 
 fig = plot_campbell(
     result,
-    excitation_orders=[1, 2, 3, 6, 9],
     rated_rpm=12.1,
+    operating_rpm=(6.9, 12.1),   # shades the operating window grey
 )
 fig.savefig("campbell.png")
 ```
 
-The plot draws blade modes as solid coloured lines with markers, tower
-modes as horizontal dashed dark-grey lines, and the per-rev family
-(1P, 2P, …) as red dotted rays from the origin (shaded medium-to-dark
-red so the order of crossings is readable at a glance) — exactly the
-layout needed for the canonical *3P × 1st-tower-FA* resonance check at
-~6–7 rpm on the NREL 5MW.
+The plot follows an engineering-report convention (issue #54): the
+legend is just the four **family** keys (Blades green / Tower black /
+Platform red / Blade Passing blue, upper-left); blade modes are green
+curves, tower modes black lines, platform rigid-body modes red lines
+(distinct line styles so a clustered floater family stays readable),
+and the per-rev family blue rays with inline `nP` tags. Every
+structural mode is named inline along its line with its frequency in
+brackets (`1st Fore-Aft (0.48 Hz)`). `operating_rpm` shades the
+operating window and the frequency axis auto-caps just above the
+modes of interest (override with `freq_max`) — exactly the layout
+needed for the canonical *3P × 1st-tower-FA* resonance check at
+~6–7 rpm on the NREL 5MW. Default `excitation_orders` is
+`[1, 3, 6, 9]`.
 
 The same sweep is also available as a CLI subcommand:
 

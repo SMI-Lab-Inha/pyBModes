@@ -10,6 +10,50 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 (nothing yet)
 
+## [1.7.0] — 2026-05-18
+
+### Added
+
+- **``plot_campbell`` ``operating_rpm`` and ``freq_max`` (issue #54,
+  Kieran Mercer, Frazer & Nash).** ``operating_rpm=(lo, hi)`` shades
+  the operating rotor-speed window grey (outside stays white) and
+  draws a ``↔ Operating Speed Range`` marker. ``freq_max`` sets the
+  frequency-axis top; ``None`` (default) auto-caps just above the
+  highest *structural* mode so the modes of interest fill the figure
+  while the steep per-rev rays run off the top (standard Campbell-
+  report framing). Both additive, keyword-only.
+
+### Changed
+
+- **``plot_campbell`` redesigned to an engineering-report
+  convention (issue #54).** A multi-round, sample-driven redesign
+  approved by the requester:
+
+  - **Legend carries only the four family keys** — *Blades* (green),
+    *Tower* (black), *Platform* (red), *Blade Passing* (blue) — in
+    the **upper-left**; never a per-rev or per-mode entry.
+  - Structural modes are coloured by family and **named inline along
+    their lines** at staggered, white-backed positions (no
+    right-margin column, no arrows), spelled out with the frequency
+    in brackets — ``1st flapwise (0.68 Hz)``, ``1st Fore-Aft
+    (0.48 Hz)``, ``surge/sway (0.008 Hz)``. The spelling-out
+    (flap→flapwise, edge→edgewise, FA→Fore-Aft, SS→Side-to-Side) is
+    figure-only; ``CampbellResult.labels`` keeps the terse tokens for
+    CSV / API (serialisation contract unchanged).
+  - Near-degenerate symmetric platform pairs are merged
+    (``surge/sway``); the clustered low-frequency platform modes get
+    **distinct red line styles** so they stay distinguishable, and a
+    bunched sub-0.1 Hz cluster is decluttered in both x and y with
+    thin leaders.
+  - Per-rev rays are uniform blue with inline ``nP`` tags
+    (white-backed, off the lines); the **default
+    ``excitation_orders`` is now ``[1, 3, 6, 9]``** (was
+    ``[1, 2, 3, 6, 9]``).
+
+  No public-API signature break (the never-released interim
+  ``resonance_margin`` knob from development was dropped before
+  release); figure *appearance* changes substantially by design.
+
 ## [1.6.0] — 2026-05-18
 
 ### Added

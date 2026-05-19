@@ -920,28 +920,6 @@ def campbell_sweep(
     )
 
 
-# Distinct (colour, linestyle) per floating-platform DOF so each of
-# the six rigid-body modes is individually legible in the *legend*
-# (issue #47 follow-up: the modes were requested as styled legend
-# entries, not right-margin annotations). Keyed in OpenFAST DOF order;
-# an unrecognised name falls back to the cycle below by encounter
-# order so a non-standard label still gets a unique style.
-_PLAT_LINE_STYLES: dict[str, tuple[tuple[float, float, float], str]] = {
-    "surge": ((0.85, 0.00, 0.00), ":"),
-    "sway":  ((0.00, 0.00, 0.85), ":"),
-    "heave": ((0.00, 0.60, 0.00), "--"),
-    "roll":  ((0.80, 0.00, 0.80), "--"),
-    "pitch": ((0.00, 0.70, 0.70), "-."),
-    "yaw":   ((0.40, 0.30, 0.00), "-."),
-}
-_PLAT_FALLBACK_STYLES: list[tuple[tuple[float, float, float], str]] = [
-    ((0.30, 0.30, 0.30), ":"),
-    ((0.60, 0.40, 0.00), "--"),
-    ((0.00, 0.45, 0.70), "-."),
-    ((0.55, 0.00, 0.55), ":"),
-]
-
-
 def plot_campbell(
     result: CampbellResult,
     excitation_orders: list[int] | None = None,
@@ -949,16 +927,59 @@ def plot_campbell(
     ax=None,
     platform_modes: "list[tuple[str, float]] | None" = None,
     log_freq: bool = False,
+    *,
+    operating_rpm: "tuple[float, float] | None" = None,
+    freq_max: float | None = None,
 ):
     """Render a Campbell diagram from a :class:`CampbellResult`.
 
-    Blade modes are drawn as solid coloured lines (using whatever
-    matplotlib ``axes.prop_cycle`` is active — call
-    :func:`pybmodes.plots.apply_style` first for the MATLAB-styled
-    defaults), tower modes as horizontal dashed dark-grey lines with a
-    right-margin frequency label so the dashes are unambiguous, and
-    the per-rev excitation family as red dotted rays shaded
-    medium-to-dark by ascending order.
+    Engineering-report style (issue #54): structural modes are
+    coloured by **family**, the legend carries only those four family
+    keys, mode names are written inline next to their lines, and the
+    per-rev family is the only thing the legend enumerates as a group:
+
+    * **Blades** — green; per-blade curves, name written at the line.
+    * **Tower** — black; horizontal lines, name at the line.
+    * **Platform** — red; floating-platform rigid-body modes (surge /
+      sway / heave / roll / pitch / yaw), near-degenerate symmetric
+      pairs merged (``surge/sway``) to keep the figure clean.
+    * **Blade Passing** — blue; the per-rev rays (default 1P / 3P /
+      6P / 9P), each tagged ``↑ nP`` inline (no legend clutter).
+
+    ``operating_rpm=(lo, hi)`` shades the operating rotor-speed window
+    grey (outside it stays white) and draws a ``↔ Operating Speed
+    Range`` marker.
+
+    Parameters
+    ----------
+    result :
+        Output of :func:`campbell_sweep`.
+    excitation_orders :
+        Per-rev orders. Default ``[1, 3, 6, 9]``.
+    rated_rpm :
+        If given, a thin reference line at the operating rotor speed.
+    ax :
+        Existing Axes to draw into; a fresh figure if ``None``.
+    platform_modes :
+        Optional ``[(dof, freq_hz), ...]`` floating rigid-body modes
+        for the *screening* path (when the result has no platform
+        columns). Drawn in the red **Platform** family. The
+        coupled-tower path classifies these natively — see
+        :func:`campbell_sweep`.
+    log_freq :
+        Log-scaled frequency axis (the per-rev rays are densely
+        sampled so they render correctly). Default ``False``.
+    operating_rpm :
+        ``(lo, hi)`` rotor-speed operating window (rpm) — shaded grey
+        with an ``Operating Speed Range`` marker. ``None`` (default)
+        draws no band — backward compatible.
+    freq_max :
+        Upper frequency-axis limit (Hz). ``None`` (default) auto-caps
+        the axis just above the highest *structural* mode so the
+        modes of interest fill the figure (the steep per-rev rays run
+        off the top, as in a standard Campbell report) instead of the
+        axis stretching to the highest ray. Ignored when
+        ``log_freq=True``.
 
     Note on blade-line jitter
     -------------------------
@@ -976,59 +997,13 @@ def plot_campbell(
     comparisons (parked vs rated) are reliable, individual-step
     monotonicity is not.
 
-    Parameters
-    ----------
-    result :
-        Output of :func:`campbell_sweep`.
-    excitation_orders :
-        Per-rev orders to overlay; default ``[1, 2, 3, 6, 9]`` covers
-        1P (rotor) + 3P (3-bladed blade-passing) + the harmonics most
-        often called out in design reviews.
-    rated_rpm :
-        If supplied, draws a vertical reference line at the operating
-        rotor speed.
-    ax :
-        Existing matplotlib Axes to draw into; if ``None`` a fresh
-        figure is created.
-    platform_modes :
-        Optional ``[(dof_name, freq_hz), ...]`` for a floating
-        turbine's 6 rigid-body modes (surge / sway / heave / roll /
-        pitch / yaw). Each DOF is drawn as a rotor-speed-independent
-        horizontal line with its **own colour and line style** and a
-        **legend entry** carrying both frequency (Hz) and period (s)
-        — the natural period being the design-relevant quantity for a
-        floater (issue #47: the modes were requested as styled legend
-        entries, not crowded right-margin annotations). The first
-        occurrence of a DOF name wins, so a mode named by both the
-        native classification and an explicit ``platform_modes`` is
-        drawn once.
-
-        Note (issue #47): for a *coupled floating tower* fed straight
-        into :func:`campbell_sweep` you no longer need to pass this —
-        the sweep carries the FEM's own classified platform-DOF names
-        (``ModalResult.mode_labels``, the BModes-cross-validated
-        classifier) through ``CampbellResult.labels``, and any tower
-        column named ``surge`` … ``yaw`` is auto-styled into the
-        legend. ``platform_modes`` is still honoured for the
-        *screening* path, where platform frequencies were estimated
-        separately and there are no platform columns in the result.
-        ``None`` (default) with a non-floating result leaves the
-        diagram byte-identical to the pre-existing behaviour.
-    log_freq :
-        Use a log-scaled frequency axis. Useful when overlaying the
-        ~0.007–0.05 Hz platform rigid-body modes and the ~0.3–5 Hz
-        tower / blade modes on one figure. The per-rev excitation rays
-        (1P, 2P, …) are sampled on a dense grid so they render as the
-        correct curve on the log axis instead of disappearing (the
-        issue #47 two-point-sample bug). Default ``False`` (linear,
-        unchanged behaviour).
-
     Returns
     -------
     :class:`matplotlib.figure.Figure` for the rendered axes.
     """
     try:
         import matplotlib.pyplot as plt
+        from matplotlib.lines import Line2D
     except ImportError as exc:
         raise ImportError(
             "matplotlib is required for plot_campbell; install with "
@@ -1036,243 +1011,240 @@ def plot_campbell(
         ) from exc
 
     if excitation_orders is None:
-        excitation_orders = [1, 2, 3, 6, 9]
+        excitation_orders = [1, 3, 6, 9]
 
     if ax is None:
-        fig, ax = plt.subplots(figsize=(7.0, 5.0))
+        fig, ax = plt.subplots(figsize=(9.0, 6.0))
     else:
         fig = ax.figure
 
+    # Family colours (issue #54 — engineering-report convention):
+    # Blades green, Tower black, Platform red, Blade Passing blue.
+    C_BLADE = (0.0, 0.62, 0.0)
+    C_TOWER = (0.0, 0.0, 0.0)
+    C_PLAT = (0.85, 0.0, 0.0)
+    C_BP = (0.0, 0.0, 0.62)
+    C_OPR = (0.85, 0.85, 0.85)        # operating-speed-range shade
+
     rpm = result.omega_rpm
     rpm_max = float(rpm.max()) if rpm.size > 0 else 0.0
-
-    # Per-rev excitation rays — drawn behind the mode lines but in red
-    # so they read as the resonance-warning lines they are. Sample the
-    # ``Reds`` colormap from medium to dark so consecutive orders are
-    # visually distinguishable without a legend lookup; thicker stroke
-    # than the structural-mode lines so the rays stay legible when they
-    # cross dense mode clusters.
-    #
-    # The ray ``f = order · rpm / 60`` is a straight line through the
-    # origin only on a *linear* frequency axis. On a log axis it is a
-    # curve, and its ``rpm = 0`` endpoint (``f = 0`` → ``log(-inf)``)
-    # is undefined — a two-point ``[0, rpm_max]`` sample then collapses
-    # to nothing or a wrong straight segment, which is why ``1P`` /
-    # ``2P`` … vanished under ``log_freq`` (issue #47). Sample a dense
-    # grid instead (and start it just above zero on a log axis) so the
-    # rays render as the correct curve at either scale.
-    n_ray = 256
-    if log_freq and rpm_max > 0.0:
-        ray_rpm = np.linspace(rpm_max * 1.0e-3, rpm_max, n_ray)
-    else:
-        ray_rpm = np.linspace(0.0, rpm_max if rpm_max > 0.0 else 1.0, n_ray)
-    n_orders = max(len(excitation_orders), 1)
-    cmap = plt.get_cmap("Reds")
-    for i, order in enumerate(excitation_orders):
-        shade = cmap(0.45 + 0.50 * (i / max(n_orders - 1, 1)))
-        ax.plot(
-            ray_rpm,
-            order * ray_rpm / 60.0,
-            ":",
-            color=shade,
-            linewidth=1.4,
-            label=f"{order}P",
-            zorder=1,
-        )
-
+    xmax = rpm_max if rpm_max > 0.0 else 1.0
     n_blade = result.n_blade_modes
     n_tower = result.n_tower_modes
 
-    # Blade modes: solid coloured lines from the active prop_cycle.
-    for k in range(n_blade):
-        ax.plot(
-            rpm,
-            result.frequencies[:, k],
-            "-o",
-            markersize=3.5,
-            label=result.labels[k],
-            zorder=3,
-        )
-
-    # Tower columns split into two families by their label:
-    #
-    #   * a *rigid-body platform* DOF (surge / sway / heave / roll /
-    #     pitch / yaw) — for a coupled floating tower the FEM's own
-    #     classifier (``ModalResult.mode_labels``, BModes-cross-
-    #     validated) names the six lowest modes, and ``campbell_sweep``
-    #     now carries those names straight through (issue #47). These
-    #     are drawn in the navy *platform* family, not as grey tower
-    #     dashes, so the diagram self-describes without the caller
-    #     having to pass ``platform_modes`` by hand;
-    #   * a *flexible tower* bending / torsion mode ("1st tower FA" …)
-    #     — drawn as the horizontal dashed dark-grey lines, with a
-    #     right-margin merged label (a near-symmetric tower gives
-    #     FA ≈ SS, merged within 2 % so the two labels don't stack).
-    #
-    # The explicit ``platform_modes`` argument still works and is
-    # merged into the same navy family (the screening path supplies it
-    # when there are no platform columns in the result at all).
     from pybmodes.fem.platform_modes import _PLATFORM_DOF_NAMES
 
     plat_name_set = set(_PLATFORM_DOF_NAMES)
-    label_x = rpm_max if rpm_max > 0 else 1.0
-    tower_groups: list[dict] = []
-    platform_pairs: list[tuple[str, float]] = []
+    # Split tower columns into flexible-tower vs rigid-body platform.
+    flex_modes: list[tuple[str, float]] = []
+    plat_pairs: list[tuple[str, float]] = []
     for k in range(n_blade, n_blade + n_tower):
         f = float(result.frequencies[0, k])
         lbl = result.labels[k]
         if lbl in plat_name_set:
-            platform_pairs.append((lbl, f))
-            continue
-        ax.axhline(
-            f,
-            linestyle="--",
-            color=(0.25, 0.25, 0.25),
-            linewidth=1.1,
-            zorder=2,
-        )
-        short = lbl.replace("tower ", "")
-        merged = False
-        for g in tower_groups:
-            if abs(g["f"] - f) / max(g["f"], 1e-9) < 0.02:
-                g["names"].append(short)
-                # Take the mean for the printed frequency so a slight
-                # FA/SS asymmetry shows up rounded sensibly.
-                g["f"] = 0.5 * (g["f"] + f)
-                merged = True
-                break
-        if not merged:
-            tower_groups.append({"f": f, "names": [short]})
-
-    # Right-margin labels are collected here and drawn last, after the
-    # y-limits are known, so a declutter pass can spread overlapping
-    # ones apart (a FOWT stacks six rigid-body modes inside the bottom
-    # ~0.1 Hz of a multi-Hz axis — issue #47 follow-up).
-    margin_labels: list[dict] = []
-    for g in tower_groups:
-        text = " / ".join(g["names"]) + f" ({g['f']:.2f} Hz)"
-        margin_labels.append({
-            "y": g["f"], "text": f" {text}",
-            "color": (0.20, 0.20, 0.20),
-        })
-
-    # Floating-platform rigid-body modes: rotor-speed-independent, so
-    # horizontal like the tower modes, but dotted navy to read as a
-    # distinct family. Right-margin labels carry frequency AND period
-    # (the period is what a floater is characterised by). Symmetric
-    # platforms give surge ≈ sway and roll ≈ pitch — merged like the
-    # tower FA/SS pair so the labels don't stack. Sources: the natively
-    # classified tower columns above, plus any explicit
-    # ``platform_modes`` the caller passed (deduplicated by the 2 %
-    # frequency-merge so a DOF named by both routes appears once).
-    # Floating-platform rigid-body modes: rotor-speed-independent, so
-    # horizontal lines — but each DOF gets its own colour + linestyle
-    # and a *legend* entry (frequency + period) rather than a
-    # right-margin annotation, so on a FOWT the six modes are
-    # individually identifiable without crowding the plot margin
-    # (issue #47 follow-up). Sources: the natively classified tower
-    # columns above, plus any explicit ``platform_modes`` the caller
-    # passed; the first occurrence of a DOF name wins so a mode named
-    # by both routes is drawn once.
+            plat_pairs.append((lbl, f))
+        else:
+            flex_modes.append((lbl.replace("tower ", ""), f))
     if platform_modes:
-        platform_pairs = platform_pairs + list(platform_modes)
-    seen_dofs: set[str] = set()
-    fallback_i = 0
-    for name, f in platform_pairs:
-        f = float(f)
-        if not np.isfinite(f) or f <= 0.0:
+        plat_pairs += [(str(nm), float(fv)) for nm, fv in platform_modes]
+    seen: set[str] = set()
+    plat_clean: list[tuple[str, float]] = []
+    for nm, f in plat_pairs:
+        if nm in seen or not np.isfinite(f) or f <= 0.0:
             continue
-        nm = str(name)
-        if nm in seen_dofs:
-            continue
-        seen_dofs.add(nm)
-        style = _PLAT_LINE_STYLES.get(nm.lower())
-        if style is None:
-            style = _PLAT_FALLBACK_STYLES[
-                fallback_i % len(_PLAT_FALLBACK_STYLES)]
-            fallback_i += 1
-        col, ls = style
-        period = 1.0 / f if f > 0.0 else float("inf")
-        ax.axhline(
-            f,
-            color=col,
-            linestyle=ls,
-            linewidth=1.5,
-            zorder=2,
-            label=f"{nm} ({f:.4f} Hz, {period:.0f} s)",
-        )
+        seen.add(nm)
+        plat_clean.append((nm, f))
+    # Merge near-degenerate symmetric pairs (surge≈sway, roll≈pitch)
+    # within 2 % into one "a/b" label — matches the reference and
+    # keeps a symmetric floater's labels from stacking.
+    plat_clean.sort(key=lambda t: t[1])
+    plat_merged: list[tuple[str, float]] = []
+    for nm, f in plat_clean:
+        if (plat_merged
+                and abs(plat_merged[-1][1] - f) <= 0.02 * max(f, 1e-9)):
+            pn, pf = plat_merged[-1]
+            plat_merged[-1] = (f"{pn}/{nm}", 0.5 * (pf + f))
+        else:
+            plat_merged.append((nm, f))
 
+    # Operating-speed-range shading: the *window itself* is grey,
+    # outside stays white (behind everything).
+    op: tuple[float, float] | None = None
+    if operating_rpm is not None:
+        lo, hi = sorted(float(v) for v in operating_rpm)
+        lo, hi = max(0.0, lo), min(xmax, hi)
+        if hi > lo:
+            op = (lo, hi)
+            ax.axvspan(lo, hi, color=C_OPR, lw=0, zorder=0)
+
+    # Per-rev "Blade Passing" rays — uniform blue. Dense grid so the
+    # rays render correctly on a log axis too.
+    n_ray = 256
+    if log_freq and rpm_max > 0.0:
+        ray = np.linspace(rpm_max * 1.0e-3, rpm_max, n_ray)
+    else:
+        ray = np.linspace(0.0, xmax, n_ray)
+    for order in excitation_orders:
+        ax.plot(ray, order * ray / 60.0, "-", color=C_BP,
+                linewidth=1.8, zorder=2)
+
+    # Blade modes — uniform green curves ("Blades" family).
+    for k in range(n_blade):
+        ax.plot(rpm, result.frequencies[:, k], "-", color=C_BLADE,
+                linewidth=1.8, zorder=3)
+
+    # Flexible tower modes — black horizontal lines; platform modes —
+    # red horizontal lines.
+    for _nm, f in flex_modes:
+        ax.axhline(f, color=C_TOWER, linewidth=1.6, zorder=2)
+    # Platform modes cluster within a narrow low-frequency band, so
+    # one red colour alone makes them indistinguishable — give each a
+    # distinct line *style* (still the red family) so they can be told
+    # apart and traced to their labels.
+    _PLAT_LS = ["-", "--", "-.", ":", (0, (3, 1, 1, 1)), (0, (5, 2))]
+    for i, (_nm, f) in enumerate(plat_merged):
+        ax.axhline(f, color=C_PLAT, linewidth=1.6,
+                   linestyle=_PLAT_LS[i % len(_PLAT_LS)], zorder=2)
+
+    # Rated-speed reference (thin; the operating-range band is the
+    # primary speed annotation, so this stays out of the legend).
     if rated_rpm is not None:
-        ax.axvline(
-            rated_rpm,
-            color=(0.35, 0.35, 0.35),
-            linestyle="-.",
-            linewidth=0.8,
-            label=f"rated {rated_rpm:g} rpm",
-            zorder=1.5,
-        )
+        ax.axvline(float(rated_rpm), color=(0.4, 0.4, 0.4),
+                   linestyle=":", linewidth=0.9, zorder=1)
 
-    ax.set_xlabel("Rotor speed (rpm)")
-    ax.set_ylabel("Frequency (Hz)")
-    ax.set_title("Campbell diagram")
-    ax.set_xlim(0.0, rpm_max if rpm_max > 0.0 else 1.0)
+    ax.set_xlabel("Rotor Speed [RPM]")
+    ax.set_ylabel("Frequency [Hz]")
+    ax.set_title("Campbell Diagram")
+    ax.set_xlim(0.0, xmax)
     if log_freq:
         cand = [float(v) for v in np.asarray(result.frequencies).ravel()
                 if np.isfinite(v) and v > 0.0]
-        if platform_modes:
-            cand += [float(f) for _, f in platform_modes
-                     if np.isfinite(f) and f > 0.0]
+        cand += [f for _, f in plat_merged + flex_modes]
         floor = max(1.0e-4, 0.5 * min(cand)) if cand else 1.0e-3
         ax.set_yscale("log")
         ax.set_ylim(bottom=floor)
     else:
-        ax.set_ylim(bottom=0.0)
+        # Cap the axis just above the highest *structural* mode so the
+        # modes of interest fill the figure; the steep per-rev rays
+        # simply run off the top (standard Campbell-report framing).
+        struct_max = 0.0
+        if n_blade > 0:
+            struct_max = float(np.nanmax(
+                result.frequencies[:, :n_blade]))
+        for _nm, f in flex_modes + plat_merged:
+            struct_max = max(struct_max, f)
+        if freq_max is not None:
+            top = float(freq_max)
+        elif struct_max > 0.0:
+            top = 1.30 * struct_max     # headroom for the op-range bar
+        else:
+            top = None        # nothing structural — let matplotlib pick
+        ax.set_ylim(0.0, top)
+    ymin, ymax = ax.get_ylim()
+    log_scale = log_freq and ymin > 0.0 and ymax > ymin
 
-    # Draw the right-margin tower / platform labels now that the
-    # y-limits are fixed, spreading any that would overlap. A FOWT
-    # crowds six rigid-body modes (≈ 0.008–0.12 Hz) into the bottom
-    # sliver of an axis that runs to several Hz, so without this the
-    # navy period labels stack illegibly. The horizontal lines stay at
-    # the true frequency; only the text is nudged, with a thin leader
-    # back to the line, and the exact Hz is in the text so the mapping
-    # is never ambiguous.
-    if margin_labels:
-        ymin, ymax = ax.get_ylim()
-        log_scale = log_freq and ymin > 0.0 and ymax > ymin
+    def _to_frac(yv: float) -> float:
+        if log_scale:
+            return (np.log10(max(yv, ymin)) - np.log10(ymin)) / (
+                np.log10(ymax) - np.log10(ymin))
+        return (yv - ymin) / (ymax - ymin) if ymax > ymin else 0.0
 
-        def _to_frac(yv: float) -> float:
-            if log_scale:
-                return (np.log10(yv) - np.log10(ymin)) / (
-                    np.log10(ymax) - np.log10(ymin))
-            return (yv - ymin) / (ymax - ymin) if ymax > ymin else 0.0
+    def _from_frac(fr: float) -> float:
+        if log_scale:
+            return float(10.0 ** (np.log10(ymin) + fr * (
+                np.log10(ymax) - np.log10(ymin))))
+        return ymin + fr * (ymax - ymin)
 
-        def _from_frac(fr: float) -> float:
-            if log_scale:
-                return float(10.0 ** (np.log10(ymin) + fr * (
-                    np.log10(ymax) - np.log10(ymin))))
-            return ymin + fr * (ymax - ymin)
+    # Operating-speed-range marker — set just below the top so it
+    # clears the legend / frame.
+    if op is not None:
+        tr = ax.get_xaxis_transform()        # x = data, y = axes frac
+        ax.annotate("", xy=(op[1], 0.92), xytext=(op[0], 0.92),
+                    xycoords=tr, textcoords=tr,
+                    arrowprops=dict(arrowstyle="<->", color="0.30",
+                                    lw=1.3), zorder=5)
+        ax.text(0.5 * (op[0] + op[1]), 0.93, "Operating Speed Range",
+                transform=tr, ha="center", va="bottom", fontsize=9,
+                color="0.20", zorder=5)
 
-        ordered = sorted(margin_labels, key=lambda e: e["y"])
-        min_gap = 0.05          # ≥ 5 % of the axis height between labels
-        prev_fr: float | None = None
-        for e in ordered:
-            tf = _to_frac(float(e["y"]))
-            cur = tf if prev_fr is None else max(tf, prev_fr + min_gap)
-            prev_fr = cur
-            text_y = _from_frac(min(cur, 0.985))
-            if abs(_to_frac(text_y) - tf) > 1.0e-3:
-                ax.plot(
-                    [label_x, label_x], [e["y"], text_y],
-                    color=e["color"], linewidth=0.6, alpha=0.45,
-                    zorder=3, clip_on=False,
-                )
-            ax.text(
-                label_x, text_y, e["text"],
-                color=e["color"], fontsize=8, va="center", ha="left",
-                zorder=4, clip_on=False,
-            )
+    # Inline nP tags along the blue rays, heights staggered so
+    # successive orders don't collide. A white backing box keeps the
+    # tag from sitting on top of (overlapping) its ray.
+    no = len(excitation_orders)
+    for i, order in enumerate(excitation_orders):
+        ty = _from_frac(0.28 + 0.52 * (i / max(no - 1, 1)))
+        tx = ty * 60.0 / order
+        if tx > 0.90 * xmax:
+            tx = 0.55 * xmax
+            ty = order * tx / 60.0
+        ax.text(tx, ty, f"{order}P", color=C_BP, fontsize=9,
+                ha="center", va="center", zorder=4,
+                bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
+                          edgecolor="none", alpha=0.80))
 
-    ax.legend(loc="upper left", fontsize=8, ncol=2)
+    # Structural mode names written inline *along* their lines at
+    # staggered x positions (the reference technique) rather than
+    # stacked at the margin — a FOWT clusters several modes within a
+    # narrow frequency band, so vertical-only de-overlap piles them
+    # into one corner. Spreading the labels horizontally separates
+    # freq-adjacent modes; a white backing keeps them readable where
+    # they cross the per-rev rays. Only modes too close to the axis
+    # floor are nudged up (with a thin leader to the true line).
+    # Spell the engineering terms out for the figure (the terse
+    # tokens in CampbellResult.labels stay as-is for CSV / API).
+    _pretty_tok = {"flap": "flapwise", "edge": "edgewise",
+                   "FA": "Fore-Aft", "SS": "Side-to-Side"}
+
+    def _pretty(name: str) -> str:
+        return " ".join(_pretty_tok.get(t, t) for t in name.split(" "))
+
+    structural: list[tuple[str, float, tuple]] = []
+    for k in range(n_blade):
+        structural.append((_pretty(result.labels[k]),
+                           float(result.frequencies[0, k]), C_BLADE))
+    for _nm, f in flex_modes:
+        structural.append((_pretty(_nm), f, C_TOWER))
+    for _nm, f in plat_merged:
+        structural.append((_pretty(_nm), f, C_PLAT))
+    structural.sort(key=lambda e: e[1])
+    # Interleaved x comb (well inside the axes, never at the y-axis
+    # edge) so frequency-adjacent labels land far apart horizontally
+    # and clear of the top-right legend.
+    _comb = [0.07, 0.45, 0.24, 0.63, 0.36, 0.78, 0.15, 0.55]
+    floor_fr = 0.05
+    lifted = 0          # sub-floor modes stack up a low band, not pile
+    for i, (nm, f, col) in enumerate(structural):
+        xl = _comb[i % len(_comb)] * xmax
+        tf = _to_frac(f)
+        if tf < floor_fr:                       # too near the x-axis
+            ty = _from_frac(floor_fr + 0.075 * lifted)
+            lifted += 1
+            ax.plot([xl, xl], [f, ty], color=col, linewidth=0.6,
+                    alpha=0.45, zorder=2)        # thin leader, no head
+        else:
+            ty = f
+        ax.text(
+            xl, ty, f"{nm} ({f:.3g} Hz)", color=col, fontsize=8.5,
+            ha="left", va="center", zorder=5,
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
+                      edgecolor="none", alpha=0.70),
+        )
+
+    # Four family keys only (those that are present).
+    handles = []
+    if n_blade > 0:
+        handles.append(Line2D([], [], color=C_BLADE, lw=2.0,
+                              label="Blades"))
+    if flex_modes:
+        handles.append(Line2D([], [], color=C_TOWER, lw=2.0,
+                              label="Tower"))
+    if plat_merged:
+        handles.append(Line2D([], [], color=C_PLAT, lw=2.0,
+                              label="Platform"))
+    handles.append(Line2D([], [], color=C_BP, lw=2.0,
+                          label="Blade Passing"))
+    ax.legend(handles=handles, loc="upper left", frameon=True,
+              fontsize=9)
     return fig
 
 
