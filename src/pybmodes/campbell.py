@@ -1198,23 +1198,38 @@ def plot_campbell(
     def _pretty(name: str) -> str:
         return " ".join(_pretty_tok.get(t, t) for t in name.split(" "))
 
-    structural: list[tuple[str, float, tuple]] = []
+    # ``curve`` is the per-rpm blade frequency vector (blade modes are
+    # rotor-speed dependent) or ``None`` for the constant
+    # tower/platform lines. ``f0`` is the parked / constant frequency
+    # used only to order the labels and assign the x comb.
+    structural: list[tuple[str, float, tuple, "np.ndarray | None"]] = []
     for k in range(n_blade):
         structural.append((_pretty(result.labels[k]),
-                           float(result.frequencies[0, k]), C_BLADE))
+                           float(result.frequencies[0, k]), C_BLADE,
+                           np.asarray(result.frequencies[:, k],
+                                      dtype=float)))
     for _nm, f in flex_modes:
-        structural.append((_pretty(_nm), f, C_TOWER))
+        structural.append((_pretty(_nm), f, C_TOWER, None))
     for _nm, f in plat_merged:
-        structural.append((_pretty(_nm), f, C_PLAT))
+        structural.append((_pretty(_nm), f, C_PLAT, None))
     structural.sort(key=lambda e: e[1])
     # Interleaved x comb (well inside the axes, never at the y-axis
     # edge) so frequency-adjacent labels land far apart horizontally
-    # and clear of the top-right legend.
+    # and clear of the legend.
     _comb = [0.07, 0.45, 0.24, 0.63, 0.36, 0.78, 0.15, 0.55]
     floor_fr = 0.05
     lifted = 0          # sub-floor modes stack up a low band, not pile
-    for i, (nm, f, col) in enumerate(structural):
+    for i, (nm, f0, col, curve) in enumerate(structural):
         xl = _comb[i % len(_comb)] * xmax
+        # For a blade curve, anchor the label *on the curve* at this
+        # x (interpolated) — not at the parked frequency — so a mode
+        # with appreciable centrifugal stiffening isn't drawn far off
+        # its line, and the bracketed Hz matches where it sits
+        # (issue #54 follow-up — Codex review).
+        if curve is not None and rpm.size:
+            f = float(np.interp(xl, rpm, curve))
+        else:
+            f = f0
         tf = _to_frac(f)
         if tf < floor_fr:                       # too near the x-axis
             ty = _from_frac(floor_fr + 0.075 * lifted)
