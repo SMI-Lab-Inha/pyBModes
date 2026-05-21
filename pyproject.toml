@@ -85,17 +85,13 @@ docs = [
     # via ``include`` directives, so docs and the markdown source
     # stay in lockstep.
     # Pin Sphinx to the 8.x line: Sphinx 9.0 (released 2026) emits
-    # ``RemovedInSphinx10Warning`` deprecations from
-    # ``sphinx-autodoc-typehints`` that fail strict (-W) builds until
-    # the ecosystem catches up. Relax the upper pin once upstream
-    # has shipped a 9-compatible release.
+    # ``RemovedInSphinx10Warning`` deprecations that fail strict
+    # (-W) builds until the ecosystem catches up. Relax the upper
+    # pin once a 9-compatible plugin set is available.
     "sphinx>=7,<9",
     "furo>=2024.1",
     "myst-parser>=2",
     "linkify-it-py>=2",
-    # sphinx-autodoc-typehints 3.x requires sphinx>=9; keep paired
-    # with the sphinx<9 pin above until upstream catches up.
-    "sphinx-autodoc-typehints>=2,<3",
     "sphinx-copybutton>=0.5",
     # pybmodes' public API references numpy / scipy / matplotlib
     # in its docstrings; intersphinx pulls in their objects.inv.
