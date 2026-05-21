@@ -134,6 +134,9 @@ def run_batch(
     validate: bool = False,
     patch: bool = False,
     n_modes: int = 10,
+    dry_run: bool = False,
+    backup: bool = True,
+    output_dir: "str | pathlib.Path | None" = None,
 ) -> BatchResult:
     """Walk a directory tree of ElastoDyn decks, validate + optionally
     patch each one, and write a summary CSV.
@@ -147,7 +150,9 @@ def run_batch(
     out_dir : str or pathlib.Path
         Output directory. Created if missing. Receives per-deck
         validation reports (when ``validate=True``) and the
-        ``summary.csv``.
+        ``summary.csv``. **Distinct** from ``output_dir`` below —
+        ``out_dir`` carries the batch *reports*, ``output_dir``
+        carries the patched *decks*.
     kind : {"elastodyn"}, default "elastodyn"
         Which deck flavour to look for. Only ElastoDyn is supported
         today; passing anything else raises ``ValueError``.
@@ -157,13 +162,37 @@ def run_batch(
         ``overall_verdict`` populates the summary CSV); this flag
         only controls the per-deck text file.
     patch : bool, default False
-        Regenerate the polynomial blocks for each deck (modifies the
-        deck side-decks in place) and re-validate. When combined with
-        ``validate=True``, a second per-deck text file named
-        ``<deckname>_validate_after.txt`` captures the post-patch
+        Regenerate the polynomial blocks for each deck and re-validate.
+        Under the **default** ``backup=True`` (new in 1.8.0 — see
+        :func:`run_patch`), each deck's tower / blade side-decks are
+        copied to ``.bak`` siblings before the in-place rewrite so a
+        botched run is recoverable. Pass ``backup=False`` for the
+        legacy "modify in place without safety net" semantics. When
+        combined with ``validate=True``, a second per-deck text file
+        named ``<deckname>_validate_after.txt`` captures the post-patch
         state.
     n_modes : int, default 10
         Number of FEM modes to solve when patching.
+    dry_run : bool, default False
+        Patch-mode safety lever — compute the patched coefficients for
+        each deck without writing anything. The summary CSV still
+        carries the BEFORE-patch verdict (source files unchanged); the
+        per-deck messages report what *would* have changed. Mutually
+        exclusive with ``output_dir``.
+    backup : bool, default ``True``
+        Patch-mode safety lever — copy each tower / blade side-deck to
+        a ``.bak`` sibling before overwriting in place. Default changed
+        from ``False`` to ``True`` in 1.8.0: ``pybmodes batch --patch``
+        sweeps a directory tree, so a single bad run can mutate decks
+        the user didn't realise discovery picked up. Local-only safety
+        artefact; ``*.bak`` is gitignored. Ignored in ``dry_run`` or
+        ``output_dir`` mode (those write nothing or write elsewhere).
+    output_dir : str, pathlib.Path, or None, default None
+        Patch-mode safety lever — write the patched copies of each
+        deck's tower / blade side-decks into
+        ``output_dir / <deck stem>/`` instead of overwriting the
+        originals. The source tree is untouched. Mutually exclusive
+        with ``dry_run``.
 
     Returns
     -------
@@ -175,7 +204,9 @@ def run_batch(
     Raises
     ------
     ValueError
-        When ``kind`` is anything other than ``"elastodyn"``.
+        When ``kind`` is anything other than ``"elastodyn"``, or when
+        ``dry_run`` is combined with ``output_dir`` (those modes are
+        mutually exclusive — same convention as :func:`run_patch`).
     FileNotFoundError
         When ``root`` does not exist or is not a directory.
     """
@@ -183,15 +214,15 @@ def run_batch(
         raise ValueError(
             f"kind {kind!r} not supported (only 'elastodyn' for now)"
         )
+    if dry_run and output_dir is not None:
+        raise ValueError(
+            "dry_run is mutually exclusive with output_dir "
+            "(dry_run writes nothing, output_dir writes elsewhere — "
+            "pass one or the other, not both)"
+        )
 
-    from pybmodes.elastodyn import (
-        compute_blade_params,
-        compute_tower_params,
-        patch_dat,
-        validate_dat_coefficients,
-    )
-    from pybmodes.io.elastodyn_reader import read_elastodyn_main
-    from pybmodes.models import RotatingBlade, Tower
+    from pybmodes.elastodyn import validate_dat_coefficients
+    from pybmodes.workflows.patch import run_patch
 
     root_p = pathlib.Path(root).resolve()
     if not root_p.is_dir():
@@ -199,12 +230,26 @@ def run_batch(
 
     out_p = pathlib.Path(out_dir).resolve()
     out_p.mkdir(parents=True, exist_ok=True)
+    output_root = (
+        pathlib.Path(output_dir).resolve() if output_dir is not None else None
+    )
 
     decks = find_elastodyn_main_dats(root_p)
     messages: list[str] = []
     messages.append(
         f"batch: found {len(decks)} ElastoDyn main deck(s) under {root_p}"
     )
+    if patch:
+        if dry_run:
+            mode = "dry-run (no files modified)"
+        elif output_root is not None:
+            mode = f"write to {output_root}/<deck>/"
+        else:
+            mode = (
+                "in-place with .bak backup" if backup
+                else "in-place (no backup — pass backup=True for safety)"
+            )
+        messages.append(f"  patch mode: {mode}")
 
     summary_rows: list[dict[str, object]] = []
     for deck in decks:
@@ -237,35 +282,43 @@ def run_batch(
             report_path.write_text(report_text, encoding="utf-8")
             messages.append(f"  wrote {report_path.name}")
 
-        # --- 2. Optional patch.
+        # --- 2. Optional patch — delegate to run_patch per deck so the
+        # full safety machinery (dry_run / backup / output_dir / compute
+        # -before-write split) is reused unchanged.
         if patch:
             try:
-                main = read_elastodyn_main(deck)
-                tower_dat = deck.parent / main.twr_file
-                blade_dat = deck.parent / main.bld_file[0]
-                tower_modal = Tower.from_elastodyn(deck).run(
-                    n_modes=n_modes, check_model=False,
+                per_deck_out = (
+                    output_root / deck.stem if output_root is not None
+                    else None
                 )
-                blade_modal = RotatingBlade.from_elastodyn(deck).run(
-                    n_modes=n_modes, check_model=False,
+                patch_result = run_patch(
+                    deck,
+                    n_modes=n_modes,
+                    dry_run=dry_run,
+                    backup=backup,
+                    output_dir=per_deck_out,
                 )
-                patch_dat(tower_dat, compute_tower_params(tower_modal))
-                patch_dat(blade_dat, compute_blade_params(blade_modal))
-                messages.append(
-                    f"  patched {tower_dat.name} + {blade_dat.name}"
-                )
-                # Re-validate post-patch; overwrite ``result`` so the
-                # summary row carries the AFTER state. The BEFORE text
-                # is still on disk (if ``validate=True``) so users can
-                # diff the two.
-                result = validate_dat_coefficients(deck)
-                if validate:
-                    after_path = out_p / f"{deck.stem}_validate_after.txt"
-                    after_text = (
-                        "\n".join(_render_validation_report(result)) + "\n"
-                    )
-                    after_path.write_text(after_text, encoding="utf-8")
-                    messages.append(f"  wrote {after_path.name}")
+                for line in patch_result.messages:
+                    messages.append(f"  {line}")
+                # Only re-validate when the patch actually wrote new
+                # coefficients back into the deck's source tree (in-
+                # place mode). Dry-run and output-dir mode leave the
+                # source unchanged, so the summary row keeps the
+                # BEFORE-patch verdict — which IS the source-on-disk
+                # state — without misleading callers into thinking a
+                # re-validation happened.
+                if (not dry_run) and output_root is None:
+                    result = validate_dat_coefficients(deck)
+                    if validate:
+                        after_path = (
+                            out_p / f"{deck.stem}_validate_after.txt"
+                        )
+                        after_text = (
+                            "\n".join(_render_validation_report(result))
+                            + "\n"
+                        )
+                        after_path.write_text(after_text, encoding="utf-8")
+                        messages.append(f"  wrote {after_path.name}")
             except Exception as exc:
                 messages.append(f"  patch ERROR: {exc!r}")
                 summary_rows.append({

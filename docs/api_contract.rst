@@ -223,7 +223,14 @@ scripts run the same flows the CLI uses without going through
 - :func:`pybmodes.workflows.run_batch` /
   :class:`pybmodes.workflows.BatchResult` — walk a directory of
   ElastoDyn decks, validate + optionally patch each, write a
-  summary CSV plus per-deck validation reports.
+  summary CSV plus per-deck validation reports. As of 1.8.0 the
+  patch path carries the same safety contract as :func:`run_patch`:
+  ``dry_run`` for no-write previews, ``output_dir`` for redirected
+  writes, and ``backup`` (now defaulting to ``True``) for
+  ``.bak``-sibling preservation under in-place rewrites — a stronger
+  default than the single-deck path since ``batch`` mutates a tree
+  of files surfaced by discovery rather than a single hand-typed
+  filename.
 - :func:`pybmodes.workflows.run_campbell` /
   :class:`pybmodes.workflows.CampbellWorkflowResult` — rotor-speed
   sweep + Campbell-diagram PNG + per-mode-tracked CSV.
