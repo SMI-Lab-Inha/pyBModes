@@ -141,7 +141,7 @@ class RotatingBlade:
             read_elastodyn_main,
             to_pybmodes_blade,
         )
-        from pybmodes.models.tower import _run_validation_and_warn
+        from pybmodes.models._shared import _run_validation_and_warn
 
         main_dat_path = pathlib.Path(main_dat_path)
         main = read_elastodyn_main(main_dat_path)
