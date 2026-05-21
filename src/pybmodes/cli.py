@@ -192,9 +192,15 @@ def _cmd_batch(args: argparse.Namespace) -> int:
             validate=args.validate,
             patch=args.patch,
             n_modes=args.n_modes,
+            dry_run=args.dry_run,
+            backup=args.backup,
+            output_dir=args.output_dir,
         )
     except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        msg = str(exc)
+        msg = msg.replace("dry_run", "--dry-run")
+        msg = msg.replace("output_dir", "--output-dir")
+        print(f"error: {msg}", file=sys.stderr)
         return 2
     except FileNotFoundError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -503,7 +509,42 @@ def _build_parser() -> argparse.ArgumentParser:
              "deck's tower and blade .dat files (in place). When "
              "combined with --validate, also writes a "
              "<deck>_validate_after.txt report alongside the "
-             "before-patch one. Use with care — patching is in-place.",
+             "before-patch one. Default-safe in 1.8.0: each side-deck "
+             "is .bak-copied before the rewrite — pass --no-backup to "
+             "opt out; pass --dry-run for a no-write preview; pass "
+             "--output-dir DIR to write patched copies elsewhere.",
+    )
+    p_batch.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="patch-mode safety lever: compute the patched coefficients "
+             "for each deck without writing anything. Ignored when "
+             "--patch is not set.",
+    )
+    p_batch.add_argument(
+        "--backup",
+        action="store_true",
+        default=True,
+        help="patch-mode safety lever: copy each tower/blade side-deck "
+             "to a .bak sibling before overwriting in place "
+             "(default: on; pass --no-backup to disable).",
+    )
+    p_batch.add_argument(
+        "--no-backup",
+        action="store_false",
+        dest="backup",
+        help="opt out of the default --backup behaviour for "
+             "--patch (in-place rewrite with no recoverable copy).",
+    )
+    p_batch.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="patch-mode safety lever: write patched copies of each "
+             "deck's tower/blade side-decks into "
+             "<output-dir>/<deck-stem>/ instead of overwriting the "
+             "originals. Mutually exclusive with --dry-run. Ignored "
+             "when --patch is not set.",
     )
     p_batch.set_defaults(func=_cmd_batch)
 
