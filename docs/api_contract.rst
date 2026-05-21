@@ -181,6 +181,29 @@ Reports
   coefficients with fit residuals, validation, check_model
   warnings, Campbell sweep).
 
+Workflows (Phase 2 of the 1.x architecture refactor)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The :mod:`pybmodes.workflows` sub-package exposes each CLI
+subcommand as a typed library function returning a
+:class:`WorkflowResult` subclass. Lets notebooks and external
+scripts run the same flows the CLI uses without going through
+:mod:`subprocess`. The CLI in :mod:`pybmodes.cli` is now a thin
+``argparse + delegate + format result + map exit code`` layer.
+
+- :class:`pybmodes.workflows.WorkflowResult` — base dataclass
+  with ``exit_code`` / ``messages`` / ``errors``.
+- :func:`pybmodes.workflows.run_validate` /
+  :class:`pybmodes.workflows.ValidateResult` — coefficient-
+  consistency check on one ElastoDyn deck.
+- :func:`pybmodes.workflows.run_examples_copy` /
+  :class:`pybmodes.workflows.ExamplesResult` — vendor
+  ``sample_inputs`` and / or ``reference_decks`` out of the
+  installed wheel.
+
+Patch / batch / report / campbell / windio workflows land in
+follow-up PRs (Phase 2 PR B2 and B3).
+
 Mooring + hydro
 ^^^^^^^^^^^^^^^
 
