@@ -24,17 +24,33 @@ typical use — ``HydroDynReader(...).read_platform_matrices()`` and
 """
 
 from pybmodes.io.bmi import PlatformSupport, TipMassProps
+from pybmodes.io.errors import (
+    BMIParseError,
+    ElastoDynParseError,
+    MoorDynParseError,
+    ParseError,
+    SubDynParseError,
+    WAMITParseError,
+    WindIOParseError,
+)
 from pybmodes.io.out_parser import BModeOutParseError, read_out
 from pybmodes.io.wamit_reader import HydroDynReader, WamitData, WamitReader
 from pybmodes.mooring import MooringSystem
 
 __all__ = [
+    "BMIParseError",
     "BModeOutParseError",
+    "ElastoDynParseError",
     "HydroDynReader",
+    "MoorDynParseError",
     "MooringSystem",
+    "ParseError",
     "PlatformSupport",
+    "SubDynParseError",
     "TipMassProps",
+    "WAMITParseError",
     "WamitData",
     "WamitReader",
+    "WindIOParseError",
     "read_out",
 ]
