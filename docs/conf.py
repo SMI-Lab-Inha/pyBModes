@@ -38,9 +38,19 @@ myst_enable_extensions = [
     "colon_fence",
     "deflist",
     "fieldlist",
-    "linkify",
     "substitution",
     "tasklist",
+    # ``dollarmath`` enables ``$inline$`` and ``$$block$$`` math in the
+    # included root-level Markdown (CHANGELOG / VALIDATION). Without
+    # it the dollar signs render as literal text. ``amsmath`` adds
+    # the ``\begin{align}...\end{align}`` family for multi-line
+    # derivations.
+    "dollarmath",
+    "amsmath",
+    # ``linkify`` was previously enabled but turned bare text like
+    # ``README.md`` or ``build.py`` into ``http://README.md`` URLs
+    # that 404 from the docs site. We don't need auto-link conversion
+    # — every URL in the source uses explicit ``http(s)://`` already.
 ]
 myst_heading_anchors = 3
 # The Sphinx tree itself is reStructuredText (flat ``docs/*.rst``); MyST
@@ -52,12 +62,12 @@ source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-# Included Markdown files (CHANGELOG, VALIDATION, CONTRIBUTING) carry
-# repo-relative paths like ``tests/test_campbell.py`` that GitHub
-# renders as links but Sphinx tries to resolve as in-docset cross-
-# references. They are intentionally GitHub-rendered links — suppress
-# the cross-reference warnings rather than rewrite the source files.
-suppress_warnings = ["myst.xref_missing"]
+# We deliberately do NOT suppress ``myst.xref_missing`` any more — the
+# previous policy hid genuinely broken links (relative ``tests/foo.py``
+# paths in the included CHANGELOG / VALIDATION that resolve on GitHub
+# but 404 from the docs site). Those links are now rewritten to
+# absolute GitHub URLs in the source files, so any new occurrence is
+# a real defect the build should surface.
 
 autosummary_generate = True
 autodoc_default_options = {

@@ -6,11 +6,11 @@
 
 `pybmodes` is a pure-Python finite-element library for wind-turbine blade and tower modal analysis. It reads OpenFAST (ElastoDyn / SubDyn / HydroDyn / MoorDyn), BModes `.bmi`, and WISDEM / WindIO ontology YAML inputs; solves the coupled flap–lag–torsion–axial vibration modes with a 15-DOF Bernoulli-Euler beam element; and emits ElastoDyn-compatible mode-shape polynomials, MAC-tracked Campbell diagrams, and bundled Markdown / HTML / CSV reports.
 
-Validated against the BModes Fortran reference solver on six benchmark cases (NREL 5MW land + OC3 monopile + OC3 Hywind floating spar, IEA-3.4-130-RWT, BModes CertTest 03 / 04) to **better than 0.01 %** on every comparison — the strict tolerance is enforced by the `pytest -m integration` suite (which needs the upstream OpenFAST / BModes decks staged under `external/`; see [`docs/data_sources.rst`](docs/data_sources.rst) for the layout and [`external/MANIFEST.toml`](external/MANIFEST.toml) for the pinned SHAs + file hashes you can verify against). Public CI runs the self-contained suite (synthetic + closed-form-referenced) and tolerates "no tests collected" on the integration step when the runner has no upstream data — see [`VALIDATION.md`](VALIDATION.md) for the full per-case matrix with external-data flags.
+Validated against the BModes Fortran reference solver on six benchmark cases (NREL 5MW land + OC3 monopile + OC3 Hywind floating spar, IEA-3.4-130-RWT, BModes CertTest 03 / 04) to **better than 0.01 %** on every comparison — the strict tolerance is enforced by the `pytest -m integration` suite (which needs the upstream OpenFAST / BModes decks staged under `external/`; see [`docs/data_sources.rst`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/data_sources.rst) for the layout and [`external/MANIFEST.toml`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/external/MANIFEST.toml) for the pinned SHAs + file hashes you can verify against). Public CI runs the self-contained suite (synthetic + closed-form-referenced) and tolerates "no tests collected" on the integration step when the runner has no upstream data — see [`VALIDATION.md`](VALIDATION.md) for the full per-case matrix with external-data flags.
 
 ## Documentation
 
-The full user guide, theory notes, API reference, and validation matrix live in the Sphinx site under [`docs/`](docs/) — built on [Read the Docs](https://pybmodes.readthedocs.io/) and reproducible locally with:
+The full user guide, theory notes, API reference, and validation matrix live in the Sphinx site under [`docs/`](https://github.com/SMI-Lab-Inha/pyBModes/tree/master/docs/) — built on [Read the Docs](https://pybmodes.readthedocs.io/) and reproducible locally with:
 
 ```bash
 pip install -e ".[docs]"
@@ -19,15 +19,15 @@ make -C docs html
 
 Direct links into the source tree:
 
-- [Installation](docs/installation.rst)
-- [Quickstart](docs/quickstart.rst)
-- [Theory](docs/theory.rst)
-- [Data sources](docs/data_sources.rst)
-- [Limitations](docs/limitations.rst)
-- [Validation matrix](docs/validation.rst) (cross-references [`VALIDATION.md`](VALIDATION.md))
-- [API reference](docs/api.rst)
-- [API contract](docs/api_contract.rst) (semver-frozen public surface)
-- [Changelog](docs/changelog.rst) (cross-references [`CHANGELOG.md`](CHANGELOG.md))
+- [Installation](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/installation.rst)
+- [Quickstart](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/quickstart.rst)
+- [Theory](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/theory.rst)
+- [Data sources](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/data_sources.rst)
+- [Limitations](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/limitations.rst)
+- [Validation matrix](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/validation.rst) (cross-references [`VALIDATION.md`](VALIDATION.md))
+- [API reference](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/api.rst)
+- [API contract](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/api_contract.rst) (semver-frozen public surface)
+- [Changelog](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/changelog.rst) (cross-references [`CHANGELOG.md`](CHANGELOG.md))
 
 ## Install
 
@@ -47,7 +47,7 @@ pip install pybmodes        # (post-PyPI-release; not available yet)
 
 Take care that **`pybmodes` is a different project from `pyModeS`** (an ADS-B / Mode-S decoder). When the PyPI release lands the project name on PyPI will be `pybmodes` (lowercase, no S); double-check the package name + the GitHub `SMI-Lab-Inha/pyBModes` repo URL before installing.
 
-See [`docs/installation.rst`](docs/installation.rst) for the full Windows + conda quickstart and the optional-extras matrix (`[plots]`, `[windio]`, `[notebook]`, `[docs]`).
+See [`docs/installation.rst`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/installation.rst) for the full Windows + conda quickstart and the optional-extras matrix (`[plots]`, `[windio]`, `[notebook]`, `[docs]`).
 
 ## Quick example
 
@@ -66,7 +66,7 @@ params = compute_tower_params(modal)
 patch_dat("NRELOffshrBsline5MW_Onshore_ElastoDyn.dat", params)
 ```
 
-More — Campbell sweeps, WindIO one-click, mode-by-mode MAC comparison, bundled reports — in [`docs/quickstart.rst`](docs/quickstart.rst).
+More — Campbell sweeps, WindIO one-click, mode-by-mode MAC comparison, bundled reports — in [`docs/quickstart.rst`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/quickstart.rst).
 
 ## CLI
 

@@ -53,10 +53,26 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 VALIDATION_MD = REPO_ROOT / "VALIDATION.md"
 
 # Markdown link: [link-text](path). We restrict to links whose target
-# starts with "tests/" — i.e. the test-file references inside the
-# validation matrix. Other links (e.g. external citations, README
-# cross-refs) are ignored.
-_LINK_RE = re.compile(r"\]\((tests/[^)]+)\)")
+# references a ``tests/...`` path. Two forms accepted (both render
+# correctly on GitHub):
+#
+# * Relative: ``[label](tests/test_x.py)`` — the older form before the
+#   docs build was wired up.
+# * Absolute GitHub blob URL: ``[label](https://github.com/<owner>/
+#   <repo>/blob/<branch>/tests/test_x.py)`` — the current form, which
+#   also resolves correctly from the Sphinx docs site (where relative
+#   paths 404).
+#
+# The trailing ``tests/...`` segment is the same in both forms, so a
+# single regex extracts the repo-relative path. Other links (external
+# citations, README cross-refs) are ignored.
+_LINK_RE = re.compile(
+    r"\]\("
+    r"(?:https?://github\.com/[^/]+/[^/]+/(?:blob|tree)/[^/]+/)?"
+    r"(tests/[^)\s#]+)"
+    r"(?:\#[^)]*)?"
+    r"\)"
+)
 
 
 def _collect_test_paths() -> list[pathlib.Path]:
