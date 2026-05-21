@@ -200,9 +200,24 @@ scripts run the same flows the CLI uses without going through
   :class:`pybmodes.workflows.ExamplesResult` — vendor
   ``sample_inputs`` and / or ``reference_decks`` out of the
   installed wheel.
+- :func:`pybmodes.workflows.run_patch` /
+  :class:`pybmodes.workflows.PatchResult` — regenerate the
+  tower + blade polynomial coefficient blocks of an ElastoDyn
+  deck. Five mutually-supportive output modes (default in-place,
+  ``backup``, ``output_dir``, ``dry_run``, ``diff``); ``diff``
+  attaches a coefficient-only diff with per-block RMS-improvement
+  ratios to ``messages``.
+- :func:`pybmodes.workflows.run_report` /
+  :class:`pybmodes.workflows.ReportResult` — modal solve +
+  optional coefficient validation + optional Campbell sweep on
+  one deck, rendered to Markdown / HTML / CSV.
+- :func:`pybmodes.workflows.run_batch` /
+  :class:`pybmodes.workflows.BatchResult` — walk a directory of
+  ElastoDyn decks, validate + optionally patch each, write a
+  summary CSV plus per-deck validation reports.
 
-Patch / batch / report / campbell / windio workflows land in
-follow-up PRs (Phase 2 PR B2 and B3).
+Campbell / windio workflows land in the follow-up PR (Phase 2 PR
+B3).
 
 Mooring + hydro
 ^^^^^^^^^^^^^^^

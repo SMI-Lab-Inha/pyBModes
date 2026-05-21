@@ -50,7 +50,6 @@ Run from the repo root::
 
 from __future__ import annotations
 
-import io
 import pathlib
 import re
 import shutil
@@ -63,7 +62,6 @@ SRC_DIR = REPO_ROOT / "src"
 if SRC_DIR.is_dir() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from pybmodes.cli import _print_validation_report  # noqa: E402
 from pybmodes.elastodyn import (  # noqa: E402
     compute_blade_params,
     compute_tower_params,
@@ -72,6 +70,7 @@ from pybmodes.elastodyn import (  # noqa: E402
 )
 from pybmodes.io.elastodyn_reader import read_elastodyn_main  # noqa: E402
 from pybmodes.models import RotatingBlade, Tower  # noqa: E402
+from pybmodes.workflows.validate import _render_validation_report  # noqa: E402
 
 REFERENCE_DECKS_DIR = (
     REPO_ROOT / "src" / "pybmodes" / "_examples" / "reference_decks"
@@ -307,9 +306,7 @@ def _capture_validate_output(dat_path: pathlib.Path) -> str:
     machine-independent.
     """
     result = validate_dat_coefficients(dat_path)
-    buf = io.StringIO()
-    _print_validation_report(result, file=buf)
-    text = buf.getvalue()
+    text = "\n".join(_render_validation_report(result)) + "\n"
     return text.replace(str(dat_path), dat_path.name)
 
 

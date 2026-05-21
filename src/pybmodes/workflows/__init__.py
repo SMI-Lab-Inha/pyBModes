@@ -66,9 +66,21 @@ exception); the CLI's translation layer absorbs the messy
 from __future__ import annotations
 
 from pybmodes.workflows._base import WorkflowResult
+from pybmodes.workflows.batch import (
+    BatchResult,
+    run_batch,
+)
 from pybmodes.workflows.examples import (
     ExamplesResult,
     run_examples_copy,
+)
+from pybmodes.workflows.patch import (
+    PatchResult,
+    run_patch,
+)
+from pybmodes.workflows.report import (
+    ReportResult,
+    run_report,
 )
 from pybmodes.workflows.validate import (
     ValidateResult,
@@ -79,6 +91,12 @@ __all__ = [
     "WorkflowResult",
     "ValidateResult",
     "ExamplesResult",
+    "PatchResult",
+    "ReportResult",
+    "BatchResult",
     "run_validate",
     "run_examples_copy",
+    "run_patch",
+    "run_report",
+    "run_batch",
 ]
