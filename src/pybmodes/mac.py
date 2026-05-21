@@ -118,7 +118,7 @@ def mac_matrix(
     norms_A = np.einsum("ij,ij->i", V_A, V_A)
     norms_B = np.einsum("ij,ij->i", V_B, V_B)
     denom = np.outer(norms_A, norms_B)
-    out = np.zeros_like(inner)
+    out: np.ndarray = np.zeros_like(inner)
     safe = denom > 0.0
     out[safe] = (inner[safe] ** 2) / denom[safe]
     return out

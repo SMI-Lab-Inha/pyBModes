@@ -185,6 +185,13 @@ module = [
     "pybmodes.fem.solver",
     "pybmodes.models.result",
     "pybmodes.models._pipeline",
+    # Phase 1 PR A2 — strict typing extended to the public-API core.
+    "pybmodes.models.tower",
+    "pybmodes.models.blade",
+    "pybmodes.campbell",
+    "pybmodes.mac",
+    "pybmodes.io.bmi",
+    "pybmodes.options",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
