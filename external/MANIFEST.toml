@@ -1,0 +1,118 @@
+# external/MANIFEST.toml — pinned reproducibility manifest for the
+# integration-test track.
+#
+# Each ``[clone.<name>]`` block declares an upstream repository, the
+# git SHA to check out, and a few well-known file paths whose SHA-256
+# hashes uniquely identify the deck content. A reproducible run of
+# ``pytest -m integration`` against the published 0.01 % tolerance
+# requires every clone here at the pinned SHA.
+#
+# The pinned SHAs are intentionally **commit-level** — branches move,
+# tags can be retroactively reassigned, but a commit SHA is immutable.
+# Bumping a clone to a newer SHA is a deliberate maintainer action
+# documented in the corresponding CHANGELOG entry under *Changed*.
+#
+# To verify your local ``external/`` matches the manifest, run::
+#
+#     python scripts/verify_external_data.py
+#
+# A clone whose remote SHA matches the pin but whose hashed files
+# disagree means the upstream repo has been rewritten in-place — flag
+# it as a release-blocker.
+
+[manifest]
+schema_version = 1
+last_updated = "2026-05-21"
+maintainer = "Jae Hoon Seo <jaehoon.seo@inha.ac.kr>"
+
+# ---------------------------------------------------------------------------
+# OpenFAST regression-test suite (r-test)
+# ---------------------------------------------------------------------------
+# The OpenFAST team's curated regression decks. Source of truth for the
+# NREL 5MW land + monopile + OC3 Hywind integration tests.
+[clone.openfast_r-test]
+repo = "https://github.com/OpenFAST/r-test.git"
+sha = "TBD"                              # pin via verify_external_data.py --update
+relative_path = "external/OpenFAST_files/r-test"
+fetch_at = "shallow"                     # ``git clone --depth=1`` is enough
+hashes = { }                             # populated by --update; see script docstring
+
+# ---------------------------------------------------------------------------
+# IEA Wind Task 37 reference turbines
+# ---------------------------------------------------------------------------
+# Each IEA-N-RWT lives in its own GitHub repository. Pinning the SHA
+# locks the design version (e.g. v1.0 vs v1.1 of the IEA-15-240-RWT
+# tower redesign), which matters for the Allen 2020 / Gaertner 2020
+# free-decay frequency reference numbers.
+
+[clone.iea_3_4_130]
+repo = "https://github.com/IEAWindTask37/IEA-3.4-130-RWT.git"
+sha = "TBD"
+relative_path = "external/OpenFAST_files/IEA-3.4-130-RWT"
+fetch_at = "shallow"
+hashes = { }
+
+[clone.iea_10_198]
+repo = "https://github.com/IEAWindTask37/IEA-10.0-198-RWT.git"
+sha = "TBD"
+relative_path = "external/OpenFAST_files/IEA-10.0-198-RWT"
+fetch_at = "shallow"
+hashes = { }
+
+[clone.iea_15_240]
+repo = "https://github.com/IEAWindTask37/IEA-15-240-RWT.git"
+sha = "TBD"
+relative_path = "external/OpenFAST_files/IEA-15-240-RWT"
+fetch_at = "shallow"
+notes = "v1.1 tower redesign is the pinned target — Allen 2020 free-decay reference."
+hashes = { }
+
+[clone.iea_22_280]
+repo = "https://github.com/IEAWindTask37/IEA-22-280-RWT.git"
+sha = "TBD"
+relative_path = "external/OpenFAST_files/IEA-22-280-RWT"
+fetch_at = "shallow"
+hashes = { }
+
+# ---------------------------------------------------------------------------
+# WISDEM (for the WindIO ontology examples it ships)
+# ---------------------------------------------------------------------------
+[clone.wisdem]
+repo = "https://github.com/WISDEM/WISDEM.git"
+sha = "TBD"
+relative_path = "external/OpenFAST_files/WISDEM"
+fetch_at = "shallow"
+hashes = { }
+
+# ---------------------------------------------------------------------------
+# BModes Fortran reference solver
+# ---------------------------------------------------------------------------
+# Not redistributable; clone locally from the NREL download. The
+# CertTest reference outputs (Test03 / Test04) anchor the 82.4 m
+# tower + tension-wire validation cases.
+[clone.bmodes]
+repo = "TBD — clone from NREL BModes download (not GitHub)"
+sha = "v3.00.00"                         # BModes uses tag-only versioning
+relative_path = "external/BModes"
+fetch_at = "tagged-archive"
+notes = "BModes ships as a download (not a git repo). The release archive ``BModes_v3.00.00.zip`` from the NREL site contains the CertTest/ and docs/examples/ trees pyBmodes consumes."
+hashes = { }                             # populated by --update on a maintainer machine
+
+# ---------------------------------------------------------------------------
+# MoorPy + RAFT (cross-comparison references)
+# ---------------------------------------------------------------------------
+[clone.moorpy]
+repo = "https://github.com/NREL/MoorPy.git"
+sha = "TBD"
+relative_path = "external/MoorPy"
+fetch_at = "shallow"
+notes = "Optional — used for cross-comparison against pybmodes.mooring on OC3 Hywind."
+hashes = { }
+
+[clone.raft]
+repo = "https://github.com/WISDEM/RAFT.git"
+sha = "TBD"
+relative_path = "external/RAFT"
+fetch_at = "shallow"
+notes = "Optional — used for the WindIO floating screening-tier cross-check."
+hashes = { }
