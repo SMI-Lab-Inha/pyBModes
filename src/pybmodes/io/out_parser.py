@@ -40,8 +40,10 @@ from typing import Optional
 
 import numpy as np
 
+from pybmodes.io.errors import ParseError as _ParseError
 
-class BModeOutParseError(ValueError):
+
+class BModeOutParseError(_ParseError):
     """Raised by :func:`read_out` under ``strict=True`` when a ``.out``
     file is not cleanly parseable.
 
@@ -51,6 +53,13 @@ class BModeOutParseError(ValueError):
     workflows that must trust every value should pass ``strict=True``;
     the message then carries the source file, the 1-based line number,
     and the mode context so the offending location is unambiguous.
+
+    Inherits :class:`pybmodes.io.errors.ParseError` (which in turn
+    inherits :class:`ValueError`), so existing
+    ``except ValueError`` callers still catch this exception
+    unchanged — the inheritance addition is backward-compatible. New
+    callers can ``except ParseError`` to get a typed handler that
+    works across every ``pybmodes.io.*`` parser.
     """
 
 

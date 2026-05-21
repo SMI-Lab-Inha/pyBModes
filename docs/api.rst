@@ -22,6 +22,13 @@ High-level models
 Input / output
 --------------
 
+Parse errors (common across every ``pybmodes.io.*`` reader)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: pybmodes.io.errors
+   :members:
+   :show-inheritance:
+
 BModes ``.bmi``
 ^^^^^^^^^^^^^^^
 

@@ -201,6 +201,17 @@ I/O
 - :func:`pybmodes.io.windio.read_windio_tubular`
 - :func:`pybmodes.io.windio_blade.read_windio_blade`
 - :func:`pybmodes.io.windio_floating.read_windio_floating`
+- :class:`pybmodes.io.errors.ParseError` — unified base class for
+  every ``pybmodes.io.*`` parser exception; inherits
+  :class:`ValueError` so existing ``except ValueError`` callers
+  are backward-compatible. Subclasses :class:`BMIParseError`,
+  :class:`ElastoDynParseError`, :class:`SubDynParseError`,
+  :class:`WAMITParseError`, :class:`MoorDynParseError`,
+  :class:`WindIOParseError`, and the existing
+  :class:`BModeOutParseError` (now re-rooted under the new base).
+  Structured ``file`` / ``line`` / ``column`` / ``context``
+  fields + ``format_diagnostic()`` for uniform error messages
+  across formats.
 
 Plot helpers (``[plots]`` extra)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
