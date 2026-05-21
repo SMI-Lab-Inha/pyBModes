@@ -306,6 +306,7 @@ def _cmd_windio(args: argparse.Namespace) -> int:
             n_steps=args.n_steps,
             n_blade_modes=args.n_blade_modes,
             n_tower_modes=args.n_tower_modes,
+            on_skip=args.on_skip,
         )
     except FileNotFoundError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -710,6 +711,16 @@ def _build_parser() -> argparse.ArgumentParser:
     p_windio.add_argument(
         "--n-tower-modes", type=int, default=4,
         help="tower modes in the Campbell sweep (default: 4)",
+    )
+    p_windio.add_argument(
+        "--on-skip", type=str, default="fail-on-data",
+        choices=["warn", "fail-on-data", "fail"],
+        help="how to handle internal workflow skips (default: "
+             "fail-on-data, new in 1.8.0). 'warn' = legacy permissive "
+             "behaviour (every skip just messages, exit code stays 0); "
+             "'fail-on-data' = computational skips (blade extraction) "
+             "fail; presentation+input skips warn; 'fail' = any skip "
+             "fails. WindioResult.skipped lists every skip regardless.",
     )
 
     def _default_windio_out(a: argparse.Namespace) -> argparse.Namespace:

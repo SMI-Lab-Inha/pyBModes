@@ -43,6 +43,45 @@ if TYPE_CHECKING:
     from pybmodes.models.result import ModalResult
 
 WindIOFormat = Literal["md", "html", "csv"]
+SkipPolicy = Literal["warn", "fail-on-data", "fail"]
+
+# Internal classification of each skip site by what was lost:
+#
+# - ``"data"`` — a computational result the workflow would normally
+#   produce is now missing (e.g. blade composite reduction failed →
+#   the report's blade-frequencies section is incomplete).
+# - ``"presentation"`` — the underlying data was computed but the
+#   *figure* rendering failed (matplotlib backend issue / log-axis
+#   floor / etc.). The CSV / data still exists; only the PNG is
+#   missing.
+# - ``"input"`` — the user's invocation requested an output that
+#   needs a companion input that wasn't discovered (e.g.
+#   ``campbell=True`` with no ElastoDyn deck). Not a code failure;
+#   informational.
+#
+# The ``on_skip`` policy on :func:`run_windio` consults this table to
+# decide whether each skip toggles ``exit_code = 1``.
+_SKIP_KIND: dict[str, str] = {
+    "blade": "data",
+    "campbell": "input",
+    "campbell_plot": "presentation",
+    "spectra": "presentation",
+}
+
+
+def _skip_fails_under(skip_name: str, policy: SkipPolicy) -> bool:
+    """Return ``True`` if a skip with the given name should toggle
+    ``exit_code = 1`` under the chosen ``on_skip`` policy. Unknown
+    skip names default to the strictest interpretation (treated as a
+    data skip) so new failure modes fail-loud by default rather than
+    silently downgrade to warning."""
+    if policy == "warn":
+        return False
+    if policy == "fail":
+        return True
+    # "fail-on-data" — only computational skips fail; presentation +
+    # input skips warn.
+    return _SKIP_KIND.get(skip_name, "data") == "data"
 
 
 @dataclass
@@ -211,6 +250,7 @@ def run_windio(
     n_steps: int = 16,
     n_blade_modes: int = 4,
     n_tower_modes: int = 4,
+    on_skip: SkipPolicy = "fail-on-data",
 ) -> WindioResult:
     """One-click WindIO ontology workflow.
 
@@ -238,13 +278,38 @@ def run_windio(
         screening preview when no MoorDyn deck is found.
     campbell : bool, default False
         Run a rotor-speed Campbell sweep against the discovered
-        companion ElastoDyn deck. Silently skipped (with a message)
-        if no ElastoDyn deck was discovered.
+        companion ElastoDyn deck. Skipped (with a message) if no
+        ElastoDyn deck was discovered; the ``on_skip`` policy below
+        controls whether that counts as a failure.
     max_rpm, min_rpm, rated_rpm
         Rotor-speed sweep bounds + (optional) rated rpm overlay on
         the environmental-spectra plot for floating cases.
     n_steps, n_blade_modes, n_tower_modes : int
         Campbell-sweep parameters.
+    on_skip : {"warn", "fail-on-data", "fail"}, default ``"fail-on-data"``
+        How to handle workflow skips. Three classes of skip exist
+        internally:
+
+        * **data** — a computational result is missing
+          (blade composite reduction raised). Under ``"fail-on-data"``
+          (the new default in 1.8.0) and ``"fail"`` these toggle
+          ``exit_code = 1`` so library callers / scripted automation
+          notice the missing engineering output instead of silently
+          publishing an incomplete report.
+        * **presentation** — the data was computed but figure
+          rendering failed (Campbell plot, environmental-spectra
+          plot). Under ``"warn"`` and ``"fail-on-data"`` these only
+          warn (the CSV / data is still on disk); under ``"fail"``
+          they toggle ``exit_code = 1``.
+        * **input** — an output was requested but its companion
+          input wasn't discovered (e.g. ``campbell=True`` with no
+          ElastoDyn deck under the turbine root). Under ``"warn"``
+          and ``"fail-on-data"`` warns; under ``"fail"`` fails.
+
+        Pass ``"warn"`` to recover the pre-1.8.0 permissive
+        behaviour (every skip just messages, exit_code stays 0).
+        ``WindioResult.skipped`` lists every skip regardless of
+        policy.
 
     Returns
     -------
@@ -252,7 +317,8 @@ def run_windio(
         Carries the loaded yaml path, the auto-discovery result, the
         solved model + modal result, optional blade fit, optional
         Campbell sweep, and every written-artefact path. ``exit_code``
-        is ``0`` on success.
+        is ``0`` on success, ``1`` when a skip toggled the failure
+        gate via ``on_skip``.
 
     Raises
     ------
@@ -448,9 +514,29 @@ def run_windio(
     )
     messages.append(f"wrote {out}")
 
+    # Apply the on_skip policy: classify each accumulated skip and
+    # toggle exit_code accordingly. The report is always written first
+    # so callers in strict mode can still inspect the partial artefact
+    # on disk + the structured ``skipped`` field for triage.
+    errors: list[str] = []
+    failing = [s for s in skipped if _skip_fails_under(s, on_skip)]
+    if failing:
+        kinds = [
+            f"{name} ({_SKIP_KIND.get(name, 'data')})" for name in failing
+        ]
+        errors.append(
+            f"on_skip={on_skip!r}: {len(failing)} skip(s) toggled "
+            f"failure: {', '.join(kinds)}. The partial report at "
+            f"{out} reflects the available results; rerun with "
+            f"on_skip='warn' to recover the pre-1.8.0 permissive "
+            f"behaviour."
+        )
+    exit_code = 1 if failing else 0
+
     return WindioResult(
-        exit_code=0,
+        exit_code=exit_code,
         messages=messages,
+        errors=errors,
         yaml=yaml_path,
         discovery=discovery,
         is_floating=is_floating,
