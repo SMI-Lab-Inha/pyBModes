@@ -1350,8 +1350,8 @@ preserving for well-formed input; no public name change):
 ## [1.0.0] — 2026-05-13
 
 This is the stable 1.x baseline. Semver-protected public API
-enumerated in [`src/pybmodes/__init__.py`](src/pybmodes/__init__.py)
-and the *Public API* section of [`README.md`](README.md). The
+enumerated in [`src/pybmodes/__init__.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/src/pybmodes/__init__.py)
+and the *Public API* section of [`README.md`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/README.md). The
 following constructors / dataclasses / functions are now frozen
 across 1.x minor releases: every name in the *Public API* list,
 including the floating-platform additions originally documented as
@@ -1368,7 +1368,7 @@ including the floating-platform additions originally documented as
   cantilever, cantilever + tip mass, Wright 1982 / Bir 2009
   rotating uniform blade, Bir 2010 Table 5 rotating + tip mass,
   Bir 2009 Eq. 8 pinned-free cable). The matrix is enumerated in
-  [`VALIDATION.md`](VALIDATION.md).
+  [`VALIDATION.md`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/VALIDATION.md).
 - **ElastoDyn-deck adapters** — `Tower.from_elastodyn` /
   `Tower.from_elastodyn_with_subdyn` / `Tower.from_elastodyn_with_mooring`
   / `RotatingBlade.from_elastodyn` cover the land + monopile +

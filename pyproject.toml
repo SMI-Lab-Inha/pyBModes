@@ -91,7 +91,6 @@ docs = [
     "sphinx>=7,<9",
     "furo>=2024.1",
     "myst-parser>=2",
-    "linkify-it-py>=2",
     "sphinx-copybutton>=0.5",
     # pybmodes' public API references numpy / scipy / matplotlib
     # in its docstrings; intersphinx pulls in their objects.inv.

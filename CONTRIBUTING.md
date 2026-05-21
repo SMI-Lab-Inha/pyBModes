@@ -12,7 +12,7 @@ pip install -e ".[dev,plots]"
 pytest
 ```
 
-The default `pytest` run uses only self-contained tests (synthetic decks + closed-form references). The `integration` marker gates tests that need upstream OpenFAST / BModes data; place those clones under `external/` (gitignored). See [installation](docs/installation.md) for the full Windows + conda quickstart.
+The default `pytest` run uses only self-contained tests (synthetic decks + closed-form references). The `integration` marker gates tests that need upstream OpenFAST / BModes data; place those clones under `external/` (gitignored). See [installation](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/installation.md) for the full Windows + conda quickstart.
 
 ## Ground rules
 
@@ -51,7 +51,7 @@ pip install pre-commit
 pre-commit install
 ```
 
-This runs ruff (auto-fix), the standard hygiene hooks (trailing-whitespace, end-of-file-fixer, YAML / TOML validation, large-file guard, merge-conflict marker check), `codespell`, and `insert-license` — which inserts the Apache 2.0 boilerplate header into any new `.py` file under `src/pybmodes/`, `scripts/`, `cases/`, or `noxfile.py` that doesn't already have it (template at [`.license_header.txt`](.license_header.txt)). To run manually:
+This runs ruff (auto-fix), the standard hygiene hooks (trailing-whitespace, end-of-file-fixer, YAML / TOML validation, large-file guard, merge-conflict marker check), `codespell`, and `insert-license` — which inserts the Apache 2.0 boilerplate header into any new `.py` file under `src/pybmodes/`, `scripts/`, `cases/`, or `noxfile.py` that doesn't already have it (template at [`.license_header.txt`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/.license_header.txt)). To run manually:
 
 ```bash
 pre-commit run --all-files
@@ -110,12 +110,12 @@ Before opening a PR:
 
 ## Release process
 
-For maintainers, the full pre-tag sequence is in [`docs/release_checklist.rst`](docs/release_checklist.rst).
+For maintainers, the full pre-tag sequence is in [`docs/release_checklist.rst`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/release_checklist.rst).
 
 ## Reporting issues
 
-Open a [GitHub issue](https://github.com/SMI-Lab-Inha/pyBModes/issues). For security-sensitive reports, see [`SECURITY.md`](SECURITY.md).
+Open a [GitHub issue](https://github.com/SMI-Lab-Inha/pyBModes/issues). For security-sensitive reports, see [`SECURITY.md`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/SECURITY.md).
 
 ## Code of conduct
 
-This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
+This project follows the [Contributor Covenant](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/CODE_OF_CONDUCT.md).
