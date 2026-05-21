@@ -8,33 +8,53 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Project-infrastructure round. No public-API change; no numerical
-change. Re-license + docs site + governance scaffolding + CI hardening.
+(nothing yet)
 
-### Changed
+## [1.8.0] — 2026-05-21
 
-- **Re-licensed MIT → Apache 2.0.** ``LICENSE`` is the Apache 2.0
-  text with copyright ``2024-2026 Jae Hoon Seo, Marine Structural
-  Mechanics and Integrity Lab (SMI Lab), Inha University``;
-  ``pyproject.toml`` classifier and README badge updated; the
-  bundled ``_examples/`` and ``reference_decks/`` README provenance
-  notes re-state the new licence. The book-citation reference to
-  "MIT Press" in ``mooring.py`` is unrelated to project licensing
-  and is preserved.
-- **Upstream-data directories relocated to ``external/``** (issue
-  raised in static review). ``docs/{BModes, OpenFAST_files, MoorPy,
-  RAFT, references}`` → ``external/{...}``; the ``docs/`` tree is
-  now reserved for the Sphinx documentation site. ``.gitignore``,
-  local development notes, README, RELEASE_CHECKLIST,
-  every case-study ``run.py``, every visualisation script, the
-  reference-turbine ``build.py``, and 30 tracked files in total
-  point at ``external/`` after the rewrite. Integration tests
-  unchanged behaviourally; they skip when the data is absent.
-- **``docs/RELEASE_CHECKLIST.md`` moved to
-  ``https://pybmodes.readthedocs.io/en/latest/release_checklist.html``** to slot into the new Sphinx
-  developer-guide toctree.
+Multi-phase architecture refactor + project-infrastructure round. No
+public-API change; no numerical change. Three threads landed:
+
+- **Phase 1** — re-license (MIT → Apache 2.0), Sphinx documentation
+  site on Read the Docs, governance + CI hardening, strict mypy /
+  ruff ratchet, unified ``ParseError`` hierarchy, centralised
+  numerical options dataclasses.
+- **Phase 2** — every ``pybmodes`` CLI subcommand is now a typed
+  library entry point under :mod:`pybmodes.workflows`; ``cli.py``
+  shrinks from ~1500 to ~520 lines and is purely
+  argparse + delegation. Seven new workflow functions and seven
+  result dataclasses; thirty-nine direct workflow tests.
+- **Phase 3** — three biggest source files broken up by concern:
+  ``campbell.py`` (1301 LOC → 7-file ``campbell/`` sub-package),
+  ``mooring.py`` (1202 LOC → 6-file ``mooring/`` sub-package),
+  ``models/tower.py`` private helpers extracted to
+  ``models/_shared.py`` (cross-model) and ``models/_platform.py``
+  (tower-specific platform-scalar parsers). Every public name
+  is preserved; existing imports keep working through the
+  ``__init__.py`` re-export layer.
 
 ### Added
+
+- **``pybmodes.workflows.*`` typed-result library API** (Phase 2 PRs
+  B1–B3). Seven entry-points, one per CLI subcommand, each returning
+  a :class:`WorkflowResult` subclass with ``exit_code`` /
+  ``messages`` / ``errors`` plus the workflow's typed payload:
+
+  - :func:`run_validate` → :class:`ValidateResult`
+  - :func:`run_examples_copy` → :class:`ExamplesResult`
+  - :func:`run_patch` → :class:`PatchResult` (five mutually-
+    supportive output modes: default in-place, ``backup``,
+    ``output_dir``, ``dry_run``, ``diff``)
+  - :func:`run_report` → :class:`ReportResult`
+  - :func:`run_batch` → :class:`BatchResult`
+  - :func:`run_campbell` → :class:`CampbellWorkflowResult`
+  - :func:`run_windio` → :class:`WindioResult` plus
+    :func:`discover_windio_inputs` returning a
+    :class:`WindioDiscovery` dataclass.
+
+  Lets notebooks and external scripts run the same flows the CLI
+  uses without ``subprocess`` (the original 0.x workflows-via-stdout
+  contract is preserved via the slim CLI wrappers).
 
 - **Sphinx documentation site** (``docs/``) hosted on Read the Docs
   (``.readthedocs.yaml``). Flat reStructuredText tree — 13 pages:
@@ -88,6 +108,99 @@ change. Re-license + docs site + governance scaffolding + CI hardening.
   sdist, wheel, and cross-install version sanity; uploads the
   dist and docs as artifacts. Pre-tag gate that goes beyond the
   per-PR CI.
+- **Unified :class:`pybmodes.io.ParseError` hierarchy** (Phase 1 PR
+  A3). Six per-format subclasses
+  (``BmiParseError``, ``ElastoDynParseError``, ``MoorDynParseError``,
+  ``OutParseError``, ``SubDynParseError``, ``WindIOParseError``)
+  let library callers catch parse errors precisely. Twenty-nine
+  regression tests pin hashability and ``__eq__`` semantics
+  (Codex caught the original ``@dataclass`` shadowing of
+  ``__hash__`` post-merge).
+- **Centralised numerical options dataclasses** (Phase 1 PR A1):
+  :class:`pybmodes.options.SolverOptions`,
+  :class:`pybmodes.options.FitOptions`,
+  :class:`pybmodes.options.CheckOptions`. ``frozen=True`` dataclasses
+  that surface every magic number from ``fem/solver``,
+  ``elastodyn/params``, and ``checks`` as named, defaulted
+  parameters.
+
+### Changed
+
+- **Re-licensed MIT → Apache 2.0.** ``LICENSE`` is the Apache 2.0
+  text with copyright ``2024-2026 Jae Hoon Seo, Marine Structural
+  Mechanics and Integrity Lab (SMI Lab), Inha University``;
+  ``pyproject.toml`` classifier and README badge updated; the
+  bundled ``_examples/`` and ``reference_decks/`` README provenance
+  notes re-state the new licence. The book-citation reference to
+  "MIT Press" in ``mooring.py`` is unrelated to project licensing
+  and is preserved.
+- **Upstream-data directories relocated to ``external/``** (issue
+  raised in static review). ``docs/{BModes, OpenFAST_files, MoorPy,
+  RAFT, references}`` → ``external/{...}``; the ``docs/`` tree is
+  now reserved for the Sphinx documentation site. ``.gitignore``,
+  local development notes, README, RELEASE_CHECKLIST,
+  every case-study ``run.py``, every visualisation script, the
+  reference-turbine ``build.py``, and 30 tracked files in total
+  point at ``external/`` after the rewrite. Integration tests
+  unchanged behaviourally; they skip when the data is absent.
+- **``docs/RELEASE_CHECKLIST.md`` moved to
+  ``https://pybmodes.readthedocs.io/en/latest/release_checklist.html``** to slot into the new Sphinx
+  developer-guide toctree.
+- **Strict mypy expanded** (Phase 1 PR A2). Five additional modules
+  joined the strict-typing override list:
+  ``pybmodes.models.tower``, ``pybmodes.models.blade``,
+  ``pybmodes.campbell``, ``pybmodes.mac``, ``pybmodes.io.bmi``,
+  ``pybmodes.options``.
+
+### Refactored
+
+- **CLI subcommands extracted to typed workflow functions** (Phase 2
+  PRs B1–B3, merged in #69, #71, #72; #70 is the static-review
+  P3 follow-up to B1). ``cli.py`` shrinks from ~1500 LOC to ~520
+  LOC and is purely argparse + delegation. Every subcommand
+  (validate / examples / patch / report / batch / campbell /
+  windio) is now library-callable with a typed result. CLI flag /
+  exit-code contract preserved byte-for-byte; the existing CLI
+  smoke tests (``test_validate.py``, ``test_examples_cli.py``,
+  ``test_batch.py``, ``test_report.py``, ``test_campbell.py``,
+  ``test_windio_cli.py``) pass unchanged. Static-review P3 fix on
+  PR B1: :func:`pybmodes.workflows.run_examples_copy` now
+  preserves the accumulated skipped-bundle warning when a later
+  bundle hits a destination conflict; regression test in
+  ``test_workflows.py`` pins the contract.
+- **``pybmodes.campbell`` split into a sub-package** (Phase 3 PR
+  C1, merged in #73). The 1301-LOC monolith becomes seven files —
+  ``result.py`` (271 LOC, :class:`CampbellResult` dataclass + NPZ
+  / CSV serialization), ``_models.py`` (210 LOC, input
+  dispatcher), ``_classify.py`` (119 LOC, mode-naming
+  heuristics), ``_mac.py`` (90 LOC, MAC + Hungarian assignment),
+  ``_sweep.py`` (347 LOC, rotor-speed sweep drivers + public
+  ``campbell_sweep``), ``_plot.py`` (393 LOC, engineering-report
+  diagram). ``__init__.py`` re-exports every public and underscore-
+  private name existing tests import by name; no test edits
+  required.
+- **``pybmodes.mooring`` split into a sub-package** (Phase 3 PR
+  C2, merged in #74). 1202-LOC monolith → six files —
+  ``types.py`` (248 LOC, :class:`LineType` / :class:`Point` /
+  :class:`Line` + :meth:`Line.solve_static`), ``system.py`` (608
+  LOC, :class:`MooringSystem` + two ``from_*`` parsers),
+  ``_catenary.py`` (113 LOC, residual + analytical Jacobian for
+  Jonkman 2007 B-1/B-2 + B-7/B-8), ``_rotation.py`` (41 LOC,
+  3-2-1 Euler primitive), ``_moordyn_parser.py`` (255 LOC,
+  MoorDyn ``.dat`` section / row tokenisers). Public API
+  (:class:`LineType`, :class:`Point`, :class:`Line`,
+  :class:`MooringSystem`) byte-identical via ``__init__.py``
+  re-exports.
+- **``models/tower.py`` private helpers extracted** (Phase 3 PR
+  C3, merged in #75). ``_run_validation_and_warn`` →
+  ``models/_shared.py`` (cross-model; ``RotatingBlade.from_elastodyn``
+  was already reaching across, now imports directly).
+  ``_scan_platform_fields`` + ``_platform_inertia_matrix`` →
+  ``models/_platform.py`` (tower-specific). ``tower.py`` ends
+  at 968 LOC (down from 1083) with all three names re-exported
+  for back-compat. The :class:`Tower` class stayed together;
+  a planned mixin-based split was rejected by Plan-agent review
+  as architecturally hollow.
 
 ### Fixed
 
@@ -104,6 +217,11 @@ change. Re-license + docs site + governance scaffolding + CI hardening.
   ``axhline``s) keep the original full-axis comb. Backward-compatible
   on ``rpm.min() == 0``. Regression test ``test_plot_campbell_blade_
   label_anchored_on_curve_for_positive_rpm`` pins the new behaviour.
+- **``pybmodes.io.ParseError`` hashability** (PR #68 Codex P2
+  follow-up). The original ``@dataclass`` decorator on the
+  ``ParseError`` base shadowed ``__hash__`` to ``None``, breaking
+  ``set(exceptions)`` callers. Switched to ``@dataclass(eq=False)``
+  with 29 regression tests in ``test_io_errors.py``.
 
 ## [1.7.0] — 2026-05-18
 
