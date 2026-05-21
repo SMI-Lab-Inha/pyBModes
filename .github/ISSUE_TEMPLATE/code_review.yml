@@ -29,11 +29,11 @@ body:
     attributes:
       label: Reviewer name / affiliation
       description: >-
-        Who is filing this? Cite an organisation (e.g. "Frazer &
-        Nash Consultancy") or a static-review tool name. The
-        affiliation goes in the issue, not in the codebase — see
-        ``CONTRIBUTING.md`` on neutral provenance wording.
-      placeholder: "e.g. Frazer & Nash Consultancy / GitHub Codex / SonarQube"
+        Who is filing this? Name your organisation or the static-
+        review tool you used. The affiliation goes in the issue,
+        not in the codebase — see ``CONTRIBUTING.md`` on neutral
+        provenance wording.
+      placeholder: "engineering consultancy / static-analysis tool / individual reviewer"
     validations:
       required: true
 

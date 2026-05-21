@@ -17,20 +17,23 @@
 # - ``workflow_dispatch`` — maintainers fire it from the Actions UI
 #   before any tagged release (``docs/release_checklist.rst`` step 2
 #   references this workflow).
-# - Weekly cron (Monday 09:00 UTC) — catches drift in upstream HEAD
-#   (the manifest's per-repo SHA pins are still ``TBD`` as of 1.8.0;
-#   once populated, the workflow becomes byte-reproducible).
+# - Weekly cron (Monday 09:00 UTC) — runs the same pinned snapshot
+#   every Monday so a regression in pybmodes itself surfaces on a
+#   stable baseline. To catch upstream-deck *drift* against newer
+#   HEADs, bump the manifest SHAs through the
+#   ``verify_external_data.py --update`` path and ship the bump as
+#   its own commit + CHANGELOG entry under *Changed*.
 #
 # Reproducibility note
 # --------------------
 #
-# ``external/MANIFEST.toml`` pins each upstream-clone SHA + file
-# hashes, but the pins are currently the literal string ``TBD`` —
-# populating them is a maintainer action documented in
-# ``docs/release_checklist.rst`` step 2. Until then this workflow
-# clones the upstream HEAD of each repo; once the pins land, the
-# ``checkout`` step below switches to ``git checkout <sha>`` and
-# becomes reproducible byte-for-byte.
+# Each clone below checks out the SHA pinned in
+# ``external/MANIFEST.toml`` (1.8.1 maintainer action; bumped from
+# ``TBD`` in 1.8.0). The workflow is byte-reproducible from the
+# tagged commit — anyone reproducing the published 0.01 % tolerance
+# can re-run the same step set against the same upstream commits.
+# File-hash pins (the ``hashes`` tables in the manifest) remain
+# empty pending the ``verify_external_data.py --update`` rewrite.
 
 name: Validation (external data)
 
@@ -61,13 +64,16 @@ jobs:
           pip install -e ".[dev,plots,windio,notebook]"
 
       # ---------------------------------------------------------------
-      # Clone upstream external data into the expected layout.
+      # Clone upstream external data into the expected layout, pinned
+      # to the SHAs in ``external/MANIFEST.toml``.
       #
-      # Each clone path matches ``relative_path`` in
-      # ``external/MANIFEST.toml`` so the integration test suite
-      # resolves the decks at the same paths it does locally. Shallow
-      # clones (``--depth=1``) — the integration suite only reads the
-      # tip of each upstream tree.
+      # Each clone path matches ``relative_path`` in the manifest so
+      # the integration test suite resolves the decks at the same
+      # paths it does locally. We fetch the full git history (no
+      # ``--depth=1``) so the explicit-SHA ``git checkout`` step
+      # can resolve commits older than the shallow tip. Workflow run
+      # time is dominated by the integration suite itself, not the
+      # clones, so the extra fetch is cheap.
       #
       # BModes (CertTest 03 / 04 reference data) is NOT on GitHub; the
       # tests that depend on it skip cleanly when the data is absent
@@ -77,20 +83,33 @@ jobs:
       # code.
       # ---------------------------------------------------------------
 
-      - name: Clone OpenFAST r-test (NREL 5MW land / monopile / OC3 spar)
+      - name: Clone OpenFAST r-test at manifest-pinned SHA
+        # 1.8.1 manifest pin (NREL 5MW land / monopile / OC3 spar
+        # regression decks). Full 40-char SHA matches what
+        # ``scripts/verify_external_data.py`` compares ``git rev-parse
+        # HEAD`` against — abbreviated SHAs in the manifest would
+        # silently FAIL the verifier (static review on PR #81).
         run: |
-          git clone --depth=1 https://github.com/OpenFAST/r-test.git \
+          git clone https://github.com/OpenFAST/r-test.git \
             external/OpenFAST_files/r-test
+          git -C external/OpenFAST_files/r-test \
+            checkout dd5feaaaa500ba7283140107806300d551cff0a7
 
-      - name: Clone IEA-3.4-130-RWT
+      - name: Clone IEA-3.4-130-RWT at manifest-pinned SHA
         run: |
-          git clone --depth=1 https://github.com/IEAWindTask37/IEA-3.4-130-RWT.git \
+          git clone https://github.com/IEAWindTask37/IEA-3.4-130-RWT.git \
             external/OpenFAST_files/IEA-3.4-130-RWT
+          git -C external/OpenFAST_files/IEA-3.4-130-RWT \
+            checkout 824f8d65196f9f84ee66df5e58e3a48a70a8f0c5
 
-      - name: Clone IEA-15-240-RWT
+      - name: Clone IEA-15-240-RWT at manifest-pinned SHA
+        # 1.8.1 manifest pin (v1.1 tower redesign — Allen 2020
+        # free-decay reference).
         run: |
-          git clone --depth=1 https://github.com/IEAWindTask37/IEA-15-240-RWT.git \
+          git clone https://github.com/IEAWindTask37/IEA-15-240-RWT.git \
             external/OpenFAST_files/IEA-15-240-RWT
+          git -C external/OpenFAST_files/IEA-15-240-RWT \
+            checkout 86d51c8a1ee65be4f3686087a5c443c0b57e5cfb
 
       # ---------------------------------------------------------------
       # Run the verifier + integration suite.
@@ -109,15 +128,15 @@ jobs:
       - name: Generate verifier report
         # The verifier script exits 0 on PASS + WARN and 1 on FAIL
         # (see ``scripts/verify_external_data.py`` lines 246-248).
-        # WARN is the current TBD-pins state inherited from before
-        # 1.8.0 — the workflow should NOT fail on WARN since the
-        # maintainer-action to populate the manifest is out of scope
-        # for the workflow itself. FAIL means a clone drifted from a
-        # populated pinned SHA — that IS a release blocker and the
-        # workflow should fail. So we run the verifier with its
-        # natural exit-code semantics (no ``continue-on-error: true``)
-        # — Codex P1 review on PR #79 caught the original
-        # ``continue-on-error: true`` swallowing FAILs.
+        # As of 1.8.1 every clone SHA is populated in the manifest,
+        # so a healthy run produces PASS on every entry except
+        # ``bmodes`` (which stays WARN because BModes is a NREL
+        # download, not a GitHub clone — see the *Enforcement*
+        # paragraph in VALIDATION.md). FAIL means a clone drifted
+        # from its populated pinned SHA — release blocker. We use
+        # the verifier's natural exit-code semantics with no
+        # ``continue-on-error: true`` (PR #79 static-review pass
+        # caught the original swallowing-of-FAILs).
         #
         # ``set -o pipefail`` ensures the verifier's exit code is
         # preserved through the ``tee`` pipe; without it ``tee``

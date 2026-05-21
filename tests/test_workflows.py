@@ -560,7 +560,7 @@ def test_batch_patch_rejects_dry_run_with_output_dir(tmp_path: pathlib.Path) -> 
 def test_batch_safety_levers_ignored_without_patch(tmp_path: pathlib.Path) -> None:
     """When ``patch=False``, leftover safety flags (``dry_run`` /
     ``output_dir``) must NOT raise — the CLI help text documents them
-    as ignored unless ``--patch`` is set. Codex P2 review on PR #77
+    as ignored unless ``--patch`` is set. Static review on PR #77
     caught the unconditional mutual-exclusion check firing on a pure
     validation-only batch call."""
     root = tmp_path / "empty"
@@ -579,7 +579,7 @@ def test_batch_patch_output_dir_preserves_relative_subtree(tmp_path: pathlib.Pat
     """``output_dir`` must namespace per-deck writes by the deck's
     *relative path under root*, not just the filename stem — otherwise
     two decks with the same name in different sub-directories collide
-    silently. Codex P1 review on PR #77 caught the deck-stem collision
+    silently. Static review on PR #77 caught the deck-stem collision
     pattern."""
     if not _REFERENCE_DECKS.is_dir():
         pytest.skip("reference_decks/ not present")

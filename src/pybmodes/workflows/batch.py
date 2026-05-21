@@ -218,7 +218,7 @@ def run_batch(
     # a validation-only batch call carrying leftover ``--dry-run`` /
     # ``--output-dir`` flags must NOT raise (the CLI help text
     # explicitly documents the levers as ignored unless ``--patch`` is
-    # set). Codex P2 review on PR #77.
+    # set). Static-review follow-up on PR #77.
     if patch and dry_run and output_dir is not None:
         raise ValueError(
             "dry_run is mutually exclusive with output_dir "
@@ -296,7 +296,8 @@ def run_batch(
                 # the stem) as the per-deck destination, so two decks
                 # with the same filename in different sub-directories
                 # land in distinct sub-trees instead of silently
-                # overwriting each other. Codex P1 review on PR #77.
+                # overwriting each other. Static-review follow-up on
+                # PR #77.
                 per_deck_out: "pathlib.Path | None" = None
                 if output_root is not None:
                     try:

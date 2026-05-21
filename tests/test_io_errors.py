@@ -74,7 +74,7 @@ def test_every_subclass_inherits_parse_error_and_value_error(cls) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Hashability (Codex P2 regression — PR #68 review)
+# Hashability (PR #68 static-review regression)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("cls", [ParseError, *_ALL_SUBCLASSES])
@@ -86,8 +86,8 @@ def test_instances_are_hashable(cls) -> None:
     ``set()`` or use them as dict keys. ``@dataclass(eq=False)``
     keeps the identity-based equality + hashability path.
 
-    Codex flagged this as a P2 backward-compatibility regression in
-    PR #68; this test pins the fix."""
+    Static review flagged this as a P2 backward-compatibility
+    regression in PR #68; this test pins the fix."""
     err = cls("test message", file="x.bmi", line=1, column=2)
     # ``hash()`` must not raise. The actual integer value is
     # identity-derived, not value-derived — two distinct instances
