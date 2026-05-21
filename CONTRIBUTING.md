@@ -110,7 +110,7 @@ Before opening a PR:
 
 ## Release process
 
-For maintainers, the full pre-tag sequence is in [`docs/release_checklist.rst`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/release_checklist.rst).
+For maintainers, the full pre-tag sequence is in [`https://pybmodes.readthedocs.io/en/latest/release_checklist.html`](https://pybmodes.readthedocs.io/en/latest/release_checklist.html).
 
 ## Reporting issues
 
