@@ -63,7 +63,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-@dataclass
+@dataclass(eq=False)
 class ParseError(ValueError):
     """Base class for every ``pybmodes.io.*`` parser exception.
 
@@ -129,7 +129,7 @@ class ParseError(ValueError):
         return head
 
 
-@dataclass
+@dataclass(eq=False)
 class BMIParseError(ParseError):
     """Raised by :func:`pybmodes.io.bmi.read_bmi` and the companion
     section-properties parser when the input deck is malformed.
@@ -139,7 +139,7 @@ class BMIParseError(ParseError):
     """
 
 
-@dataclass
+@dataclass(eq=False)
 class ElastoDynParseError(ParseError):
     """Raised by the ElastoDyn deck reader
     (:mod:`pybmodes.io.elastodyn_reader` / the private
@@ -147,13 +147,13 @@ class ElastoDynParseError(ParseError):
     """
 
 
-@dataclass
+@dataclass(eq=False)
 class SubDynParseError(ParseError):
     """Raised by :mod:`pybmodes.io.subdyn_reader` when the SubDyn
     joints / members / reaction-joint block can't be parsed."""
 
 
-@dataclass
+@dataclass(eq=False)
 class WAMITParseError(ParseError):
     """Raised by :class:`pybmodes.io.wamit_reader.HydroDynReader` and
     the underlying ``.1`` / ``.hst`` readers on malformed WAMIT
@@ -161,14 +161,14 @@ class WAMITParseError(ParseError):
     ``PotFile``, asymmetric matrices that can't be mirrored)."""
 
 
-@dataclass
+@dataclass(eq=False)
 class MoorDynParseError(ParseError):
     """Raised by :meth:`pybmodes.mooring.MooringSystem.from_moordyn`
     when a MoorDyn ``.dat`` carries an unrecognised layout or a
     point-ID column ordering the parser can't auto-detect."""
 
 
-@dataclass
+@dataclass(eq=False)
 class WindIOParseError(ParseError):
     """Raised by the WindIO ontology readers
     (:mod:`pybmodes.io.windio` / :mod:`pybmodes.io.windio_blade` /
