@@ -100,7 +100,7 @@ def _scan_platform_fields(dat_path: pathlib.Path) -> dict[str, float]:
     return fields
 
 
-def _platform_inertia_matrix(ptfm: dict[str, float]):
+def _platform_inertia_matrix(ptfm: dict[str, float]) -> "np.ndarray":
     """Assemble the platform 6×6 inertia matrix AT THE CM in
     **OpenFAST DOF order** ``[surge, sway, heave, roll, pitch, yaw]``
     from the ``Ptfm*`` scalars produced by :func:`_scan_platform_fields`.
@@ -135,7 +135,9 @@ def _platform_inertia_matrix(ptfm: dict[str, float]):
     return i_mat
 
 
-def _run_validation_and_warn(main_dat_path: pathlib.Path):
+def _run_validation_and_warn(
+    main_dat_path: pathlib.Path,
+) -> "ValidationResult":
     """Validate coefficient blocks in an ElastoDyn deck and warn on issues.
 
     Helper shared by ``Tower.from_elastodyn`` and

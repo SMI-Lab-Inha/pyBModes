@@ -68,6 +68,8 @@ from pybmodes.io.sec_props import SectionProperties
 from pybmodes.models._pipeline import run_fem
 
 if TYPE_CHECKING:
+    import matplotlib
+
     from pybmodes.models.blade import RotatingBlade
     from pybmodes.models.tower import Tower
 
@@ -939,13 +941,13 @@ def plot_campbell(
     result: CampbellResult,
     excitation_orders: list[int] | None = None,
     rated_rpm: float | None = None,
-    ax=None,
+    ax: "matplotlib.axes.Axes | None" = None,
     platform_modes: "list[tuple[str, float]] | None" = None,
     log_freq: bool = False,
     *,
     operating_rpm: "tuple[float, float] | None" = None,
     freq_max: float | None = None,
-):
+) -> "matplotlib.figure.Figure":
     """Render a Campbell diagram from a :class:`CampbellResult`.
 
     Engineering-report style (issue #54): structural modes are
@@ -1031,7 +1033,14 @@ def plot_campbell(
     if ax is None:
         fig, ax = plt.subplots(figsize=(9.0, 6.0))
     else:
-        fig = ax.figure
+        # ``ax.figure`` is typed as ``Figure | SubFigure`` upstream
+        # but in every realistic embedding the caller passes an Axes
+        # from a top-level Figure, never a SubFigure. Cast accordingly.
+        from typing import cast
+
+        from matplotlib.figure import Figure
+
+        fig = cast(Figure, ax.figure)
 
     # Family colours (issue #54 — engineering-report convention):
     # Blades green, Tower black, Platform red, Blade Passing blue.
@@ -1160,15 +1169,17 @@ def plot_campbell(
 
     def _to_frac(yv: float) -> float:
         if log_scale:
-            return (np.log10(max(yv, ymin)) - np.log10(ymin)) / (
-                np.log10(ymax) - np.log10(ymin))
+            return float(
+                (np.log10(max(yv, ymin)) - np.log10(ymin))
+                / (np.log10(ymax) - np.log10(ymin))
+            )
         return (yv - ymin) / (ymax - ymin) if ymax > ymin else 0.0
 
     def _from_frac(fr: float) -> float:
         if log_scale:
             return float(10.0 ** (np.log10(ymin) + fr * (
                 np.log10(ymax) - np.log10(ymin))))
-        return ymin + fr * (ymax - ymin)
+        return float(ymin + fr * (ymax - ymin))
 
     # Operating-speed-range marker — set just below the top so it
     # clears the legend / frame.
