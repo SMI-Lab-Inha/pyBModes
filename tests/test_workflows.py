@@ -184,3 +184,53 @@ def test_examples_copy_force_overwrites(tmp_path: pathlib.Path) -> None:
     assert res.exit_code == 0
     # The whole sub-tree was rewritten — marker is gone.
     assert not marker.is_file()
+
+
+def test_examples_copy_preserves_skipped_warning_on_destination_conflict(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When one requested bundle is missing on disk AND another
+    bundle hits an existing destination without ``force=True``, the
+    result must surface BOTH diagnostics — the skipped-bundle
+    warning and the destination-conflict error. (Regression for the
+    static-review P3 finding on PR #69: the earlier implementation
+    rebuilt ``errors`` in the early-return path and dropped the
+    accumulated skipped-bundle warning.)"""
+    from pybmodes.workflows import examples as examples_mod
+
+    # Build a fake examples root that ships only ``sample_inputs/``
+    # (no ``reference_decks/``) so ``kind="all"`` selects samples and
+    # skips decks.
+    fake_root = tmp_path / "_examples"
+    samples_src = fake_root / "sample_inputs"
+    samples_src.mkdir(parents=True)
+    (samples_src / "marker.txt").write_text("hello", encoding="utf-8")
+
+    monkeypatch.setattr(
+        examples_mod, "_resolve_examples_root", lambda: fake_root
+    )
+
+    dest = tmp_path / "out"
+    # First copy: samples succeeds, decks skipped (warning only,
+    # exit_code 0 because at least one bundle copied).
+    first = run_examples_copy(dest, kind="all")
+    assert first.exit_code == 0
+    assert first.skipped == ["decks"]
+    assert any(
+        "skipping bundle(s) not found" in line for line in first.errors
+    )
+
+    # Second copy without force: samples hits destination conflict
+    # AND decks is still skipped. Both diagnostics must appear.
+    res = run_examples_copy(dest, kind="all")
+    assert res.exit_code == 2
+    assert res.skipped == ["decks"]
+    # Skipped-bundle warning preserved.
+    assert any(
+        "skipping bundle(s) not found" in line for line in res.errors
+    )
+    # Destination-conflict error also present.
+    assert any(
+        "destination already exists" in line for line in res.errors
+    )

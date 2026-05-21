@@ -174,7 +174,9 @@ def run_examples_copy(
                     dest=dest_root,
                     copied=copied,
                     skipped=skipped,
+                    messages=messages,
                     errors=[
+                        *errors,
                         f"error: destination already exists: {target}",
                         "       pass force=True (CLI: --force) to "
                         "overwrite, or pick an empty directory.",
