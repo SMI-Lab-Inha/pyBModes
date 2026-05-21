@@ -10,6 +10,48 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 (nothing yet)
 
+## [1.8.1] — 2026-05-21
+
+External-review follow-up patch on top of 1.8.0. No public-API
+change; no numerical change; no behaviour change. Three governance
++ reproducibility items addressed:
+
+### Changed
+
+- **Scrubbed AI-assistant / tool-vendor attribution from tracked
+  content** (eleven sites across ``CHANGELOG.md``,
+  ``.github/workflows/validation.yml``,
+  ``src/pybmodes/workflows/batch.py``,
+  ``tests/test_io_errors.py``, ``tests/test_workflows.py``, and
+  ``.github/ISSUE_TEMPLATE/code_review.yml``). The
+  ``CONTRIBUTING.md`` no-tool-attribution rule existed but the
+  Phase 4 round had quietly re-introduced named references through
+  the per-finding follow-up commits — a governance self-
+  contradiction caught by the post-1.8.0 external review. All
+  references now use neutral provenance wording ("static review",
+  "static-review pass") plus the PR number for audit trail.
+- **Populated the external-data manifest's per-clone SHA pins.**
+  ``external/MANIFEST.toml`` carried ``sha = "TBD"`` for all eight
+  upstream clones in 1.8.0 — ``validation.yml`` therefore cloned
+  upstream HEAD with ``--depth=1``, making the workflow
+  reproducible-as-process but not byte-reproducible. Every clone
+  now has a real commit SHA (read from the maintainer's local
+  ``external/`` clones at the 1.8.1 release-prep snapshot), and
+  ``validation.yml`` checks out each pinned SHA explicitly after
+  the clone. The workflow is now byte-reproducible from the tagged
+  commit. File-hash pins (the manifest's ``hashes`` tables) remain
+  empty pending the ``verify_external_data.py --update`` rewrite —
+  that's a follow-up maintainer action separate from this patch.
+- **Tightened the validation-workflow coverage claim** in
+  ``README.md`` and ``VALIDATION.md``. The 1.8.0 text said the
+  workflow validates "the IEA-Task-37 reference turbines" plural,
+  but it only actually clones IEA-3.4-130-RWT and IEA-15-240-RWT;
+  the broader claim implied IEA-10 / IEA-22 / WISDEM / MoorPy /
+  RAFT were also exercised. Both files now name the three
+  upstreams the workflow actually clones (OpenFAST r-test +
+  IEA-3.4 + IEA-15) and call out the remaining manifest clones as
+  reproducibility-pinned but not CI-exercised.
+
 ## [1.8.0] — 2026-05-21
 
 Multi-phase architecture refactor + project-infrastructure round +
@@ -128,8 +170,8 @@ change. Four threads landed:
   ``OutParseError``, ``SubDynParseError``, ``WindIOParseError``)
   let library callers catch parse errors precisely. Twenty-nine
   regression tests pin hashability and ``__eq__`` semantics
-  (Codex caught the original ``@dataclass`` shadowing of
-  ``__hash__`` post-merge).
+  (static review caught the original ``@dataclass`` shadowing of
+  ``__hash__`` post-merge — see PR #68 follow-up).
 - **Centralised numerical options dataclasses** (Phase 1 PR A1):
   :class:`pybmodes.options.SolverOptions`,
   :class:`pybmodes.options.FitOptions`,
@@ -232,8 +274,8 @@ Phase 4 — external-review hardening
   ``run_patch`` keeps ``backup=False`` default), ``output_dir``
   (per-deck destination namespaces on the deck's *relative path
   under root* to avoid stem collisions between sibling sub-trees,
-  fix from Codex P1 review). Addresses external-review finding
-  P1-3.
+  fix from PR #77 static-review pass). Addresses external-review
+  finding P1-3.
 - **``run_windio`` ``on_skip`` policy** (Phase 4 PR D2, merged in
   #78). Three policies: ``"warn"`` (legacy permissive),
   ``"fail-on-data"`` (**new default** — computational skips toggle
@@ -279,7 +321,7 @@ Phase 4 — external-review hardening
   ``axhline``s) keep the original full-axis comb. Backward-compatible
   on ``rpm.min() == 0``. Regression test ``test_plot_campbell_blade_
   label_anchored_on_curve_for_positive_rpm`` pins the new behaviour.
-- **``pybmodes.io.ParseError`` hashability** (PR #68 Codex P2
+- **``pybmodes.io.ParseError`` hashability** (PR #68 static-review
   follow-up). The original ``@dataclass`` decorator on the
   ``ParseError`` base shadowed ``__hash__`` to ``None``, breaking
   ``set(exceptions)`` callers. Switched to ``@dataclass(eq=False)``

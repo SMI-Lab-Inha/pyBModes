@@ -18,12 +18,26 @@ IEA-Task-37 repositories on the fly and runs ``pytest -m integration``
 verifier report uploaded by every run is the machine-checkable
 record that the workflow's coverage holds at the tagged commit.
 
-The workflow validates every case in the *Needs external data*
-column whose upstream is **clonable from a public GitHub
-repository**: the NREL 5MW r-test family (via
-[`OpenFAST/r-test`](https://github.com/OpenFAST/r-test)) and the
-IEA-Task-37 reference turbines (via
-[`IEAWindTask37/IEA-*-RWT`](https://github.com/IEAWindTask37)).
+The workflow validates the cases in the *Needs external data*
+column whose upstream is clonable from a public GitHub repository
+**at a manifest-pinned SHA** (every clone in
+``external/MANIFEST.toml`` got a real commit SHA in 1.8.1). Three
+upstreams are actively cloned by ``validation.yml``:
+
+- [`OpenFAST/r-test`](https://github.com/OpenFAST/r-test) — the
+  NREL 5MW land + monopile + OC3 Hywind regression decks.
+- [`IEAWindTask37/IEA-3.4-130-RWT`](https://github.com/IEAWindTask37/IEA-3.4-130-RWT)
+  — IEA-3.4 reference turbine.
+- [`IEAWindTask37/IEA-15-240-RWT`](https://github.com/IEAWindTask37/IEA-15-240-RWT)
+  — IEA-15 (v1.1 tower; Allen 2020 free-decay reference).
+
+The remaining manifest clones — IEA-10 (``iea_10_198``), IEA-22
+(``iea_22_280``), WISDEM, MoorPy, RAFT — are pinned in the manifest
+for reproducibility but the integration suite does not currently
+exercise them; they're cross-reference / future-validation
+artefacts that stay maintainer-local until a corresponding test
+lands. Adding a new turbine to the CI-enforced set is a deliberate
+maintainer action documented under *Changed* in the CHANGELOG.
 
 The two BModes CertTest cases (Test03, Test04) depend on
 ``external/BModes``, a [NREL BModes download](https://www.nrel.gov/wind/nwtc/bmodes.html)
