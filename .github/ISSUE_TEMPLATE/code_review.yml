@@ -1,0 +1,153 @@
+name: Code review feedback
+description: File a structured code-review finding (static review, audit, consultant pass).
+title: "[REVIEW] "
+labels:
+  - review
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to file **structured code-review feedback**
+        — single finding per issue, severity-graded, with the
+        evidence the maintainer needs to act.
+
+        For ad-hoc questions or design discussion use
+        [Discussions](https://github.com/SMI-Lab-Inha/pyBModes/discussions)
+        instead. For numerical disagreements with a published
+        reference use the
+        [Validation discrepancy](?template=validation_discrepancy.yml)
+        template. For defects (crash, parser, regression vs a prior
+        release) use the [Bug report](?template=bug_report.yml)
+        template.
+
+        **One finding per issue.** A review pass producing several
+        findings opens several issues; do not paste-bomb a list. The
+        triage cost of paste-bombs is what motivated this template.
+
+  - type: input
+    id: reviewer
+    attributes:
+      label: Reviewer name / affiliation
+      description: >-
+        Who is filing this? Cite an organisation (e.g. "Frazer &
+        Nash Consultancy") or a static-review tool name. The
+        affiliation goes in the issue, not in the codebase — see
+        ``CONTRIBUTING.md`` on neutral provenance wording.
+      placeholder: "e.g. Frazer & Nash Consultancy / GitHub Codex / SonarQube"
+    validations:
+      required: true
+
+  - type: input
+    id: scope
+    attributes:
+      label: Review scope
+      description: Branch, tag, or commit SHA the review was done against.
+      placeholder: "e.g. master @ b41a05c, dev @ 8af258e"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity (reviewer's call)
+      options:
+        - "P0 — release-blocker / correctness / security"
+        - "P1 — should fix before next minor release"
+        - "P2 — nice to have / quality improvement"
+        - "P3 — nit / style / opinion"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - "Correctness (numerical or logical)"
+        - "API design / contract"
+        - "Documentation"
+        - "Test coverage / validation matrix"
+        - "Performance"
+        - "Security / supply chain"
+        - "Repository hygiene (CI, licensing, governance)"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding (one sentence)
+      description: >-
+        A single sentence stating *what* is wrong. Save the
+        *why* and the proposed *fix* for the fields below.
+      placeholder: >-
+        "Tower.from_windio_floating returns SCREENING-fidelity
+        results without emitting a UserWarning when companion
+        decks are present but unreadable."
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >-
+        File paths + line numbers, the snippet that demonstrates
+        the issue, a failing test, screenshot of a logged number
+        that contradicts the docs, etc. Quote sources verbatim.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why this matters
+      description: >-
+        What is the user-visible impact? Who is affected? Is this
+        a correctness issue, a hygiene issue, a design-time
+        regret? Cite the affected docs / contract clauses if any.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed fix (optional)
+      description: >-
+        A code snippet, an API rename, a docs edit, a test to
+        add. If you have a preferred resolution, share it.
+        ``[skip]`` is fine if you don't have one — the maintainer
+        will propose one back.
+      render: python
+
+  - type: dropdown
+    id: provenance
+    attributes:
+      label: Provenance handling
+      description: >-
+        Tracked source files MUST NOT carry the reviewer's name
+        or affiliation; CHANGELOG / commit messages use neutral
+        wording ("static review", "follow-up"). See
+        ``CONTRIBUTING.md``. Confirming you understand:
+      options:
+        - "Yes — I understand commit/CHANGELOG wording will be neutral; this issue and its discussion are the audit trail."
+        - "No — I want my name in the commit log."
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Maintainer triage notes
+
+        Maintainers will respond with one of:
+
+        - **Accept + fix** — opening a PR resolves this issue.
+        - **Accept + defer** — adding to the milestone for the
+          next minor / major release.
+        - **Decline (won't fix) with rationale** — explanation
+          posted before the issue is closed.
+        - **Question / clarification needed** — issue stays
+          open pending reviewer reply.
