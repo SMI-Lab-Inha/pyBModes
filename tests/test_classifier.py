@@ -223,7 +223,7 @@ def test_nearly_degenerate_pair(tmp_path):
 
 _IEA34_MAIN = (
     pathlib.Path(__file__).resolve().parents[1]
-    / "docs/OpenFAST_files/IEA-3.4-130-RWT/openfast/IEA-3.4-130-RWT_ElastoDyn.dat"
+    / "external/OpenFAST_files/IEA-3.4-130-RWT/openfast/IEA-3.4-130-RWT_ElastoDyn.dat"
 )
 
 
@@ -392,7 +392,7 @@ def test_iea34_mode_torsion_reported() -> None:
     stay below the 10 % threshold."""
     REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
     deck = (
-        REPO_ROOT / "docs" / "OpenFAST_files" / "IEA-3.4-130-RWT"
+        REPO_ROOT / "external" / "OpenFAST_files" / "IEA-3.4-130-RWT"
         / "openfast" / "IEA-3.4-130-RWT_ElastoDyn.dat"
     )
     if not deck.is_file():

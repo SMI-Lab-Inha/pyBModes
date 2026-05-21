@@ -329,7 +329,7 @@ def test_hand_authored_asymmetric_bmi_changes_spectrum(tmp_path) -> None:
     """End-to-end through the public .bmi path: the parsed horizontal
     CM offset reaches the solver and shifts the rigid-body spectrum
     (n_modes-stable), proving the format → nondim → solve chain works
-    for a hand-authored deck (TheMercer's workflow — no OpenFAST)."""
+    for a hand-authored deck (hand-authored .bmi workflow — no OpenFAST)."""
     from pybmodes.io.bmi import read_bmi
     from pybmodes.io.sec_props import read_sec_props
     from pybmodes.models import Tower
@@ -356,7 +356,7 @@ def test_hand_authored_asymmetric_bmi_changes_spectrum(tmp_path) -> None:
 @pytest.mark.parametrize("cm_x,cm_y", [(0.0, 0.0), (6.5, -3.25)])
 def test_hand_authored_bmi_rigid_modes_named(tmp_path, cm_x, cm_y) -> None:
     """Rigid-body mode naming must work for a *hand-authored* floating
-    .bmi (TheMercer's workflow: no OpenFAST), symmetric and asymmetric.
+    .bmi (hand-authored .bmi workflow: no OpenFAST), symmetric and asymmetric.
 
     Reads the emitted .bmi the public way (``read_bmi`` → ``Tower``)
     and checks ``ModalResult.mode_labels``. This synthetic fixture is

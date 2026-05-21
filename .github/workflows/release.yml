@@ -1,0 +1,103 @@
+# Release-readiness workflow — manually triggered.
+#
+# Run from the GitHub UI before tagging a new version:
+#   Actions -> Release readiness -> Run workflow (-> pick a ref)
+#
+# Gates that go beyond the per-PR CI:
+#   * sdist + wheel build + cross-install
+#   * full Sphinx docs build (non-strict — see the ci.yml docs job
+#     comment for the warning-policy rationale)
+#   * ``pybmodes._examples.sample_inputs.verify`` against the four
+#     bundled analytical references
+#   * mechanical validation-matrix audit
+#
+# Integration tests against upstream OpenFAST / BModes data are NOT
+# run here — that data isn't on the GitHub runner. The release
+# checklist (``docs/release_checklist.rst``) tells the maintainer
+# to run ``pytest -m integration`` locally before tagging.
+#
+# This workflow can also be wired into a future self-hosted runner
+# with ``external/`` mounted; the current single ``ubuntu-latest``
+# job covers what is reproducible on a clean cloud runner.
+name: Release readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch / tag / SHA to test (default: master)"
+        required: false
+        default: "master"
+
+permissions:
+  contents: read
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install with all extras
+        run: pip install -e ".[dev,plots,notebook,windio,docs]"
+
+      - name: Lint
+        run: ruff check src/ tests/ scripts/
+
+      - name: Type-check
+        run: mypy src/pybmodes
+
+      - name: Default pytest (self-contained)
+        run: pytest --tb=short
+
+      - name: Validation-matrix audit
+        run: python scripts/audit_validation_claims.py
+
+      - name: Sample verifier (4/4 analytical references)
+        run: python -m pybmodes._examples.sample_inputs.verify
+
+      - name: Sphinx docs
+        # Strict mode (-W) intentionally off — see the ci.yml docs
+        # job comment. Track the warning count instead.
+        run: sphinx-build -b html docs docs/_build/html
+
+      - name: Build sdist + wheel
+        run: |
+          pip install --upgrade pip build
+          python -m build
+
+      - name: Install wheel into a fresh venv + version sanity
+        run: |
+          python -m venv release-venv
+          ./release-venv/bin/pip install --upgrade pip
+          ./release-venv/bin/pip install dist/pybmodes-*.whl
+          cd /tmp
+          expected=$(grep '^version = ' "$GITHUB_WORKSPACE/pyproject.toml" | head -1 | sed -E 's/version = "([^"]+)"/\1/')
+          actual=$($GITHUB_WORKSPACE/release-venv/bin/python -c "import pybmodes; print(pybmodes.__version__)")
+          echo "expected: $expected"
+          echo "actual:   $actual"
+          test "$expected" = "$actual"
+
+      - name: Install sdist into a fresh venv (catches MANIFEST.in gaps)
+        run: |
+          python -m venv sdist-venv
+          ./sdist-venv/bin/pip install --upgrade pip
+          ./sdist-venv/bin/pip install dist/pybmodes-*.tar.gz
+          cd /tmp
+          $GITHUB_WORKSPACE/sdist-venv/bin/python -c "import pybmodes; print(pybmodes.__version__)"
+
+      - name: Upload built artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-and-docs
+          path: |
+            dist/
+            docs/_build/html/
+          retention-days: 14

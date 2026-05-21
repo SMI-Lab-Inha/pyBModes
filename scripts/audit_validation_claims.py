@@ -1,3 +1,18 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Audit ``VALIDATION.md`` against the test suite to catch "claim ahead
 of test" drift.
 
@@ -19,7 +34,7 @@ Run from the repo root:
 
 Exits 0 with a one-line OK summary if every row checks out, or non-zero
 with a detailed per-row error report otherwise. Designed to live as
-step 4.5 of ``docs/RELEASE_CHECKLIST.md``.
+step 4.5 of ``docs/release_checklist.rst``.
 
 The script does NOT execute any tests. It only checks file presence
 and structural population — enough to catch a row that names a file

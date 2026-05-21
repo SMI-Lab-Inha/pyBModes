@@ -1,0 +1,19 @@
+# GitHub Issues config — chooser landing page.
+# When a user opens the "New issue" page they see the three issue
+# templates above plus the contact links below.
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: mailto:jaehoon.seo@inha.ac.kr
+    about: >-
+      Do not file public issues for security reports. Email the
+      maintainer; see SECURITY.md for the disclosure scope.
+  - name: Question or general discussion
+    url: https://github.com/SMI-Lab-Inha/pyBModes/discussions
+    about: >-
+      Usage questions, design discussions, or anything that isn't
+      a defect, feature, or numerical disagreement.
+  - name: Documentation
+    url: https://github.com/SMI-Lab-Inha/pyBModes#readme
+    about: README, VALIDATION.md, and the Sphinx docs site cover most
+      usage questions before you open an issue.

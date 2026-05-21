@@ -1,3 +1,18 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Reproduce Bir 2010 Figure 8 (monopile-supported tower) in the same
 plot convention.
 
@@ -14,7 +29,7 @@ y ≈ 0.40, Mud Line at y ≈ 0.25 (i.e. 36 m of buried-pile + 20 m of
 water column + 87.6 m of tower above MSL).
 
 This script uses the **CS_Monopile.bmi** deck from
-``docs/BModes/docs/examples/`` — the *NREL 5MW Reference Turbine*
+``external/BModes/docs/examples/`` — the *NREL 5MW Reference Turbine*
 (Jonkman et al. 2009) on an OC3-style soft monopile (Jonkman & Musial
 2010), with pyBmodes matching the BModes JJ reference at < 0.005 % per
 mode (see ``test_certtest_cs_monopile`` in the validation suite).
@@ -62,7 +77,7 @@ apply_style()
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 CS_MONOPILE_BMI = (
-    REPO_ROOT / "docs" / "BModes" / "docs" / "examples" / "CS_Monopile.bmi"
+    REPO_ROOT / "external" / "BModes" / "docs" / "examples" / "CS_Monopile.bmi"
 )
 OUTPUT_DIR = pathlib.Path(__file__).resolve().parent / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -135,8 +150,8 @@ def _identify_modes(result) -> dict[str, list[tuple[int, str]]]:
 def main() -> int:
     if not CS_MONOPILE_BMI.is_file():
         print(f"ERROR: CS_Monopile deck not found at {CS_MONOPILE_BMI}")
-        print("       (these BModes example decks are local-only, "
-              "see CLAUDE.md)")
+        print("       (these BModes example decks are local-only — "
+              "see the README *Independence stance*)")
         return 1
 
     print("Bir 2010 Figure 8 reproduction — monopile-supported tower")

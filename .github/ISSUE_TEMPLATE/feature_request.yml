@@ -1,0 +1,66 @@
+name: Feature request
+description: Suggest a new capability, supported input format, or API addition.
+title: "[FEATURE] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening, please check the existing [issues](https://github.com/SMI-Lab-Inha/pyBModes/issues)
+        and [VALIDATION.md](../../VALIDATION.md) — your use case may
+        already be covered.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: |
+        A concrete workflow you cannot complete today, or a published
+        reference / industry input format that pyBmodes does not yet
+        read. Avoid "would be nice if" — anchor on a real use case.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API or behaviour
+      description: |
+        How you imagine calling it. A function signature, CLI invocation,
+        or worked example is enough.
+      render: python
+
+  - type: textarea
+    id: references
+    attributes:
+      label: Citable references
+      description: |
+        Papers, technical reports, or upstream code that define what
+        the feature should do. pyBmodes is a research-grade library —
+        every numerical addition needs a citable basis.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: |
+        Why doesn't the current public API cover it? Is there a
+        workaround you're using today, and what is the gap?
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope estimate
+      description: How big a change do you think this is?
+      options:
+        - "Small (single function / kwarg, no schema change)"
+        - "Medium (new module or new input-format reader)"
+        - "Large (cross-cutting refactor, new optional dependency)"
+        - "Not sure"
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Related issues, sketches, links, anything else relevant.

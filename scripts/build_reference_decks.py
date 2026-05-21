@@ -1,3 +1,18 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Build the ``reference_decks/`` directory tree.
 
 For each included case — three fixed-base (NREL 5MW land, NREL 5MW
@@ -7,7 +22,7 @@ semi, IEA-15-240-RWT on the UMaine VolturnUS-S semi), the script:
 
 1. Copies the ElastoDyn main / tower / blade ``.dat`` files (and the
    SubDyn file for the monopile case) from the upstream source location
-   under ``docs/OpenFAST_files/`` into ``reference_decks/<case>/``,
+   under ``external/OpenFAST_files/`` into ``reference_decks/<case>/``,
    renaming where needed and rewriting the ``TwrFile`` / ``BldFile``
    references in the main file so the deck is self-contained
    (no ``../5MW_Baseline/`` traversal).
@@ -62,13 +77,13 @@ REFERENCE_DECKS_DIR = (
     REPO_ROOT / "src" / "pybmodes" / "_examples" / "reference_decks"
 )
 RTEST_OPENFAST = (
-    REPO_ROOT / "docs" / "OpenFAST_files" / "r-test" / "glue-codes" / "openfast"
+    REPO_ROOT / "external" / "OpenFAST_files" / "r-test" / "glue-codes" / "openfast"
 )
 IEA34_OPENFAST = (
-    REPO_ROOT / "docs" / "OpenFAST_files" / "IEA-3.4-130-RWT" / "openfast"
+    REPO_ROOT / "external" / "OpenFAST_files" / "IEA-3.4-130-RWT" / "openfast"
 )
 IEA15_OPENFAST = (
-    REPO_ROOT / "docs" / "OpenFAST_files" / "IEA-15-240-RWT" / "OpenFAST"
+    REPO_ROOT / "external" / "OpenFAST_files" / "IEA-15-240-RWT" / "OpenFAST"
 )
 
 

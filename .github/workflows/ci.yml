@@ -50,7 +50,7 @@ jobs:
         # existing file (or directory glob) that defines at least one
         # ``def test_…`` method. Catches "claim ahead of test" drift
         # at PR time rather than at release time. The script is also
-        # step 4.5 of docs/RELEASE_CHECKLIST.md.
+        # step 4.5 of docs/release_checklist.rst.
         run: python scripts/audit_validation_claims.py
 
       - name: Lint
@@ -127,3 +127,70 @@ jobs:
         run: |
           cd /tmp
           $GITHUB_WORKSPACE/smoke-venv/bin/python -m pybmodes._examples.sample_inputs.verify
+
+  docs:
+    # Build the Sphinx documentation site. Mirrors what Read the Docs
+    # runs (.readthedocs.yaml). Surfaces broken autodoc references,
+    # dead intra-site links, or malformed MyST/RST at PR time.
+    # Strict mode (warnings-as-errors) is currently OFF — see the
+    # build step below.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install with docs extras
+        run: pip install -e ".[docs,plots,windio]"
+
+      - name: Build HTML docs
+        # Strict mode (-W) is intentionally OFF: there is a backlog
+        # of pre-existing docstring-formatting warnings (duplicate
+        # dataclass-field documentation, RST nits in module
+        # docstrings) that are not in scope for the docs scaffold
+        # PR. The build itself succeeds and produces a complete
+        # site. Flip ``-W --keep-going`` back on once the source
+        # docstring backlog is cleaned up.
+        run: sphinx-build -b html docs docs/_build/html
+
+      - name: Upload built docs as artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-docs
+          path: docs/_build/html
+          retention-days: 7
+
+  sdist:
+    # Build the source distribution and verify it installs from
+    # source on a clean Python — complements the wheel-smoke job by
+    # catching MANIFEST.in / package-data issues that only surface
+    # when pip rebuilds from sdist.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build deps
+        run: pip install --upgrade pip build
+
+      - name: Build sdist
+        run: python -m build --sdist
+
+      - name: Install sdist into fresh venv
+        run: |
+          python -m venv sdist-venv
+          ./sdist-venv/bin/pip install --upgrade pip
+          ./sdist-venv/bin/pip install dist/pybmodes-*.tar.gz
+
+      - name: Sanity check
+        run: |
+          cd /tmp
+          $GITHUB_WORKSPACE/sdist-venv/bin/python -c "import pybmodes; print(pybmodes.__version__)"

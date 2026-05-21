@@ -1,3 +1,18 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Campbell-diagram support: rotor-speed sweep with MAC-tracked blade
 modes and constant-frequency tower modes overlaid on the same plot.
 
@@ -1219,16 +1234,25 @@ def plot_campbell(
     _comb = [0.07, 0.45, 0.24, 0.63, 0.36, 0.78, 0.15, 0.55]
     floor_fr = 0.05
     lifted = 0          # sub-floor modes stack up a low band, not pile
+    # Blade curves only exist on [rpm.min(), rpm.max()]; tower / platform
+    # axhline lines span the full [0, xmax]. The comb fraction is scaled
+    # to the *curve domain* for blade labels (otherwise an operating-only
+    # sweep starting above 0 rpm parks early-comb labels left of the
+    # curve, where np.interp silently clamps to curve[0]).
+    rpm_min = float(rpm.min()) if rpm.size else 0.0
+    blade_span = max(xmax - rpm_min, 0.0)
     for i, (nm, f0, col, curve) in enumerate(structural):
-        xl = _comb[i % len(_comb)] * xmax
+        frac = _comb[i % len(_comb)]
         # For a blade curve, anchor the label *on the curve* at this
         # x (interpolated) — not at the parked frequency — so a mode
         # with appreciable centrifugal stiffening isn't drawn far off
         # its line, and the bracketed Hz matches where it sits
-        # (issue #54 follow-up — Codex review).
+        # (issue #54 follow-up — static review).
         if curve is not None and rpm.size:
+            xl = rpm_min + frac * blade_span if blade_span > 0.0 else rpm_min
             f = float(np.interp(xl, rpm, curve))
         else:
+            xl = frac * xmax
             f = f0
         tf = _to_frac(f)
         if tf < floor_fr:                       # too near the x-axis

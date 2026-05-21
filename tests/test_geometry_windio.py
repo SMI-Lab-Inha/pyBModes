@@ -498,7 +498,7 @@ def test_windio_missing_shape_and_structure_raises(
 # 4. Integration — real upstream WindIO corpus (IEA-3.4 / 10 / 15 / 22)
 # ---------------------------------------------------------------------------
 
-_DOCS = pathlib.Path(__file__).resolve().parents[1] / "docs" / "OpenFAST_files"
+_DOCS = pathlib.Path(__file__).resolve().parents[1] / "external" / "OpenFAST_files"
 _IEA15_YAML = _DOCS / "IEA-15-240-RWT/WT_Ontology/IEA-15-240-RWT.yaml"
 _IEA15_MONO_ED = (
     _DOCS / "IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-Monopile/"

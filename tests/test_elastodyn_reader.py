@@ -8,7 +8,7 @@ Three layers are exercised against two real RWT bundles:
                build a runnable model and the eigenvalue solve produces
                positive, sorted frequencies.
 
-Reference data lives under ``docs/OpenFAST_files/`` and is not committed.
+Reference data lives under ``external/OpenFAST_files/`` and is not committed.
 The whole module skips at import time if either bundled RWT directory
 is missing, which keeps the suite green on contributors who don't have
 the local copies.
@@ -45,7 +45,7 @@ from pybmodes.models import RotatingBlade, Tower
 # 5 GB of r-test data that lives outside this repo.
 pytestmark = pytest.mark.integration
 
-_DOCS = pathlib.Path(__file__).resolve().parents[1] / "docs" / "OpenFAST_files"
+_DOCS = pathlib.Path(__file__).resolve().parents[1] / "external" / "OpenFAST_files"
 
 _M5_LAND = _DOCS / "r-test/glue-codes/openfast/5MW_Land_DLL_WTurb"
 _M5_BASE = _DOCS / "r-test/glue-codes/openfast/5MW_Baseline"

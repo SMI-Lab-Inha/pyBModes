@@ -213,19 +213,19 @@ is behavioural / contract-style.
 `integration` marker). Run them locally with `pytest -m integration`
 once you have the upstream sources:
 
-- `docs/OpenFAST_files/r-test/` — clone of the OpenFAST regression-test
+- `external/OpenFAST_files/r-test/` — clone of the OpenFAST regression-test
   corpus (any recent commit; pyBmodes was last validated against
   `dd5feaaa`).
-- `docs/OpenFAST_files/IEA-3.4-130-RWT/`, `IEA-10.0-198-RWT/`,
+- `external/OpenFAST_files/IEA-3.4-130-RWT/`, `IEA-10.0-198-RWT/`,
   `IEA-15-240-RWT/`, `IEA-22-280-RWT/` — clones of the IEA Wind Task 37
   reference-turbine repositories (each ships a WindIO ontology `.yaml`
   plus matching OpenFAST/ElastoDyn decks; the WindIO validation rows
   consume both).
-- `docs/OpenFAST_files/WISDEM/examples/` — clone of the WISDEM
+- `external/OpenFAST_files/WISDEM/examples/` — clone of the WISDEM
   examples tree (modern-dialect WindIO ontology yamls for the
   corpus-parse coverage).
-- `docs/BModes/CertTest/` — BModes v3.00 CertTest reference outputs.
-- `docs/BModes/docs/examples/` — the bundled `CS_Monopile.bmi` and
+- `external/BModes/CertTest/` — BModes v3.00 CertTest reference outputs.
+- `external/BModes/docs/examples/` — the bundled `CS_Monopile.bmi` and
   `OC3Hywind.bmi` example decks plus their BModes JJ `.out` files.
 
 These directories are gitignored under the **Independence stance**.
@@ -244,7 +244,7 @@ pre-tag, not CI-gated.** Specifically:
   a genuine integration-test failure when data IS provided by a
   custom workflow run) fails the build.
 - The pre-tag release sequence (see
-  [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md), step 2)
+  [`docs/release_checklist.rst`](docs/release_checklist.rst), step 2)
   requires the maintainer to run `pytest -m integration` locally on
   a checkout that has the upstream sources cloned, and confirm
   every case passes, before tagging a new version. The tag therefore

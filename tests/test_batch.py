@@ -28,7 +28,7 @@ from pybmodes.cli import main as cli_main
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 REFERENCE_DECKS = _resolve_examples_root() / "reference_decks"
 NREL5MW_RTEST_DECK = (
-    REPO_ROOT / "docs" / "OpenFAST_files" / "r-test" / "glue-codes"
+    REPO_ROOT / "external" / "OpenFAST_files" / "r-test" / "glue-codes"
     / "openfast" / "5MW_Land_DLL_WTurb"
     / "NRELOffshrBsline5MW_Onshore_ElastoDyn.dat"
 )
@@ -163,7 +163,7 @@ def test_batch_patch_all_pass_after(tmp_path: pathlib.Path) -> None:
         )
     src_dir = NREL5MW_RTEST_DECK.parent
     blade_src = (
-        REPO_ROOT / "docs" / "OpenFAST_files" / "r-test" / "glue-codes"
+        REPO_ROOT / "external" / "OpenFAST_files" / "r-test" / "glue-codes"
         / "openfast" / "5MW_Baseline"
     )
     # Stage the deck + its blade-baseline sibling so the relative

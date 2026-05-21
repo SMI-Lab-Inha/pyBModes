@@ -957,8 +957,8 @@ def test_windio_blade_elastic_mode_guards(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Static-review hardening (Frazer & Nash): twist units, malformed
-# published block, single-airfoil schedule
+# Static-review hardening: twist units, malformed published block,
+# single-airfoil schedule
 # ---------------------------------------------------------------------------
 
 def test_twist_unit_autodetect_radians_vs_degrees() -> None:
@@ -1150,7 +1150,7 @@ def test_windio_blade_named_inertia_labels_not_swapped(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 _DOCS = (pathlib.Path(__file__).resolve().parents[1]
-         / "docs" / "OpenFAST_files")
+         / "external" / "OpenFAST_files")
 _IEA15_BL_Y = _DOCS / "IEA-15-240-RWT/WT_Ontology/IEA-15-240-RWT.yaml"
 _IEA15_BL_BD = (_DOCS / "IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT/"
                 "IEA-15-240-RWT_BeamDyn_blade.dat")

@@ -1,0 +1,76 @@
+name: Validation discrepancy
+description: Numerical disagreement with a published reference, the BModes Fortran solver, or another modal-analysis code.
+title: "[VALIDATION] "
+labels:
+  - validation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when pyBmodes produces a number that
+        disagrees with a citable reference (a peer-reviewed paper,
+        NREL technical report, the BModes Fortran solver, BeamDyn,
+        OpenFAST, WISDEM, …) by more than the tolerance documented in
+        [VALIDATION.md](../../VALIDATION.md).
+
+        For a defect that is **not** a reference comparison (a crash,
+        a parser bug, etc.) use the [bug report](?template=bug_report.yml)
+        template instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: pyBmodes version
+      placeholder: "e.g. 1.7.0"
+    validations:
+      required: true
+
+  - type: input
+    id: reference
+    attributes:
+      label: Reference being compared against
+      description: Full citation — author, year, title, report number / DOI if available.
+      placeholder: "e.g. Jonkman & Musial (2010), NREL/TP-5000-48191, Table 5-1"
+    validations:
+      required: true
+
+  - type: input
+    id: case
+    attributes:
+      label: Case / deck
+      placeholder: "e.g. NREL 5MW on OC3 Hywind floating spar"
+    validations:
+      required: true
+
+  - type: textarea
+    id: discrepancy
+    attributes:
+      label: Discrepancy
+      description: |
+        A table is best. Mode-by-mode pyBmodes vs reference, with the
+        % difference and the tolerance VALIDATION.md says applies.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Reproducer
+      description: |
+        Minimal Python or CLI invocation that produces the pyBmodes
+        number. If the deck is licensed, name the version and where
+        to obtain it.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis (optional)
+      description: |
+        If you have a guess at the root cause — convention
+        difference, missing physics, wrong BC, polynomial-basis
+        limit — note it here. Don't speculate; "I don't know" is
+        a fine answer.

@@ -28,18 +28,16 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local-only development notes (project conventions / per-session caches).
 CLAUDE.md
 .claude/
 
 # Local-only upstream data — large and / or licensed for non-redistribution.
-# pybmodes' tests + build scripts skip when these are absent (see CLAUDE.md
-# "Independence stance"). Contributors who want full cert-test or
-# reference-deck-build coverage clone the upstream sources locally.
-docs/OpenFAST_files/
-docs/BModes/
-docs/references/
-docs/MoorPy/
-docs/RAFT/
+# pybmodes' tests + build scripts skip when these are absent (independence
+# stance, see README). Contributors who want full cert-test or
+# reference-deck-build coverage clone the upstream sources under external/.
+external/
 
 # Generated case-study outputs — each cases/<name>/run.py regenerates
 # its own outputs/ subtree (PNGs, coefficient tables, validation

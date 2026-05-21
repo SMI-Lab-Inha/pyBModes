@@ -1,3 +1,18 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Reproduce Bir 2010 Figures 6a / 6b / 6c (floating-platform-supported
 tower) in the same plot convention.
 
@@ -19,7 +34,7 @@ Bir's panels:
     Fig 6c — Out-of-plane / torsion: Yaw + 1st twist + 2nd twist.
 
 This script uses the **OC3Hywind.bmi** deck from
-``docs/BModes/docs/examples/`` — the *NREL 5MW Reference Turbine*
+``external/BModes/docs/examples/`` — the *NREL 5MW Reference Turbine*
 (Jonkman et al. 2009) on the *OC3 Hywind* floating spar (Jonkman 2010).
 OC3Hywind is a spar-buoy, not a barge, so the absolute frequencies
 differ from Bir's Fig 6 reference; the *plot convention* and the
@@ -60,7 +75,7 @@ apply_style()
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 OC3_BMI = (
-    REPO_ROOT / "docs" / "BModes" / "docs" / "examples" / "OC3Hywind.bmi"
+    REPO_ROOT / "external" / "BModes" / "docs" / "examples" / "OC3Hywind.bmi"
 )
 OUTPUT_DIR = pathlib.Path(__file__).resolve().parent / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -189,8 +204,8 @@ def figure_6c_yaw_twist(result, groups, out_path: pathlib.Path) -> None:
 def main() -> int:
     if not OC3_BMI.is_file():
         print(f"ERROR: OC3Hywind deck not found at {OC3_BMI}")
-        print("       (these BModes example decks are local-only, "
-              "see CLAUDE.md)")
+        print("       (these BModes example decks are local-only — "
+              "see the README *Independence stance*)")
         return 1
 
     print("Bir 2010 Figure 6 reproduction — floating-platform tower")

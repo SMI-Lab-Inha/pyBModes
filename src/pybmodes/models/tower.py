@@ -1,3 +1,18 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Tower: high-level model for a wind-turbine tower."""
 
 from __future__ import annotations
@@ -787,7 +802,7 @@ class Tower:
             # flexible_length - draft``; do the same here so a
             # supplied floater's non-zero ``draft`` does not silently
             # shorten/lengthen the tower and shift every modal
-            # frequency. (Codex review P1 on v1.4.2; fixed in 1.4.3.)
+            # frequency. (Static-review P1 on v1.4.2; fixed in 1.4.3.)
             bmi = _build_bmi_skeleton(
                 title="WindIO floating tower + injected platform",
                 beam_type=2,

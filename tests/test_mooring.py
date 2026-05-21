@@ -8,7 +8,7 @@ Two tiers:
 - **Integration** (``@pytest.mark.integration``): MoorDyn parse +
   stiffness assembly on the OpenFAST ``r-test`` 5MW OC3 spar deck.
   Skipped when the upstream r-test repo isn't checked out under
-  ``docs/OpenFAST_files/``.
+  ``external/OpenFAST_files/``.
 
 The OC3 published mooring K[0,0] (Jonkman 2010 NREL/TP-500-47535 Table
 5-1) is reproduced to better than 0.01 % — that's the canonical
@@ -35,7 +35,7 @@ from pybmodes.mooring import Line, LineType, MooringSystem, Point
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 OC3_MOORDYN = (
-    REPO_ROOT / "docs" / "OpenFAST_files" / "r-test" / "glue-codes"
+    REPO_ROOT / "external" / "OpenFAST_files" / "r-test" / "glue-codes"
     / "openfast" / "5MW_OC3Spar_DLL_WTurb_WavesIrr"
     / "NRELOffshrBsline5MW_OC3Hywind_MoorDyn.dat"
 )

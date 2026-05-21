@@ -70,7 +70,7 @@ clamped-base + unit-tip constraints
 ($\phi(0)=\phi'(0)=0$, $\phi(1)=1$). For tower modes, the rigid-body
 root component is removed before fitting (the **Improved Direct
 Method** described in BModes' Excel mode-shape worksheet,
-`docs/BModes/docs/ModeShapePolyFitting.xls`). After regeneration
+`external/BModes/docs/ModeShapePolyFitting.xls`). After regeneration
 every block is pyBmodes' best constrained fit and no block FAILs;
 all blocks reach PASS except one known WARN
 (`iea15mw_umainesemi/TwSSM2Sh` at 1.6 % RMS, an unavoidable
@@ -145,6 +145,6 @@ motion that the ElastoDyn `SHP` ansatz cannot represent).
 
 The original upstream `.dat` files retain their respective licenses
 (see the `r-test` and IEA Wind Task 37 repositories). pyBmodes' patched
-versions are released under the same MIT license as pyBmodes itself —
+versions are released under the same Apache 2.0 licence as pyBmodes itself —
 the structural content is unchanged from the upstream files; only the
 polynomial-coefficient lines were rewritten.

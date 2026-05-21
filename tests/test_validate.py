@@ -1,7 +1,7 @@
 """Tests for the ElastoDyn coefficient-consistency validator.
 
 These tests use the bundled OpenFAST r-test NREL 5MW deck at
-``docs/OpenFAST_files/r-test/glue-codes/openfast/5MW_Land_DLL_WTurb/``
+``external/OpenFAST_files/r-test/glue-codes/openfast/5MW_Land_DLL_WTurb/``
 because it is known to ship inconsistent polynomial blocks (the same
 ratios documented in ``cases/ECOSYSTEM_FINDING.md``: ~2,100× / ~2,500×
 on TwFAM2Sh / TwSSM2Sh). If the deck isn't present locally the tests
@@ -37,7 +37,7 @@ pytestmark = pytest.mark.integration
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 NREL5MW_DAT = (
-    REPO_ROOT / "docs" / "OpenFAST_files" / "r-test" / "glue-codes"
+    REPO_ROOT / "external" / "OpenFAST_files" / "r-test" / "glue-codes"
     / "openfast" / "5MW_Land_DLL_WTurb"
     / "NRELOffshrBsline5MW_Onshore_ElastoDyn.dat"
 )
@@ -141,7 +141,7 @@ class TestPatchRoundTrip:
         """Copy the 5MW deck + blade subtree into tmp_path, return main."""
         src_dir = NREL5MW_DAT.parent
         blade_src = (
-            REPO_ROOT / "docs" / "OpenFAST_files" / "r-test"
+            REPO_ROOT / "external" / "OpenFAST_files" / "r-test"
             / "glue-codes" / "openfast" / "5MW_Baseline"
         )
         if not blade_src.is_dir():
@@ -254,7 +254,7 @@ class TestPatchSafeReviewModes:
         path."""
         src_dir = NREL5MW_DAT.parent
         blade_src = (
-            REPO_ROOT / "docs" / "OpenFAST_files" / "r-test"
+            REPO_ROOT / "external" / "OpenFAST_files" / "r-test"
             / "glue-codes" / "openfast" / "5MW_Baseline"
         )
         if not blade_src.is_dir():

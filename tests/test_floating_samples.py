@@ -12,7 +12,7 @@ This test pins the round-trip: build the PlatformSupport via
 :meth:`Tower.from_elastodyn_with_mooring` from upstream OpenFAST decks,
 serialise, re-parse, and confirm the 6×6 matrices match the source values
 to floating-point precision. Integration-marked because it reads upstream
-decks under ``docs/OpenFAST_files/`` that aren't bundled with the repo.
+decks under ``external/OpenFAST_files/`` that aren't bundled with the repo.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ from pybmodes.models import Tower  # noqa: E402
 
 pytestmark = pytest.mark.integration
 
-_DOCS = pathlib.Path(__file__).resolve().parents[1] / "docs" / "OpenFAST_files"
+_DOCS = pathlib.Path(__file__).resolve().parents[1] / "external" / "OpenFAST_files"
 _IEA15_UMS = _DOCS / "IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-UMaineSemi"
 _IEA15_MAIN = _IEA15_UMS / "IEA-15-240-RWT-UMaineSemi_ElastoDyn.dat"
 _IEA15_MOOR = _IEA15_UMS / "IEA-15-240-RWT-UMaineSemi_MoorDyn.dat"

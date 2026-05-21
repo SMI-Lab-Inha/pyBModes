@@ -1,3 +1,18 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Polynomial-vs-FEM comparison for the NREL 5MW OC3 Hywind floating spar.
 
 This script is a **coupled-vs-cantilever diagnostic**, not a
@@ -77,10 +92,10 @@ from pybmodes.fitting.poly_fit import PolyFitResult, fit_mode_shape  # noqa: E40
 from pybmodes.io.elastodyn_reader import read_elastodyn_tower  # noqa: E402
 from pybmodes.models import Tower  # noqa: E402
 
-_OC3_BMI = REPO_ROOT / "docs" / "BModes" / "docs" / "examples" / "OC3Hywind.bmi"
+_OC3_BMI = REPO_ROOT / "external" / "BModes" / "docs" / "examples" / "OC3Hywind.bmi"
 _RTEST_DECK = (
     REPO_ROOT
-    / "docs" / "OpenFAST_files" / "r-test" / "glue-codes" / "openfast"
+    / "external" / "OpenFAST_files" / "r-test" / "glue-codes" / "openfast"
     / "5MW_OC3Spar_DLL_WTurb_WavesIrr"
 )
 _RTEST_TOWER = _RTEST_DECK / "NRELOffshrBsline5MW_OC3Hywind_ElastoDyn_Tower.dat"
@@ -149,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--bmi", type=pathlib.Path, default=_OC3_BMI,
-        help="OC3 Hywind BMI (default: docs/BModes/docs/examples/OC3Hywind.bmi)",
+        help="OC3 Hywind BMI (default: external/BModes/docs/examples/OC3Hywind.bmi)",
     )
     parser.add_argument(
         "--rtest-tower", type=pathlib.Path, default=_RTEST_TOWER,
