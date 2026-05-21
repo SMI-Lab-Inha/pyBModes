@@ -10,15 +10,30 @@ elsewhere in the repo (`cases/ECOSYSTEM_FINDING.md`,
 `src/pybmodes/_examples/reference_decks/VALIDATION_SUMMARY.md`, the README's *Validation*
 section) refer back to this matrix.
 
-**Enforcement.** Cases marked *Needs external data* run inside the
+**Enforcement.** The
 [Validation workflow](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/validation.yml)
-(weekly cron + ``workflow_dispatch``). The per-PR ``ci.yml`` is
-tolerant of absent external data (exit code 5 → pass); the
-validation workflow is **not** — it clones the upstream OpenFAST /
+(weekly cron + ``workflow_dispatch``) clones the upstream OpenFAST /
 IEA-Task-37 repositories on the fly and runs ``pytest -m integration``
-hard-fail. The verifier-report artifact uploaded by every run is the
-machine-checkable record that the published 0.01 % tolerance claim
-holds at the tagged commit, regardless of maintainer-local state.
+**hard-fail** — no exit-5 tolerance, unlike the per-PR ``ci.yml``. The
+verifier report uploaded by every run is the machine-checkable
+record that the workflow's coverage holds at the tagged commit.
+
+The workflow validates every case in the *Needs external data*
+column whose upstream is **clonable from a public GitHub
+repository**: the NREL 5MW r-test family (via
+[`OpenFAST/r-test`](https://github.com/OpenFAST/r-test)) and the
+IEA-Task-37 reference turbines (via
+[`IEAWindTask37/IEA-*-RWT`](https://github.com/IEAWindTask37)).
+
+The two BModes CertTest cases (Test03, Test04) depend on
+``external/BModes``, a [NREL BModes download](https://www.nrel.gov/wind/nwtc/bmodes.html)
+that is not on GitHub and not redistributable in CI. Those tests
+skip cleanly when the data is absent (module-level
+``pytestmark = pytest.mark.integration`` plus per-file
+``.is_file()`` guards) and **stay a maintainer-local enforcement**
+until the BModes archive is mirrored somewhere CI can clone. The
+matrix row's worst-observed columns reflect the local run; the
+public CI workflow does not currently re-verify them.
 
 The validation work is split into **two tracks** with different
 metrics:
