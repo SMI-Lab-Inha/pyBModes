@@ -418,14 +418,14 @@ def to_pybmodes_pile_tower(
     """Build a combined pile + tower BMI + SectionProperties for OC3-style
     rigid-base monopiles.
 
-    Layout (axial coordinate ``z`` increases upward):
+    Layout (axial coordinate ``z`` increases upward)::
 
-        z = z_seabed   ─── rigid clamped base (SubDyn reaction joint)
+        z = z_seabed   --- rigid clamped base (SubDyn reaction joint)
         ...                pile section, properties from SubDyn members
-        z = z_TP       ─── transition piece (SubDyn interface joint /
-                            ElastoDyn ``TowerBsHt``)
+        z = z_TP       --- transition piece (SubDyn interface joint
+                            / ElastoDyn ``TowerBsHt``)
         ...                tower section, properties from ElastoDyn tower
-        z = z_top      ─── tower top, lumped RNA tip mass
+        z = z_top      --- tower top, lumped RNA tip mass
 
     The returned ``BMIFile`` describes the full beam from ``z_seabed`` to
     ``z_top`` as a single cantilever; the ``SectionProperties`` array

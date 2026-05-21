@@ -15,10 +15,10 @@
 
 """Patch ElastoDyn .dat files with computed polynomial coefficients.
 
-Each coefficient occupies a separate line of the form:
-    <value>   <ParamName(k)>   - comment text
-The writer finds each line by matching the parameter name token, then replaces
-the leading value in-place, preserving indentation and all trailing text.
+Each coefficient occupies a separate line of the form
+``<value>   <ParamName(k)>   - comment text``. The writer finds each
+line by matching the parameter name token, then replaces the leading
+value in-place, preserving indentation and all trailing text.
 """
 
 from __future__ import annotations

@@ -195,7 +195,7 @@ class Point:
 
 @dataclass
 class Line:
-    """A single mooring line connecting two ``Point``s.
+    """A single mooring line connecting two :class:`Point` endpoints.
 
     The catenary solve is owned by this class; the multi-line force
     assembly is delegated to :class:`MooringSystem`.

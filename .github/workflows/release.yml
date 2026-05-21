@@ -5,8 +5,7 @@
 #
 # Gates that go beyond the per-PR CI:
 #   * sdist + wheel build + cross-install
-#   * full Sphinx docs build (non-strict — see the ci.yml docs job
-#     comment for the warning-policy rationale)
+#   * full Sphinx docs build (strict — warnings as errors)
 #   * ``pybmodes._examples.sample_inputs.verify`` against the four
 #     bundled analytical references
 #   * mechanical validation-matrix audit
@@ -63,10 +62,8 @@ jobs:
       - name: Sample verifier (4/4 analytical references)
         run: python -m pybmodes._examples.sample_inputs.verify
 
-      - name: Sphinx docs
-        # Strict mode (-W) intentionally off — see the ci.yml docs
-        # job comment. Track the warning count instead.
-        run: sphinx-build -b html docs docs/_build/html
+      - name: Sphinx docs (strict — warnings as errors)
+        run: sphinx-build -b html docs docs/_build/html -W --keep-going
 
       - name: Build sdist + wheel
         run: |

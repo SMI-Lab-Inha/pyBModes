@@ -16,11 +16,12 @@
 """Parser for .bmi main input files.
 
 The .bmi format is line-ordered: values precede their labels. The reader
-follows the format conventions:
-  ReadCom  -> consume one line verbatim (section headers / blank lines)
-  ReadStr  -> consume one line, return it as a string
-  ReadVar  -> skip blanks, return first whitespace token of next non-blank line
-  ReadAry  -> skip blanks, return first N tokens of next non-blank line
+follows the format conventions::
+
+    ReadCom  -> consume one line verbatim (section headers / blank lines)
+    ReadStr  -> consume one line, return it as a string
+    ReadVar  -> skip blanks, return first whitespace token of next non-blank line
+    ReadAry  -> skip blanks, return first N tokens of next non-blank line
 """
 
 from __future__ import annotations

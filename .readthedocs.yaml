@@ -8,11 +8,10 @@ build:
 
 sphinx:
   configuration: docs/conf.py
-  # Strict mode disabled while pre-existing docstring-formatting
-  # warnings (duplicate dataclass fields, mixed RST/MD nits) are
-  # accumulated. Flip back to true once the source docstrings have
-  # been cleaned up — the docs/ tree itself is warning-free.
-  fail_on_warning: false
+  # Strict: any Sphinx warning fails the build. The docstring
+  # warning backlog was burned down in the v1.x infrastructure
+  # round; the build is expected to be zero-warning from here on.
+  fail_on_warning: true
 
 formats:
   - pdf

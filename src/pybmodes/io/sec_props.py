@@ -15,18 +15,20 @@
 
 """Parser for beam section-properties files (.dat).
 
-File structure (all units SI):
-  Line 1 : title string
-  Line 2 : n_secs  label  description
-  Line 3 : blank
-  Line 4 : column header
-  Line 5 : column units
-  Lines 6+: one row per spanwise station (13 space-separated values)
-            trailing notes / blank lines after the data are ignored
+File structure (all units SI)::
 
-Column order:
-  span_loc  str_tw  tw_iner  mass_den  flp_iner  edge_iner
-  flp_stff  edge_stff  tor_stff  axial_stff  cg_offst  sc_offst  tc_offst
+    Line 1 : title string
+    Line 2 : n_secs  label  description
+    Line 3 : blank
+    Line 4 : column header
+    Line 5 : column units
+    Lines 6+: one row per spanwise station (13 space-separated values)
+              trailing notes / blank lines after the data are ignored
+
+Column order::
+
+    span_loc  str_tw  tw_iner  mass_den  flp_iner  edge_iner
+    flp_stff  edge_stff  tor_stff  axial_stff  cg_offst  sc_offst  tc_offst
 """
 
 from __future__ import annotations
