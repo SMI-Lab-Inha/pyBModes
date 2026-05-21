@@ -15,13 +15,13 @@
 
 """Constrained 6th-order polynomial fit for ElastoDyn mode shapes.
 
-ElastoDyn requires mode shapes of the form:
-    phi(x) = C2*x^2 + C3*x^3 + C4*x^4 + C5*x^5 + C6*x^6
-with constraint phi(1) = 1, i.e. C2+C3+C4+C5+C6 = 1.
+ElastoDyn requires mode shapes of the form
+``phi(x) = C2*x^2 + C3*x^3 + C4*x^4 + C5*x^5 + C6*x^6`` with
+constraint ``phi(1) = 1``, i.e. ``C2+C3+C4+C5+C6 = 1``.
 
 The constraint is enforced analytically by substituting
-    C6 = 1 - C2 - C3 - C4 - C5
-and solving the reduced least-squares system.
+``C6 = 1 - C2 - C3 - C4 - C5`` and solving the reduced
+least-squares system.
 """
 
 from __future__ import annotations

@@ -69,9 +69,11 @@ class BladeElastoDynParams:
 class TowerElastoDynParams:
     """Polynomial fits for the four tower mode shapes required by ElastoDyn.
 
-    Field names match the OpenFAST tower sub-file (*_ElastoDyn_tower.dat):
-      TwFAM1Sh / TwFAM2Sh - fore-aft modes 1 and 2
-      TwSSM1Sh / TwSSM2Sh - side-side modes 1 and 2
+    Field names match the OpenFAST tower sub-file
+    ``<turbine>_ElastoDyn_tower.dat``:
+
+    - ``TwFAM1Sh`` / ``TwFAM2Sh`` — fore-aft modes 1 and 2
+    - ``TwSSM1Sh`` / ``TwSSM2Sh`` — side-side modes 1 and 2
     """
 
     TwFAM1Sh: PolyFitResult

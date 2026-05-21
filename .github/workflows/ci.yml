@@ -129,11 +129,12 @@ jobs:
           $GITHUB_WORKSPACE/smoke-venv/bin/python -m pybmodes._examples.sample_inputs.verify
 
   docs:
-    # Build the Sphinx documentation site. Mirrors what Read the Docs
-    # runs (.readthedocs.yaml). Surfaces broken autodoc references,
-    # dead intra-site links, or malformed MyST/RST at PR time.
-    # Strict mode (warnings-as-errors) is currently OFF — see the
-    # build step below.
+    # Build the Sphinx documentation site with warnings-as-errors.
+    # Mirrors what Read the Docs runs (.readthedocs.yaml). Surfaces
+    # broken autodoc references, dead intra-site links, or malformed
+    # MyST/RST at PR time. The docstring warning backlog was burned
+    # down in the v1.x infrastructure round; the build is expected to
+    # be zero-warning from here on.
     runs-on: ubuntu-latest
 
     steps:
@@ -146,15 +147,11 @@ jobs:
       - name: Install with docs extras
         run: pip install -e ".[docs,plots,windio]"
 
-      - name: Build HTML docs
-        # Strict mode (-W) is intentionally OFF: there is a backlog
-        # of pre-existing docstring-formatting warnings (duplicate
-        # dataclass-field documentation, RST nits in module
-        # docstrings) that are not in scope for the docs scaffold
-        # PR. The build itself succeeds and produces a complete
-        # site. Flip ``-W --keep-going`` back on once the source
-        # docstring backlog is cleaned up.
-        run: sphinx-build -b html docs docs/_build/html
+      - name: Build HTML docs (strict — warnings as errors)
+        # ``-W`` turns every Sphinx warning into a build failure;
+        # ``--keep-going`` reports the full set rather than stopping
+        # at the first one so a single CI run surfaces every issue.
+        run: sphinx-build -b html docs docs/_build/html -W --keep-going
 
       - name: Upload built docs as artifact
         if: success()

@@ -24,7 +24,7 @@ EI / GJ / EA, eliminating the hand-computation error class
 (issue #35).
 
 For a circular tube of outer radius ``Ro`` and inner ``Ri`` made of an
-isotropic material ``(E, rho, nu)``:
+isotropic material ``(E, rho, nu)``::
 
     A   = pi (Ro^2 - Ri^2)                      cross-section area
     I   = (pi/4) (Ro^4 - Ri^4)                  area 2nd moment (FA == SS)

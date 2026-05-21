@@ -45,17 +45,14 @@ def type(session: nox.Session) -> None:
 
 @nox.session
 def docs(session: nox.Session) -> None:
-    """Build the Sphinx site (non-strict — matches Read the Docs + CI).
-
-    Strict mode (``-W --keep-going``) is intentionally off while
-    there is a backlog of pre-existing docstring-formatting warnings.
-    Run ``nox -s docs -- -W --keep-going`` to opt back in locally.
-    """
+    """Build the Sphinx site with warnings-as-errors (matches CI + RTD)."""
     session.install("-e", ".[docs,plots,windio]")
     session.run(
         "sphinx-build",
         "-b",
         "html",
+        "-W",
+        "--keep-going",
         "docs",
         "docs/_build/html",
         *session.posargs,

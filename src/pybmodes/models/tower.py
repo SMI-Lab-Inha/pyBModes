@@ -453,11 +453,13 @@ class Tower:
             the tower onto ``n_nodes`` evenly-spaced stations
             (geometry linearly interpolated, properties recomputed
             exactly), to resolve higher tower-bending mode shapes.
-            ``None`` keeps the WindIO grid. (The WindIO *blade* path
-            has the analogous ``n_span``.)
+            ``None`` keeps the WindIO grid. The WindIO blade path
+            has the analogous ``n_span``.
 
+        Notes
+        -----
         Requires the optional ``[windio]`` extra (PyYAML). This is the
-        tubular tower / monopile path; for a WindIO *blade* composite
+        tubular tower / monopile path; for a WindIO blade composite
         layup use :meth:`pybmodes.models.RotatingBlade.from_windio`
         (PreComp-class thin-wall cross-section reduction).
         """

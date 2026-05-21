@@ -113,9 +113,12 @@ def check_model(
         when ``None`` (e.g. when callers want to validate the static
         model definition before deciding how many modes to request).
 
-    Returns a list of :class:`ModelWarning` — empty when every check
-    passes. The list is ordered roughly by check number (see module
-    docstring), which keeps the output diffable across runs.
+    Returns
+    -------
+    list of :class:`ModelWarning`
+        Empty when every check passes. The list is ordered roughly
+        by check number (see module docstring), which keeps the
+        output diffable across runs.
     """
     bmi = model._bmi
     sp = _resolve_section_properties(model)

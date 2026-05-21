@@ -68,6 +68,13 @@ autodoc_default_options = {
 autodoc_typehints = "description"
 napoleon_numpy_docstring = True
 napoleon_google_docstring = False
+# Render numpy-style ``Attributes`` sections as ``:ivar:`` directives
+# inside the class body instead of as a sibling field-list. The
+# default rendering produces a second autodoc object description per
+# attribute, colliding with autoclass's own per-attribute description
+# and emitting ``WARNING: duplicate object description ...`` — see
+# napoleon docs on ``napoleon_use_ivar``.
+napoleon_use_ivar = True
 add_module_names = False
 
 intersphinx_mapping = {
