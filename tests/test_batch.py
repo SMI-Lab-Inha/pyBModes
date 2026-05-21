@@ -22,8 +22,9 @@ import shutil
 
 import pytest
 
-from pybmodes.cli import _find_elastodyn_main_dats, _resolve_examples_root
+from pybmodes.cli import _resolve_examples_root
 from pybmodes.cli import main as cli_main
+from pybmodes.workflows.batch import find_elastodyn_main_dats
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 REFERENCE_DECKS = _resolve_examples_root() / "reference_decks"
@@ -39,12 +40,12 @@ NREL5MW_RTEST_DECK = (
 # ---------------------------------------------------------------------------
 
 def test_batch_finds_dat_files() -> None:
-    """``_find_elastodyn_main_dats`` returns the six main decks under
+    """``find_elastodyn_main_dats`` returns the six main decks under
     ``reference_decks/`` and rejects every ``_Tower.dat`` / ``_Blade.dat``
     sibling."""
     if not REFERENCE_DECKS.is_dir():
         pytest.skip("reference_decks/ not present")
-    found = _find_elastodyn_main_dats(REFERENCE_DECKS)
+    found = find_elastodyn_main_dats(REFERENCE_DECKS)
     names = [p.name for p in found]
 
     # Every entry must look like a main deck (no aux tokens) and parse.
@@ -78,7 +79,7 @@ def test_batch_skips_non_main_dat_files(tmp_path: pathlib.Path) -> None:
     (tmp_path / "MyTurbine_ElastoDyn_Tower.dat").write_text("not a main")
     (tmp_path / "MyTurbine_ElastoDyn_Blade.dat").write_text("not a main")
     (tmp_path / "MyTurbine_HydroDyn.dat").write_text("hydro")
-    found = _find_elastodyn_main_dats(tmp_path)
+    found = find_elastodyn_main_dats(tmp_path)
     assert found == []
 
 

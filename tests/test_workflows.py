@@ -35,10 +35,16 @@ import pytest
 
 from pybmodes.cli import _resolve_examples_root
 from pybmodes.workflows import (
+    BatchResult,
     ExamplesResult,
+    PatchResult,
+    ReportResult,
     ValidateResult,
     WorkflowResult,
+    run_batch,
     run_examples_copy,
+    run_patch,
+    run_report,
     run_validate,
 )
 
@@ -55,7 +61,10 @@ _NREL5MW_LAND_DAT = (
 # WorkflowResult / inheritance contract
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("cls", [ValidateResult, ExamplesResult])
+@pytest.mark.parametrize(
+    "cls",
+    [ValidateResult, ExamplesResult, PatchResult, ReportResult, BatchResult],
+)
 def test_result_classes_inherit_workflow_result(cls) -> None:
     """Every per-workflow result dataclass inherits from the
     shared :class:`WorkflowResult` base. Lets callers branch on
@@ -234,3 +243,188 @@ def test_examples_copy_preserves_skipped_warning_on_destination_conflict(
     assert any(
         "destination already exists" in line for line in res.errors
     )
+
+
+# ---------------------------------------------------------------------------
+# run_patch
+# ---------------------------------------------------------------------------
+
+def _stage_deck_tree(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Copy the bundled NREL 5MW land reference deck into ``tmp_path``
+    so a workflow that mutates the deck files in place does not touch
+    the repo's checked-in copy. Returns the main-``.dat`` path inside
+    the staged tree, or skips if the source bundle is absent."""
+    src_dir = _NREL5MW_LAND_DAT.parent
+    if not _NREL5MW_LAND_DAT.is_file():
+        pytest.skip(f"bundled reference deck not present at {src_dir}")
+    dest_dir = tmp_path / src_dir.name
+    import shutil as _shutil
+    _shutil.copytree(src_dir, dest_dir)
+    return dest_dir / _NREL5MW_LAND_DAT.name
+
+
+def test_patch_dry_run_writes_nothing(tmp_path: pathlib.Path) -> None:
+    """``dry_run=True`` produces a typed result with the patched text
+    populated, but doesn't touch the source files."""
+    main_dat = _stage_deck_tree(tmp_path)
+    before = main_dat.read_bytes()
+
+    res = run_patch(main_dat, dry_run=True)
+    assert isinstance(res, PatchResult)
+    assert res.exit_code == 0
+    assert res.wrote == []
+    assert res.tower_patched_text is not None
+    assert res.blade_patched_text is not None
+    # Source main .dat untouched (patch only mutates tower/blade
+    # side-decks, but the same invariant should hold for the whole
+    # tree on a no-op mode).
+    assert main_dat.read_bytes() == before
+    # Tower / blade .dat resolved.
+    assert res.tower_dat is not None and res.tower_dat.is_file()
+    assert res.blade_dat is not None and res.blade_dat.is_file()
+
+
+def test_patch_diff_emits_pr_ready_diff(tmp_path: pathlib.Path) -> None:
+    """``diff=True`` implies dry-run AND emits a coefficient-only diff
+    in messages with per-block RMS-improvement annotations."""
+    main_dat = _stage_deck_tree(tmp_path)
+    res = run_patch(main_dat, diff=True)
+    assert res.exit_code == 0
+    assert res.wrote == []
+    assert res.validation is not None
+    joined = "\n".join(res.messages)
+    assert "--- original" in joined
+    assert "+++ patched" in joined
+    assert "RMS improvement" in joined
+
+
+def test_patch_output_dir_writes_copies(tmp_path: pathlib.Path) -> None:
+    """``output_dir=DIR`` writes patched copies into DIR and leaves
+    the source files untouched."""
+    main_dat = _stage_deck_tree(tmp_path)
+    # First, learn the tower/blade side-deck paths via a dry-run so
+    # the assertion below doesn't have to know the deck's filename
+    # convention.
+    probe = run_patch(main_dat, dry_run=True)
+    assert probe.tower_dat is not None
+    tower_before = probe.tower_dat.read_bytes()
+    out_dir = tmp_path / "patched_out"
+
+    res = run_patch(main_dat, output_dir=out_dir)
+    assert res.exit_code == 0
+    assert len(res.wrote) == 2
+    for p in res.wrote:
+        assert p.parent == out_dir.resolve()
+        assert p.is_file()
+    # Source tower .dat untouched by the output-dir write.
+    assert probe.tower_dat.read_bytes() == tower_before
+
+
+def test_patch_rejects_output_dir_with_dry_run(tmp_path: pathlib.Path) -> None:
+    """``output_dir`` and ``dry_run`` / ``diff`` are mutually exclusive
+    (the dry-run modes write nothing). Raises ``ValueError`` — the CLI
+    catches and translates to exit code 2."""
+    main_dat = _stage_deck_tree(tmp_path)
+    with pytest.raises(ValueError, match="output_dir is incompatible"):
+        run_patch(main_dat, output_dir=tmp_path / "out", dry_run=True)
+
+
+def test_patch_raises_on_missing_file(tmp_path: pathlib.Path) -> None:
+    """Missing main file → ``FileNotFoundError`` (usage / IO error)."""
+    with pytest.raises(FileNotFoundError):
+        run_patch(tmp_path / "does_not_exist.dat", dry_run=True)
+
+
+# ---------------------------------------------------------------------------
+# run_report
+# ---------------------------------------------------------------------------
+
+def test_report_writes_markdown(tmp_path: pathlib.Path) -> None:
+    """``run_report`` writes a Markdown report to the requested path
+    and returns a populated typed result."""
+    if not _NREL5MW_LAND_DAT.is_file():
+        pytest.skip("bundled reference deck not present")
+    out_path = tmp_path / "report.md"
+    res = run_report(_NREL5MW_LAND_DAT, out_path, format="md")
+    assert isinstance(res, ReportResult)
+    assert res.exit_code == 0
+    assert res.out_path == out_path.resolve()
+    assert out_path.is_file()
+    # Validation ran (validate=True is the default).
+    assert res.validation is not None
+    # Modal results populated for both sides.
+    assert res.tower_modal is not None
+    assert res.blade_modal is not None
+    # Markdown content sanity.
+    md = out_path.read_text(encoding="utf-8")
+    assert "# " in md  # at least one heading
+
+
+def test_report_no_validate_skips_validation(tmp_path: pathlib.Path) -> None:
+    """``validate=False`` skips the validator and leaves
+    ``result.validation`` as ``None``."""
+    if not _NREL5MW_LAND_DAT.is_file():
+        pytest.skip("bundled reference deck not present")
+    out_path = tmp_path / "report.md"
+    res = run_report(_NREL5MW_LAND_DAT, out_path, validate=False)
+    assert res.exit_code == 0
+    assert res.validation is None
+
+
+def test_report_raises_on_missing_file(tmp_path: pathlib.Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        run_report(tmp_path / "missing.dat", tmp_path / "report.md")
+
+
+# ---------------------------------------------------------------------------
+# run_batch
+# ---------------------------------------------------------------------------
+
+def test_batch_discovers_reference_decks(tmp_path: pathlib.Path) -> None:
+    """``run_batch`` over ``reference_decks/`` finds the six bundled
+    main decks, writes the summary CSV, and returns exit_code 0."""
+    if not _REFERENCE_DECKS.is_dir():
+        pytest.skip("reference_decks/ not present")
+    res = run_batch(_REFERENCE_DECKS, tmp_path)
+    assert isinstance(res, BatchResult)
+    assert res.exit_code == 0
+    assert res.decks_found == 6
+    assert res.decks_failed == 0
+    assert res.summary_path is not None and res.summary_path.is_file()
+    assert len(res.summary_rows) == 6
+    # Every row carries the expected column set.
+    for row in res.summary_rows:
+        assert set(row.keys()) >= {
+            "filename", "overall_verdict",
+            "TwFAM2Sh_ratio", "TwSSM2Sh_ratio",
+            "n_fail", "n_warn",
+        }
+
+
+def test_batch_rejects_unknown_kind(tmp_path: pathlib.Path) -> None:
+    """Unsupported ``kind`` raises ``ValueError`` (usage error → CLI
+    translates to exit code 2)."""
+    with pytest.raises(ValueError, match="not supported"):
+        run_batch(tmp_path, tmp_path / "out", kind="bmi")  # type: ignore[arg-type]
+
+
+def test_batch_raises_on_missing_root(tmp_path: pathlib.Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        run_batch(tmp_path / "does_not_exist", tmp_path / "out")
+
+
+def test_batch_empty_tree_writes_empty_summary(tmp_path: pathlib.Path) -> None:
+    """A directory with no ElastoDyn main decks produces a summary
+    CSV with just the header row and exit_code 0."""
+    root = tmp_path / "empty"
+    root.mkdir()
+    out = tmp_path / "out"
+    res = run_batch(root, out)
+    assert res.exit_code == 0
+    assert res.decks_found == 0
+    assert res.summary_rows == []
+    assert res.summary_path is not None
+    # Header-only CSV.
+    text = res.summary_path.read_text(encoding="utf-8")
+    assert "filename" in text
+    assert text.count("\n") == 1

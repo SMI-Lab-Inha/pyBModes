@@ -195,6 +195,18 @@ directly without :mod:`subprocess`.
    :members:
    :show-inheritance:
 
+.. automodule:: pybmodes.workflows.patch
+   :members:
+   :show-inheritance:
+
+.. automodule:: pybmodes.workflows.report
+   :members:
+   :show-inheritance:
+
+.. automodule:: pybmodes.workflows.batch
+   :members:
+   :show-inheritance:
+
 CLI
 ---
 
