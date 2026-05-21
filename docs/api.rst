@@ -129,6 +129,19 @@ Pre-solve sanity checks
    :members:
    :show-inheritance:
 
+Numerical options
+-----------------
+
+Centralised numerical-options dataclasses. Defaults preserve every
+previously-embedded magic number from ``fem/solver.py``,
+``elastodyn/params.py``, and ``checks.py`` — importing this module
+changes no behaviour; the value is that callers (and reviewers) can
+now find every numerical threshold in one place.
+
+.. automodule:: pybmodes.options
+   :members:
+   :show-inheritance:
+
 Report generation
 -----------------
 

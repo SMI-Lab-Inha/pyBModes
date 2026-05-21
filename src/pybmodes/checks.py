@@ -61,6 +61,8 @@ from typing import TYPE_CHECKING, Literal, Union
 
 import numpy as np
 
+from pybmodes.options import DEFAULT_CHECK_OPTIONS as _CHECK_OPTIONS
+
 if TYPE_CHECKING:
     from pybmodes.io.sec_props import SectionProperties
     from pybmodes.models.blade import RotatingBlade
@@ -96,6 +98,13 @@ class ModelWarning:
 
 
 _Model = Union["Tower", "RotatingBlade"]
+
+# The ``_check_*`` helpers below read their numerical thresholds from
+# the module-level ``_CHECK_OPTIONS`` imported at the top of this
+# file. Future PRs will accept a ``CheckOptions`` argument on
+# :func:`check_model` so users can override per-call; the defaults
+# match the previously-hardcoded literals (5.0 / 0.1 / 10.0 / 1e-6 /
+# 1e4 / 1e6) so no behaviour change in this PR.
 
 
 def check_model(
@@ -254,7 +263,7 @@ def _check_stiffness_jumps(sp: "SectionProperties", out: list[ModelWarning]) -> 
         jump = np.fmax(ratio_fwd, ratio_bwd)
         jump = np.where(np.isfinite(jump), jump, 1.0)
         worst = float(jump.max()) if jump.size else 1.0
-        if worst > 5.0:
+        if worst > _CHECK_OPTIONS.stiffness_jump_factor:
             idx = int(np.argmax(jump))
             out.append(ModelWarning(
                 "WARN",
@@ -277,8 +286,8 @@ def _check_ei_ratio(sp: "SectionProperties", out: list[ModelWarning]) -> None:
         ratio = fa[mask] / ss[mask]
     min_r = float(np.min(ratio))
     max_r = float(np.max(ratio))
-    if max_r > 10.0 or min_r < 0.1:
-        extreme = max_r if max_r > 10.0 else min_r
+    if max_r > _CHECK_OPTIONS.ei_ratio_max or min_r < _CHECK_OPTIONS.ei_ratio_min:
+        extreme = max_r if max_r > _CHECK_OPTIONS.ei_ratio_max else min_r
         out.append(ModelWarning(
             "INFO",
             f"EI_FA / EI_SS extreme ratio = {extreme:.2g} "
@@ -361,7 +370,7 @@ def _check_support_conditioning(bmi, out: list[ModelWarning]) -> None:
         if scale == 0.0:
             continue
         asym = float(np.max(np.abs(arr - arr.T)))
-        if asym > 1.0e-6 * scale:
+        if asym > _CHECK_OPTIONS.support_asymmetry_rtol * scale:
             out.append(ModelWarning(
                 "WARN",
                 f"{name} 6×6 matrix is not symmetric "
@@ -414,20 +423,21 @@ def _check_polyfit_conditioning(bmi, out: list[ModelWarning]) -> None:
         cond = float(np.linalg.cond(A))
     except np.linalg.LinAlgError:
         cond = np.inf
-    if not np.isfinite(cond) or cond > 1.0e6:
+    if not np.isfinite(cond) or cond > _CHECK_OPTIONS.fit_cond_fail:
         out.append(ModelWarning(
             "ERROR",
             f"polynomial-fit design matrix condition number = "
-            f"{cond:.2e} > 1e6 (FAIL threshold). The polynomial "
-            f"coefficient solve will be numerically unreliable; "
-            f"refine or re-space the mesh.",
+            f"{cond:.2e} > {_CHECK_OPTIONS.fit_cond_fail:.0e} (FAIL "
+            f"threshold). The polynomial coefficient solve will be "
+            f"numerically unreliable; refine or re-space the mesh.",
             "bmi.el_loc",
         ))
-    elif cond > 1.0e4:
+    elif cond > _CHECK_OPTIONS.fit_cond_warn:
         out.append(ModelWarning(
             "WARN",
             f"polynomial-fit design matrix condition number = "
-            f"{cond:.2e} > 1e4 (WARN threshold). Polynomial coefficient "
+            f"{cond:.2e} > {_CHECK_OPTIONS.fit_cond_warn:.0e} (WARN "
+            f"threshold). Polynomial coefficient "
             f"sensitivity to mode-shape perturbations is elevated; "
             f"results are usable but minor input changes may produce "
             f"larger coefficient shifts than the mode shapes warrant.",

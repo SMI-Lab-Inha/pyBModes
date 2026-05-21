@@ -25,6 +25,7 @@ import numpy as np
 from pybmodes.fem.normalize import NodeModeShape
 from pybmodes.fitting.poly_fit import PolyFitResult, fit_mode_shape
 from pybmodes.models.result import ModalResult
+from pybmodes.options import DEFAULT_FIT_OPTIONS as _FIT_OPTIONS
 
 # Degenerate-pair resolver tunables. See ``_rotate_degenerate_pairs``.
 _DEGENERATE_FREQ_RTOL = 1.0e-4
@@ -40,8 +41,13 @@ _DEGENERATE_PURITY_THRESHOLD = 0.99
 # coefficient breakdown — although the reconstructed shape may still
 # be fine, individual C2..C6 values can vary by orders of magnitude
 # under tiny perturbations of the input data.
-_FIT_COND_WARN = 1.0e4
-_FIT_COND_FAIL = 1.0e6
+#
+# Read from :data:`pybmodes.options.DEFAULT_FIT_OPTIONS` so the
+# thresholds live in one canonical place. Module-level aliases kept
+# for backward compatibility; a future PR will accept a
+# ``FitOptions`` instance directly.
+_FIT_COND_WARN = _FIT_OPTIONS.fit_cond_warn
+_FIT_COND_FAIL = _FIT_OPTIONS.fit_cond_fail
 
 
 @dataclass
@@ -248,7 +254,9 @@ class _TowerModeCandidate:
 # mode classifier in the Bir 2010 monopile case study). Tower modes
 # typically sit at T_tor < 1 %; values in the 1-3 % range are "near
 # threshold" and surface in the report without triggering rejection.
-_TORSION_REJECT_THRESHOLD: float = 0.10
+# The torsion threshold is read from FitOptions; the bending-accept
+# threshold is not yet user-tunable (no callers have requested it).
+_TORSION_REJECT_THRESHOLD: float = _FIT_OPTIONS.torsion_contamination_threshold
 _BENDING_ACCEPT_THRESHOLD: float = 0.85
 
 
@@ -273,9 +281,15 @@ def _kinetic_participation(shape: NodeModeShape) -> tuple[float, float, float]:
 
 @dataclass(frozen=True)
 class _TowerFamilySelectionConfig:
-    """Selection knobs for choosing ElastoDyn FA/SS tower mode families."""
+    """Selection knobs for choosing ElastoDyn FA/SS tower mode families.
 
-    good_fit_rms: float = 0.09
+    The default ``good_fit_rms`` reads from
+    :data:`pybmodes.options.DEFAULT_FIT_OPTIONS`; override per-call by
+    constructing a custom :class:`pybmodes.options.FitOptions` and
+    passing its ``polynomial_rms_threshold`` here.
+    """
+
+    good_fit_rms: float = _FIT_OPTIONS.polynomial_rms_threshold
 
 
 @dataclass(frozen=True)

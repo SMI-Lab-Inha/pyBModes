@@ -50,13 +50,20 @@ import logging
 import numpy as np
 from scipy.linalg import eig, eigh
 
+from pybmodes.options import DEFAULT_SOLVER_OPTIONS as _SOLVER_OPTIONS
+
 _log = logging.getLogger(__name__)
 
 # Sparse path activates once the reduced system has more than this
 # many DOFs and the caller asked for a small subset of modes. Below
 # the threshold, ``eigh``'s LAPACK back-end is faster than the
 # factorisation + Arnoldi cycle ``eigsh`` incurs.
-_SPARSE_NDOF_THRESHOLD = 500
+#
+# Kept as a module-level constant for backward compatibility; the
+# value is read from :data:`pybmodes.options.DEFAULT_SOLVER_OPTIONS`
+# so a single override site exists. Future PRs will thread a
+# ``SolverOptions`` instance through :func:`solve_modes` directly.
+_SPARSE_NDOF_THRESHOLD = _SOLVER_OPTIONS.sparse_ndof_threshold
 
 
 def solve_modes(
@@ -201,9 +208,12 @@ def _solve_dense_general(
 
 def _is_effectively_symmetric(a: np.ndarray) -> bool:
     """Return True for exact / small-roundoff asymmetry; False for input
-    asymmetry beyond ``1e-12 * max|a|``."""
+    asymmetry beyond ``rtol * max|a|``.
+
+    Tolerance is read from :class:`pybmodes.options.SolverOptions`
+    (default ``1e-12``)."""
     scale = max(1.0, float(np.max(np.abs(a))))
-    return bool(np.max(np.abs(a - a.T)) <= 1.0e-12 * scale)
+    return bool(np.max(np.abs(a - a.T)) <= _SOLVER_OPTIONS.symmetry_rtol * scale)
 
 
 def _normalize_columns_l2(eigvecs: np.ndarray) -> None:
