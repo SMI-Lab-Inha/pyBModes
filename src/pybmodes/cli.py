@@ -140,71 +140,39 @@ def _cmd_patch(args: argparse.Namespace) -> int:
 
 
 def _cmd_campbell(args: argparse.Namespace) -> int:
-    """Run a rotor-speed sweep and write a Campbell diagram + CSV."""
-    import numpy as np
-
-    from pybmodes.campbell import campbell_sweep, plot_campbell
-
-    src = pathlib.Path(args.input).resolve()
-    if not src.is_file():
-        print(f"error: file not found: {src}", file=sys.stderr)
-        return 2
+    """Thin CLI wrapper — delegates to
+    :func:`pybmodes.workflows.run_campbell` and renders the typed result."""
+    from pybmodes.workflows import run_campbell
 
     try:
-        orders = [int(x) for x in args.orders.split(",") if x.strip()]
-    except ValueError:
-        print(f"error: --orders must be a comma-separated list of integers; "
-              f"got {args.orders!r}", file=sys.stderr)
+        result = run_campbell(
+            args.input,
+            max_rpm=args.max_rpm,
+            n_steps=args.n_steps,
+            orders=args.orders,
+            n_blade_modes=args.n_blade_modes,
+            n_tower_modes=args.n_tower_modes,
+            tower_input=args.tower,
+            rated_rpm=args.rated_rpm,
+            out_path=args.out,
+        )
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
-    if not orders:
-        print("error: --orders must list at least one integer", file=sys.stderr)
+    except ValueError as exc:
+        # Translate workflow-side messages back to CLI flag names.
+        msg = str(exc)
+        msg = msg.replace("orders must", "--orders must")
+        msg = msg.replace("max_rpm must", "--max-rpm must")
+        msg = msg.replace("n_steps must", "--n-steps must")
+        print(f"error: {msg}", file=sys.stderr)
         return 2
 
-    if args.max_rpm <= 0.0:
-        print(f"error: --max-rpm must be > 0; got {args.max_rpm}", file=sys.stderr)
-        return 2
-    if args.n_steps < 2:
-        print(f"error: --n-steps must be >= 2; got {args.n_steps}", file=sys.stderr)
-        return 2
-
-    rpm = np.linspace(0.0, args.max_rpm, args.n_steps)
-    tower_input = pathlib.Path(args.tower).resolve() if args.tower else None
-    print(f"Campbell sweep: {src.name}")
-    print(f"  rpm grid       : 0..{args.max_rpm} ({args.n_steps} points)")
-    print(f"  blade modes    : {args.n_blade_modes}")
-    print(f"  tower modes    : {args.n_tower_modes}")
-    if tower_input is not None:
-        print(f"  tower override : {tower_input}")
-    result = campbell_sweep(
-        src,
-        rpm,
-        n_blade_modes=args.n_blade_modes,
-        n_tower_modes=args.n_tower_modes,
-        tower_input=tower_input,
-    )
-
-    out_path = pathlib.Path(args.out).resolve() if args.out else \
-        src.with_name(src.stem + "_campbell.png")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Use ``CampbellResult.to_csv()`` instead of a hand-rolled
-    # ``np.savetxt`` so the CLI's CSV output carries the per-step MAC
-    # tracking-confidence columns alongside the frequencies (the
-    # canonical schema). Hand-rolling here used to drop those columns.
-    csv_path = out_path.with_suffix(".csv")
-    result.to_csv(csv_path)
-    print(f"  wrote {csv_path}")
-
-    try:
-        from pybmodes.plots.style import apply_style
-        apply_style()
-    except ImportError:
-        pass
-
-    fig = plot_campbell(result, excitation_orders=orders, rated_rpm=args.rated_rpm)
-    fig.savefig(out_path)
-    print(f"  wrote {out_path}")
-    return 0
+    for line in result.messages:
+        print(line)
+    for line in result.errors:
+        print(line, file=sys.stderr)
+    return result.exit_code
 
 
 # ---------------------------------------------------------------------------
@@ -313,296 +281,35 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _discover_windio_inputs(path: pathlib.Path) -> dict:
-    """Resolve a WindIO ``.yaml`` and any companion OpenFAST decks.
-
-    ``path`` may be the ontology ``.yaml`` itself or an RWT directory
-    (the ``IEA-*-RWT`` layout). Companion HydroDyn / MoorDyn /
-    ElastoDyn-main decks are auto-discovered so the floating platform
-    uses the **industry-grade** deck-fallback by default (see
-    :meth:`pybmodes.models.Tower.from_windio_floating`). Returns a
-    dict with ``yaml`` and optional ``hydrodyn`` / ``moordyn`` /
-    ``elastodyn`` paths (``None`` when absent → that leg drops to the
-    labelled screening preview)."""
-    path = pathlib.Path(path)
-    if path.is_file():
-        yaml_path = path
-    elif path.is_dir():
-        cands = sorted(
-            p for p in path.rglob("*.yaml")
-            if "components:" in p.read_text(errors="ignore")[:4000]
-            and "OpenFAST" not in str(p) and "openfast" not in str(p)
-        )
-        if not cands:
-            raise FileNotFoundError(
-                f"no WindIO ontology .yaml found under {path}"
-            )
-        yaml_path = cands[0]
-    else:
-        raise FileNotFoundError(f"WindIO input not found: {path}")
-
-    # Auto-discovery is scoped to a bona-fide *turbine root*: the
-    # directory the user passed, or the nearest ancestor (≤ 4 levels
-    # up from the yaml) that owns an ``OpenFAST``/``openfast`` tree.
-    # A bare yaml sitting in some scratch / user directory yields NO
-    # decks (→ the labelled screening preview) — we must never
-    # recursively scan an arbitrary parent (it could be a huge user
-    # profile, and would wrongly pull a different turbine's / r-test's
-    # decks anyway).
-    turbine_root: pathlib.Path | None = None
-    if path.is_dir():
-        turbine_root = path
-    else:
-        for anc in list(yaml_path.parents)[:4]:
-            if (anc / "OpenFAST").is_dir() or (anc / "openfast").is_dir():
-                turbine_root = anc
-                break
-
-    if turbine_root is None:
-        return {"yaml": yaml_path, "hydrodyn": None,
-                "moordyn": None, "elastodyn": None}
-
-    # Prefer decks for the configuration matching the ontology's
-    # floating-ness (a VolturnUS-S floating yaml wants the UMaineSemi
-    # decks, not the Monopile ones). NB: ``floating_platform:`` sits
-    # *after* the large blade/tower blocks, so the whole file must be
-    # scanned — a head-only check mis-detects every real RWT yaml.
-    floating = "floating_platform:" in yaml_path.read_text(
-        errors="ignore")
-    pref = (("semi", "spar", "umaine", "volturn", "floating", "hywind")
-            if floating
-            else ("monopile", "land", "onshore", "fixed", "tower"))
-
-    def _rglob_safe(root: pathlib.Path, pattern: str):
-        """``rglob`` that tolerates directories vanishing mid-scan
-        (Windows temp / cache churn) and unreadable subtrees."""
-        out: list[pathlib.Path] = []
-        try:
-            for p in root.rglob(pattern):
-                out.append(p)
-        except (FileNotFoundError, PermissionError, OSError):
-            pass
-        return out
-
-    def _find(pattern: str,
-              exclude: tuple[str, ...] = ()) -> pathlib.Path | None:
-        hits = [
-            p for p in _rglob_safe(turbine_root, pattern)
-            if not any(x in p.name.lower() for x in exclude)
-            and "r-test" not in p.parts
-        ]
-        if not hits:
-            return None
-        preferred = [
-            p for p in hits
-            if any(t in str(p).lower() for t in pref)
-        ]
-        pool = preferred or hits
-        return sorted(pool, key=lambda p: len(str(p)))[0]
-
-    return {
-        "yaml": yaml_path,
-        "hydrodyn": _find("*HydroDyn*.dat"),
-        "moordyn": _find("*MoorDyn*.dat"),
-        # ElastoDyn *main* deck only (exclude _tower / _blade files).
-        "elastodyn": _find("*ElastoDyn.dat", exclude=("tower", "blade")),
-    }
-
-
 def _cmd_windio(args: argparse.Namespace) -> int:
-    """One-click WindIO: discover the ontology + companion decks,
-    solve tower + blade + (floating) coupled platform, optionally
-    sweep a Campbell diagram, and emit a bundled report (+ Campbell
-    PNG/CSV). The companion decks make the floating platform
-    industry-grade by default; without them it is a labelled
-    screening preview."""
-    import numpy as np
-
-    from pybmodes.io.windio import _dup_anchor_loader, _require_yaml
-    from pybmodes.models import RotatingBlade, Tower
-    from pybmodes.report import generate_report
+    """Thin CLI wrapper — delegates to
+    :func:`pybmodes.workflows.run_windio` and renders the typed result."""
+    from pybmodes.workflows import run_windio
 
     try:
-        inp = _discover_windio_inputs(pathlib.Path(args.input).resolve())
-    except FileNotFoundError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    yaml_path = inp["yaml"]
-    print(f"windio: ontology {yaml_path}")
-    for k in ("hydrodyn", "moordyn", "elastodyn"):
-        tag = inp[k].name if inp[k] else "— (screening preview)"
-        print(f"  companion {k:9s}: {tag}")
-
-    yaml = _require_yaml()
-    with yaml_path.open("r", encoding="utf-8") as fh:
-        doc = yaml.load(fh, Loader=_dup_anchor_loader(yaml))
-    comps = doc.get("components", {})
-    is_floating = "floating_platform" in comps
-
-    out = pathlib.Path(args.out).resolve()
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    # --- blade -----------------------------------------------------------
-    blade_params = None
-    if "blade" in comps:
-        print("  solving blade (composite reduction)…")
-        try:
-            from pybmodes.elastodyn import compute_blade_params
-            bl = RotatingBlade.from_windio(yaml_path)
-            blade_modal = bl.run(n_modes=args.n_modes, check_model=False)
-            blade_params = compute_blade_params(blade_modal)
-        except Exception as exc:  # noqa: BLE001
-            print(f"  blade skipped: {type(exc).__name__}: {exc}")
-
-    # --- tower / coupled platform ---------------------------------------
-    if is_floating:
-        tier = ("industry-grade (deck-backed)"
-                if all(inp[k] for k in
-                       ("hydrodyn", "moordyn", "elastodyn"))
-                else "SCREENING preview (missing decks)")
-        print(f"  solving coupled floating tower+platform [{tier}]…")
-        model = Tower.from_windio_floating(
-            yaml_path,
+        result = run_windio(
+            args.input,
+            out_path=args.out,
+            format=args.format,
+            n_modes=args.n_modes,
             water_depth=args.water_depth,
-            hydrodyn_dat=inp["hydrodyn"],
-            moordyn_dat=inp["moordyn"],
-            elastodyn_dat=inp["elastodyn"],
-        )
-    else:
-        print("  solving tower (cantilever)…")
-        model = Tower.from_windio(yaml_path)
-    modal = model.run(n_modes=args.n_modes, check_model=False)
-
-    # --- Campbell (reuses the validated rotor-speed sweep on the
-    #     discovered ElastoDyn deck when present) ---------------------
-    campbell = None
-    if args.campbell and inp["elastodyn"] is not None:
-        from pybmodes.campbell import campbell_sweep
-        print(f"  Campbell sweep 0–{args.max_rpm} rpm "
-              f"(via {inp['elastodyn'].name})…")
-        campbell = campbell_sweep(
-            inp["elastodyn"],
-            np.linspace(0.0, args.max_rpm, args.n_steps),
+            campbell=args.campbell,
+            max_rpm=args.max_rpm,
+            min_rpm=args.min_rpm,
+            rated_rpm=args.rated_rpm,
+            n_steps=args.n_steps,
             n_blade_modes=args.n_blade_modes,
             n_tower_modes=args.n_tower_modes,
         )
-        if args.format != "csv":
-            try:
-                from pybmodes.campbell import plot_campbell
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
-                # For a floating turbine overlay the 6 platform
-                # rigid-body modes (rotor-speed-independent) from the
-                # already-solved coupled model, named off
-                # ModalResult.mode_labels — the BModes-cross-validated
-                # surge/sway/heave/roll/pitch/yaw set.
-                plat = None
-                if is_floating and modal.mode_labels is not None:
-                    plat = [
-                        (lbl, float(modal.frequencies[i]))
-                        for i, lbl in enumerate(modal.mode_labels)
-                        if lbl is not None
-                    ]
-                    plat = plat or None
-                png = out.with_suffix(".campbell.png")
-                _cfig = plot_campbell(
-                    campbell,
-                    platform_modes=plat,
-                    log_freq=plat is not None,
-                )
-                _cfig.savefig(png, dpi=120)
-                import matplotlib.pyplot as _plt
-                _plt.close(_cfig)        # don't leak figures in batch
-                print(f"  wrote {png}")
-            except Exception as exc:  # noqa: BLE001
-                print(f"  campbell plot skipped: {exc}")
-        csv = out.with_suffix(".campbell.csv")
-        campbell.to_csv(csv)
-        print(f"  wrote {csv}")
-    elif args.campbell:
-        print("  Campbell skipped: no companion ElastoDyn deck "
-              "(the rotor-speed sweep needs the blade rotor schedule)")
-
-    # Environmental-loading frequency-placement diagram for floating
-    # cases: wind / wave spectra + 1P/3P bands vs the tower fore-aft
-    # and side-side natural frequencies. Driven off the Campbell sweep
-    # (it supplies both the rotor-speed range and the rotor-speed-
-    # independent tower bending frequencies) so no site rpm / rated
-    # data is fabricated.
-    if is_floating and campbell is not None and args.format != "csv":
-        try:
-            from pybmodes.plots import plot_environmental_spectra
-
-            lbls = [str(x).lower() for x in campbell.labels]
-            f0 = np.asarray(campbell.frequencies)[0]
-
-            def _pick(*keys: str) -> float | None:
-                for i, lb in enumerate(lbls):
-                    if all(k in lb for k in keys):
-                        return float(f0[i])
-                return None
-
-            # Distinguish "not found" (None) from a valid 0.0 — never
-            # let `or` swallow a legitimate zero.
-            _fa = _pick("tower", "fa")
-            fa = _fa if _fa is not None else _pick("tower", "fore")
-            _ss = _pick("tower", "ss")
-            ss = _ss if _ss is not None else _pick("tower", "side")
-
-            # Operating-rpm range for the 1P/3P bands. Without an
-            # explicit --min-rpm the band would start at DC and
-            # visually overstate resonance overlap, so the title flags
-            # it as a screening envelope and the design band uses the
-            # given (min, max). Screening-grade environmental defaults
-            # (IEC class-I turbulence scale; representative sea state)
-            # — callers wanting site-specific inputs use
-            # pybmodes.plots.plot_environmental_spectra directly.
-            rpm_lo = float(getattr(args, "min_rpm", 0.0) or 0.0)
-            rpm_hi = float(args.max_rpm)
-            rated = getattr(args, "rated_rpm", None)
-            if rated is not None:
-                # --rated-rpm visibly shapes the figure: the 1P/3P
-                # *design* band is the true operating range
-                # (cut-in -> rated); the *constraint* band is the
-                # wider allowable window out to --max-rpm.
-                rpm_design = (rpm_lo, float(rated))
-                rpm_constraint = (rpm_lo, rpm_hi)
-                title = ("Environmental loading vs tower frequency "
-                         f"placement (operating {rpm_lo:g}–{rated:g} "
-                         f"rpm, rated {rated:g})")
-            else:
-                rpm_design = (rpm_lo, rpm_hi)
-                rpm_constraint = None
-                title = (
-                    "Environmental loading vs tower frequency placement"
-                    if rpm_lo > 0.0 else
-                    "Environmental loading vs tower frequency placement "
-                    "(SCREENING envelope — no operating rpm range "
-                    "given; pass --min-rpm / --rated-rpm)"
-                )
-            fig = plot_environmental_spectra(
-                tower_fa_hz=fa,
-                tower_ss_hz=ss,
-                rpm_design=rpm_design,
-                rpm_constraint=rpm_constraint,
-                wind={"mean_speed": 11.0, "length_scale": 340.2},
-                wave={"hs": 6.0, "tp": 10.0},
-                title=title,
-            )
-            spng = out.with_suffix(".spectra.png")
-            fig.savefig(spng, dpi=120)
-            import matplotlib.pyplot as _plt
-            _plt.close(fig)          # don't leak figures in batch runs
-            print(f"  wrote {spng}")
-        except Exception as exc:  # noqa: BLE001
-            print(f"  spectra plot skipped: {exc}")
-
-    generate_report(
-        modal, out, format=args.format, model=model,
-        blade_params=blade_params, campbell=campbell,
-        source_file=yaml_path,
-    )
-    print(f"wrote {out}")
-    return 0
+    for line in result.messages:
+        print(line)
+    for line in result.errors:
+        print(line, file=sys.stderr)
+    return result.exit_code
 
 
 # ---------------------------------------------------------------------------
