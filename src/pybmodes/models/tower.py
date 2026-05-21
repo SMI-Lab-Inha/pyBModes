@@ -13,7 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tower: high-level model for a wind-turbine tower."""
+"""Tower: high-level model for a wind-turbine tower.
+
+Phase 3 PR C3 of the v1.x architecture refactor pulled three module-
+private helpers out of this file into siblings under
+:mod:`pybmodes.models`:
+
+- :func:`pybmodes.models._shared._run_validation_and_warn` —
+  cross-model (also used by ``RotatingBlade.from_elastodyn``).
+- :func:`pybmodes.models._platform._scan_platform_fields`,
+  :func:`pybmodes.models._platform._platform_inertia_matrix` — tower-
+  side platform-scalar parsers + inertia assembler.
+
+All three are re-exported below so callers / tests that still import
+via ``from pybmodes.models.tower import _scan_platform_fields`` (etc.)
+keep working unchanged.
+"""
 
 from __future__ import annotations
 
@@ -24,6 +39,13 @@ from typing import TYPE_CHECKING
 from pybmodes.io.bmi import read_bmi
 from pybmodes.io.sec_props import SectionProperties
 from pybmodes.models._pipeline import run_fem
+from pybmodes.models._platform import (
+    _platform_inertia_matrix,  # noqa: F401  (re-export for back-compat)
+    _scan_platform_fields,  # noqa: F401  (re-export for back-compat)
+)
+from pybmodes.models._shared import (
+    _run_validation_and_warn,  # noqa: F401  (re-export for back-compat)
+)
 from pybmodes.models.result import ModalResult
 
 if TYPE_CHECKING:
@@ -31,143 +53,6 @@ if TYPE_CHECKING:
 
     from pybmodes.elastodyn.validate import ValidationResult
     from pybmodes.io.bmi import PlatformSupport, TipMassProps
-
-
-def _scan_platform_fields(dat_path: pathlib.Path) -> dict[str, float]:
-    """Scan an ElastoDyn ``.dat`` for the platform scalars used to
-    assemble a floating ``PlatformSupport``.
-
-    Two field groups are extracted:
-
-    - **Geometry / inertia** (``PtfmMass``, ``PtfmRIner``,
-      ``PtfmPIner``, ``PtfmYIner``, ``PtfmCMxt``, ``PtfmCMyt``,
-      ``PtfmCMzt``, ``PtfmRefzt``) — feed the BMI's ``mass_pform``,
-      ``cm_pform``, ``i_matrix``, ``ref_msl``.
-    - **Additional linear platform stiffness**
-      (``PtfmSurgeStiff``, ``PtfmSwayStiff``, ``PtfmHeaveStiff``,
-      ``PtfmRollStiff``, ``PtfmPitchStiff``, ``PtfmYawStiff``) — these
-      are ElastoDyn-side springs added on top of HydroDyn / MoorDyn
-      contributions. ``PtfmYawStiff`` is how the OC3 spec carries the
-      delta-line crowfoot's yaw spring (~ 9.83e7 N·m/rad), which is NOT
-      in the MoorDyn ``.dat``. :meth:`Tower.from_elastodyn_with_mooring`
-      folds them into the diagonal of ``mooring_K``.
-
-    The full ElastoDyn parser in :mod:`pybmodes.io._elastodyn` doesn't
-    surface these (they're irrelevant for the cantilever path); this
-    helper is a tiny shim used by :meth:`Tower.from_elastodyn_with_mooring`
-    to avoid extending the main parser for a single use case. Missing
-    fields default to ``0.0``. Fortran-style D / d exponents
-    (``7.466D+06``) are normalised to ``E`` before parsing.
-    """
-    # Every field this helper extracts is load-bearing: the inertia
-    # scalars define the platform's rigid-body mass-matrix
-    # contribution, and the ``Ptfm*Stiff`` springs carry restoring
-    # contributions that are NOT in HydroDyn or MoorDyn (the OC3
-    # delta-line crowfoot yaw spring at ~ 9.83e7 N·m/rad lives in
-    # ``PtfmYawStiff`` only). A malformed value silently falling back
-    # to 0.0 would produce a physically wrong floating model with no
-    # warning, so we raise on any parse failure.
-    fields: dict[str, float] = {
-        "PtfmMass": 0.0, "PtfmRIner": 0.0, "PtfmPIner": 0.0,
-        "PtfmYIner": 0.0, "PtfmCMxt": 0.0, "PtfmCMyt": 0.0,
-        "PtfmCMzt": 0.0, "PtfmRefzt": 0.0,
-        "PtfmSurgeStiff": 0.0, "PtfmSwayStiff": 0.0,
-        "PtfmHeaveStiff": 0.0, "PtfmRollStiff": 0.0,
-        "PtfmPitchStiff": 0.0, "PtfmYawStiff": 0.0,
-    }
-    from pybmodes.io.wamit_reader import _parse_fortran_float
-
-    with pathlib.Path(dat_path).open(
-        "r", encoding="utf-8", errors="replace",
-    ) as fh:
-        for raw in fh:
-            parts = raw.split()
-            if len(parts) < 2:
-                continue
-            value, label = parts[0], parts[1]
-            if label in fields:
-                try:
-                    fields[label] = _parse_fortran_float(value)
-                except ValueError as err:
-                    raise ValueError(
-                        f"Malformed value for {label!r} in "
-                        f"{dat_path}: {value!r} cannot be parsed as a "
-                        f"float (even with Fortran-style D/d exponent "
-                        f"normalisation). The platform model would be "
-                        f"physically meaningless or silently lose a "
-                        f"restoring contribution without this scalar."
-                    ) from err
-    return fields
-
-
-def _platform_inertia_matrix(ptfm: dict[str, float]) -> "np.ndarray":
-    """Assemble the platform 6×6 inertia matrix AT THE CM in
-    **OpenFAST DOF order** ``[surge, sway, heave, roll, pitch, yaw]``
-    from the ``Ptfm*`` scalars produced by :func:`_scan_platform_fields`.
-
-    Diagonal-only — translation slots 0–2 carry ``PtfmMass``,
-    rotation slots 3 / 4 / 5 carry ``PtfmRIner`` / ``PtfmPIner`` /
-    ``PtfmYIner`` respectively. Cross-coupling terms (``[0,4]`` for
-    surge-pitch, ``[1,3]`` for sway-roll) are zero on the at-CM
-    matrix; the downstream :func:`pybmodes.fem.nondim.nondim_platform`
-    applies the rigid-arm CM → tower-base transfer using
-    ``cm_pform - draft``, so adding a parallel-axis term here would
-    double-count (caught by a pre-1.0 review).
-
-    The DOF order is the canonical convention documented in
-    :mod:`pybmodes.coords` and consumed by ``nondim_platform``. A
-    pre-1.0 review caught a latent swap (``PtfmPIner`` at slot 3,
-    ``PtfmRIner`` at slot 4) that was invisible on OC3 — where roll
-    and pitch inertia are equal by symmetry — but would silently
-    mis-couple roll and pitch on any asymmetric semi or
-    submersible. :func:`tests.test_mooring.test_platform_inertia_matrix_dof_order`
-    pins the convention.
-    """
-    import numpy as np
-
-    i_mat = np.zeros((6, 6))
-    i_mat[0, 0] = ptfm["PtfmMass"]    # surge mass
-    i_mat[1, 1] = ptfm["PtfmMass"]    # sway  mass
-    i_mat[2, 2] = ptfm["PtfmMass"]    # heave mass
-    i_mat[3, 3] = ptfm["PtfmRIner"]   # roll  inertia about CM (DOF 3)
-    i_mat[4, 4] = ptfm["PtfmPIner"]   # pitch inertia about CM (DOF 4)
-    i_mat[5, 5] = ptfm["PtfmYIner"]   # yaw   inertia about CM
-    return i_mat
-
-
-def _run_validation_and_warn(
-    main_dat_path: pathlib.Path,
-) -> "ValidationResult":
-    """Validate coefficient blocks in an ElastoDyn deck and warn on issues.
-
-    Helper shared by ``Tower.from_elastodyn`` and
-    ``RotatingBlade.from_elastodyn``. Returns the
-    :class:`~pybmodes.elastodyn.ValidationResult`. Emits a
-    :class:`UserWarning` if the overall verdict is WARN or FAIL, with
-    per-block details for FAIL.
-    """
-    from pybmodes.elastodyn.validate import validate_dat_coefficients
-
-    result = validate_dat_coefficients(main_dat_path)
-    failing = result.failing_blocks()
-    warning = result.warning_blocks()
-
-    if failing:
-        details = "\n  ".join(
-            f"{b.name}: file_rms={b.file_rms:.4f}, "
-            f"pyB_rms={b.pybmodes_rms:.4f}, ratio={b.ratio:.0f}"
-            for b in failing
-        )
-        warnings.warn(
-            f"{result.summary}\n  {details}\n  "
-            f"Run `pybmodes patch {main_dat_path}` to regenerate.",
-            UserWarning,
-            stacklevel=3,
-        )
-    elif warning:
-        warnings.warn(result.summary, UserWarning, stacklevel=3)
-
-    return result
 
 
 class Tower:
