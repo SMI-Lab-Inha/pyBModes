@@ -138,21 +138,22 @@ def _print_validation_report(result, file=None) -> None:
 # ---------------------------------------------------------------------------
 
 def _cmd_validate(args: argparse.Namespace) -> int:
-    from pybmodes.elastodyn import validate_dat_coefficients
+    """Thin CLI wrapper — delegates to
+    :func:`pybmodes.workflows.run_validate` and translates the
+    typed result into stdout / stderr + exit code."""
+    from pybmodes.workflows import run_validate
 
-    dat_path = pathlib.Path(args.dat_file).resolve()
-    if not dat_path.is_file():
-        print(f"error: file not found: {dat_path}", file=sys.stderr)
+    try:
+        result = run_validate(args.dat_file)
+    except FileNotFoundError as err:
+        print(f"error: {err}", file=sys.stderr)
         return 2
 
-    result = validate_dat_coefficients(dat_path)
-    _print_validation_report(result)
-
-    if result.overall == "FAIL":
-        return 1
-    if result.overall == "WARN":
-        return 0  # warnings are informational, not a hard failure
-    return 0
+    for line in result.messages:
+        print(line)
+    for line in result.errors:
+        print(line, file=sys.stderr)
+    return result.exit_code
 
 
 def _cmd_patch(args: argparse.Namespace) -> int:
@@ -729,63 +730,17 @@ def _resolve_examples_root() -> pathlib.Path:
 
 
 def _cmd_examples(args: argparse.Namespace) -> int:
-    """Copy ``sample_inputs/`` and/or ``reference_decks/`` out of the
-    ``pybmodes._examples`` package into a user-supplied directory.
-    Lets wheel-installed and editable-install callers seed a working
-    tree without ``git clone`` of the whole repo."""
-    examples_root = _resolve_examples_root()
+    """Thin CLI wrapper — delegates to
+    :func:`pybmodes.workflows.run_examples_copy` and translates the
+    typed result into stdout / stderr + exit code."""
+    from pybmodes.workflows import run_examples_copy
 
-    requested = ["samples", "decks"] if args.kind == "all" else [args.kind]
-    selected: list[tuple[str, pathlib.Path]] = []
-    missing: list[str] = []
-    for name in requested:
-        subdir, _ = _EXAMPLE_BUNDLES[name]
-        src = examples_root / subdir
-        if src.is_dir():
-            selected.append((name, src))
-        else:
-            missing.append(name)
-
-    if not selected:
-        print(
-            "error: example bundles not found inside the installed "
-            "pybmodes package.\n"
-            f"       looked under: {examples_root}\n"
-            "       expected the wheel to ship "
-            "`pybmodes/_examples/sample_inputs/` and "
-            "`pybmodes/_examples/reference_decks/` as package data; "
-            "if you installed from a wheel and the directories are "
-            "absent, the wheel is malformed. From a source checkout "
-            "run `pip install -e .` from the repo root and retry.",
-            file=sys.stderr,
-        )
-        return 2
-    if missing:
-        print(
-            f"warning: skipping bundle(s) not found on disk: "
-            f"{', '.join(missing)}",
-            file=sys.stderr,
-        )
-
-    dest_root = pathlib.Path(args.copy).resolve()
-    dest_root.mkdir(parents=True, exist_ok=True)
-
-    for name, src in selected:
-        target = dest_root / src.name
-        if target.exists():
-            if not args.force:
-                print(
-                    f"error: destination already exists: {target}\n"
-                    "       pass --force to overwrite, or pick an empty "
-                    "directory.",
-                    file=sys.stderr,
-                )
-                return 2
-            shutil.rmtree(target)
-        shutil.copytree(src, target)
-        print(f"copied {name}: {src} -> {target}")
-
-    return 0
+    result = run_examples_copy(args.copy, kind=args.kind, force=args.force)
+    for line in result.messages:
+        print(line)
+    for line in result.errors:
+        print(line, file=sys.stderr)
+    return result.exit_code
 
 
 # ---------------------------------------------------------------------------

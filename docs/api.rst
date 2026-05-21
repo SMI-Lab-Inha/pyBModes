@@ -170,6 +170,31 @@ Plot helpers (``[plots]`` extra)
    :members:
    :show-inheritance:
 
+Workflows (library-callable CLI subcommands)
+--------------------------------------------
+
+Phase 2 of the v1.x architecture refactor exposes each CLI
+subcommand as a typed library function. The CLI in
+:mod:`pybmodes.cli` becomes a thin ``argparse + delegation``
+layer; notebooks and external scripts can call the same flows
+directly without :mod:`subprocess`.
+
+.. automodule:: pybmodes.workflows
+   :members:
+   :show-inheritance:
+
+.. automodule:: pybmodes.workflows._base
+   :members:
+   :show-inheritance:
+
+.. automodule:: pybmodes.workflows.validate
+   :members:
+   :show-inheritance:
+
+.. automodule:: pybmodes.workflows.examples
+   :members:
+   :show-inheritance:
+
 CLI
 ---
 
