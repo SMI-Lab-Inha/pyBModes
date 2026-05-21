@@ -242,6 +242,17 @@ callable; :mod:`pybmodes.cli` is purely ``argparse + delegation``.
 Mooring + hydro
 ^^^^^^^^^^^^^^^
 
+As of Phase 3 PR C2 of the 1.x refactor, :mod:`pybmodes.mooring` is a
+sub-package rather than a single 1202-line module. The four public
+names (:class:`LineType`, :class:`Point`, :class:`Line`,
+:class:`MooringSystem`) are unchanged and re-exported from
+``pybmodes.mooring``; the implementation lives in ``types`` (data
+classes + :meth:`Line.solve_static`) and ``system``
+(:class:`MooringSystem` with multi-line force assembly + 6×6 stiffness
+and the two ``from_*`` parsers), plus the private ``_catenary`` /
+``_rotation`` math primitives and the ``_moordyn_parser`` MoorDyn
+``.dat`` row tokenisers.
+
 - :class:`pybmodes.mooring.LineType`
 - :class:`pybmodes.mooring.Point`
 - :class:`pybmodes.mooring.Line`
