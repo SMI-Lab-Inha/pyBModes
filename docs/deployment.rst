@@ -62,12 +62,38 @@ CHANGELOG / VALIDATION / CONTRIBUTING will 404.
    The ``latest`` URL tracks ``master``; tagged releases become
    versioned URLs like ``/en/v1.7.0/``.
 
-5. **Webhook is auto-installed**
+5. **Webhook is auto-installed (usually)**
 
    RTD installs a GitHub webhook on the repo as part of import,
    so every push to ``master`` (and every tag matching the
-   versioning policy) auto-triggers a fresh build. No further
-   per-release action required.
+   versioning policy) auto-triggers a fresh build.
+
+   .. note::
+
+      **Common first-import gotcha — "Unable to attach webhook
+      to this project".**
+
+      If the project page shows a red
+      ``Unable to attach webhook to this project — Could not add
+      webhook for "pyBModes". Please connect your GitHub
+      account.`` banner, the GitHub OAuth grant RTD has is
+      missing the ``admin:repo_hook`` scope (needed to install
+      webhooks). The first build was still triggered manually
+      by the import and will run — it's only *future* automatic
+      builds that need the webhook.
+
+      Fix:
+
+      1. Click **connect your GitHub account** in the banner.
+         RTD redirects to GitHub OAuth.
+      2. On the GitHub authorization page, grant the additional
+         *Read and write access to webhooks* scope and click
+         **Authorize**.
+      3. Back on RTD, go to *Project -> Settings -> Integrations*
+         and add the ``GitHub incoming webhook`` if it didn't
+         auto-install on the return.
+
+      After that, every push to master fires a build automatically.
 
 What to do when a build fails
 -----------------------------

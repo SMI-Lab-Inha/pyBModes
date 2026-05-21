@@ -165,9 +165,24 @@ declared in ``[project.scripts]``.
 
 from importlib.metadata import PackageNotFoundError, version
 
+# Numerical-options dataclasses (Phase 1 of the v1.x architecture
+# refactor) — centralised thresholds for the FEM solver, polynomial
+# fit, and pre-solve sanity checker. Defaults preserve every
+# previously-embedded magic number, so importing this module changes
+# no behaviour; the public-API value is that callers can now find
+# every numerical threshold in one place. Future PRs will accept
+# instances on ``Tower.run()`` / ``RotatingBlade.run()`` /
+# ``check_model()`` for per-call override.
+from pybmodes.options import CheckOptions, FitOptions, SolverOptions
+
 try:
     __version__ = version("pybmodes")
 except PackageNotFoundError:
     __version__ = "1.7.0-dev"
 
-__all__ = ["__version__"]
+__all__ = [
+    "__version__",
+    "CheckOptions",
+    "FitOptions",
+    "SolverOptions",
+]

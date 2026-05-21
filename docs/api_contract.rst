@@ -154,6 +154,24 @@ Pre-solve sanity + comparison
 - :func:`pybmodes.mac.compare_modes`
 - :func:`pybmodes.mac.plot_mac`
 
+Numerical options (1.x architecture refactor — Phase 1)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Frozen dataclasses that centralise numerical thresholds previously
+scattered as module-level constants. Adding fields with sensible
+defaults is non-breaking; removing or renaming a field is a
+semver-major change.
+
+- :class:`pybmodes.SolverOptions` — FEM solver dispatch
+  (``sparse_ndof_threshold``, ``symmetry_rtol``).
+- :class:`pybmodes.FitOptions` — polynomial-fit + family-selection
+  thresholds (``polynomial_rms_threshold``,
+  ``torsion_contamination_threshold``, ``fit_cond_warn``,
+  ``fit_cond_fail``).
+- :class:`pybmodes.CheckOptions` — :func:`check_model` thresholds
+  (``stiffness_jump_factor``, ``ei_ratio_min`` / ``_max``,
+  ``support_asymmetry_rtol``, ``fit_cond_warn`` / ``_fail``).
+
 Reports
 ^^^^^^^
 
