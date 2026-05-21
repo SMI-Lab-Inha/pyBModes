@@ -1,12 +1,24 @@
 <!-- markdownlint-disable MD013 -->
 # pyBmodes validation matrix
 
+[![Validation](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/validation.yml/badge.svg)](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/validation.yml)
+
 This document is the **single structured source of truth** for what
 pyBmodes is validated against, at what tolerance, with what worst
 observed error, and which test file enforces it. Prose-heavy reports
 elsewhere in the repo (`cases/ECOSYSTEM_FINDING.md`,
 `src/pybmodes/_examples/reference_decks/VALIDATION_SUMMARY.md`, the README's *Validation*
 section) refer back to this matrix.
+
+**Enforcement.** Cases marked *Needs external data* run inside the
+[Validation workflow](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/validation.yml)
+(weekly cron + ``workflow_dispatch``). The per-PR ``ci.yml`` is
+tolerant of absent external data (exit code 5 → pass); the
+validation workflow is **not** — it clones the upstream OpenFAST /
+IEA-Task-37 repositories on the fly and runs ``pytest -m integration``
+hard-fail. The verifier-report artifact uploaded by every run is the
+machine-checkable record that the published 0.01 % tolerance claim
+holds at the tagged commit, regardless of maintainer-local state.
 
 The validation work is split into **two tracks** with different
 metrics:

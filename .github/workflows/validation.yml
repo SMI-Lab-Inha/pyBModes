@@ -1,0 +1,132 @@
+# Validation workflow — external-data integration tests, hard-fail.
+#
+# Companion to the per-PR ``ci.yml`` integration step. That step
+# tolerates exit code 5 ("no tests collected") because GitHub Actions
+# runners don't carry the upstream OpenFAST / BModes data, so the
+# default per-PR build doesn't enforce the published 0.01 % tolerance
+# claim from VALIDATION.md. This workflow closes the gap noted in the
+# external-review finding P1-1 (Phase 4 PR D3): it clones the upstream
+# repositories on the fly, runs the integration suite WITHOUT exit-5
+# tolerance, and uploads a verifier-report artifact so the published
+# validation claim is enforced by reproducible CI rather than
+# maintainer-local state.
+#
+# Triggers
+# --------
+#
+# - ``workflow_dispatch`` — maintainers fire it from the Actions UI
+#   before any tagged release (``docs/release_checklist.rst`` step 2
+#   references this workflow).
+# - Weekly cron (Monday 09:00 UTC) — catches drift in upstream HEAD
+#   (the manifest's per-repo SHA pins are still ``TBD`` as of 1.8.0;
+#   once populated, the workflow becomes byte-reproducible).
+#
+# Reproducibility note
+# --------------------
+#
+# ``external/MANIFEST.toml`` pins each upstream-clone SHA + file
+# hashes, but the pins are currently the literal string ``TBD`` —
+# populating them is a maintainer action documented in
+# ``docs/release_checklist.rst`` step 2. Until then this workflow
+# clones the upstream HEAD of each repo; once the pins land, the
+# ``checkout`` step below switches to ``git checkout <sha>`` and
+# becomes reproducible byte-for-byte.
+
+name: Validation (external data)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1"   # Mondays 09:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    name: Integration tests against pinned external decks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pybmodes with dev + plots + windio extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,plots,windio,notebook]"
+
+      # ---------------------------------------------------------------
+      # Clone upstream external data into the expected layout.
+      #
+      # Each clone path matches ``relative_path`` in
+      # ``external/MANIFEST.toml`` so the integration test suite
+      # resolves the decks at the same paths it does locally. Shallow
+      # clones (``--depth=1``) — the integration suite only reads the
+      # tip of each upstream tree.
+      #
+      # BModes (CertTest 03 / 04 reference data) is NOT on GitHub; the
+      # tests that depend on it skip cleanly when the data is absent
+      # (``pytestmark = pytest.mark.integration`` at module level plus
+      # per-file ``.is_file()`` guards). Those skips don't fail the
+      # workflow because they're skip — not error — in pytest's exit
+      # code.
+      # ---------------------------------------------------------------
+
+      - name: Clone OpenFAST r-test (NREL 5MW land / monopile / OC3 spar)
+        run: |
+          git clone --depth=1 https://github.com/OpenFAST/r-test.git \
+            external/OpenFAST_files/r-test
+
+      - name: Clone IEA-3.4-130-RWT
+        run: |
+          git clone --depth=1 https://github.com/IEAWindTask37/IEA-3.4-130-RWT.git \
+            external/OpenFAST_files/IEA-3.4-130-RWT
+
+      - name: Clone IEA-15-240-RWT
+        run: |
+          git clone --depth=1 https://github.com/IEAWindTask37/IEA-15-240-RWT.git \
+            external/OpenFAST_files/IEA-15-240-RWT
+
+      # ---------------------------------------------------------------
+      # Run the verifier + integration suite.
+      #
+      # The verifier surfaces clone status (PASS / WARN / FAIL per
+      # manifest entry) into the uploaded artifact. WARN means the
+      # manifest SHA pin is still ``TBD`` (every entry as of 1.8.0);
+      # FAIL means a clone drifted from a pinned SHA — release blocker.
+      #
+      # The integration suite runs WITHOUT the per-PR exit-5 tolerance:
+      # since the upstream data was just cloned, ``pytest`` must
+      # collect tests and they must pass. An exit code of 5 here
+      # means the clone step silently failed and is a workflow failure.
+      # ---------------------------------------------------------------
+
+      - name: Generate verifier report
+        run: |
+          python scripts/verify_external_data.py --strict \
+              | tee verify-report.txt
+        # The verifier exits non-zero on FAIL but zero on WARN; keep
+        # going so the artifact uploads + the integration suite below
+        # still runs even when SHA pins are TBD.
+        continue-on-error: true
+
+      - name: Audit validation matrix
+        # Same script as ci.yml — the matrix audit is cheap to repeat
+        # here so the validation workflow is independently complete.
+        run: python scripts/audit_validation_claims.py
+
+      - name: Integration tests (hard-fail, no exit-5 tolerance)
+        run: pytest -m integration --tb=short
+
+      - name: Upload verifier report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: verify-report.txt
+          retention-days: 90
