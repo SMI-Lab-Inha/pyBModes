@@ -12,8 +12,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.8.0] — 2026-05-21
 
-Multi-phase architecture refactor + project-infrastructure round. No
-public-API change; no numerical change. Three threads landed:
+Multi-phase architecture refactor + project-infrastructure round +
+external-review follow-up. No public-API change; one CLI default
+change (``pybmodes windio --on-skip`` defaults to ``fail-on-data``
+instead of silently warning — see Phase 4 below); no numerical
+change. Four threads landed:
 
 - **Phase 1** — re-license (MIT → Apache 2.0), Sphinx documentation
   site on Read the Docs, governance + CI hardening, strict mypy /
@@ -32,6 +35,17 @@ public-API change; no numerical change. Three threads landed:
   (tower-specific platform-scalar parsers). Every public name
   is preserved; existing imports keep working through the
   ``__init__.py`` re-export layer.
+- **Phase 4** — external-review hardening: ``pybmodes batch
+  --patch`` gains the same dry-run / backup / output-dir safety
+  contract that ``pybmodes patch`` has had since 1.0 (now with
+  ``backup=True`` default for tree-wide mutation); ``run_windio``
+  gains an ``on_skip`` policy parameter that flips
+  computational-skip failures from silent ``exit_code=0`` to
+  ``exit_code=1`` by default; a new ``validation.yml`` GitHub
+  Actions workflow enforces the published 0.01 % integration-test
+  tolerance in CI by cloning the upstream OpenFAST / IEA-Task-37
+  repositories on the fly, so the validation claim no longer
+  depends on maintainer-local state.
 
 ### Added
 
@@ -201,6 +215,54 @@ public-API change; no numerical change. Three threads landed:
   for back-compat. The :class:`Tower` class stayed together;
   a planned mixin-based split was rejected by Plan-agent review
   as architecturally hollow.
+
+Phase 4 — external-review hardening
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- **``run_batch`` safety contract** (Phase 4 PR D1, merged in #77).
+  ``run_batch(..., patch=True)`` previously called ``patch_dat``
+  directly on every discovered side-deck. The per-deck loop now
+  delegates to ``run_patch`` so the compute-before-write split +
+  write-mode selection are reused unchanged. Three new parameters
+  on ``run_batch`` plumbed through ``--dry-run`` / ``--backup`` /
+  ``--no-backup`` / ``--output-dir`` on the CLI: ``dry_run``
+  (default ``False``), ``backup`` (**default ``True`` — new in
+  1.8.0**, since ``batch`` mutates a tree surfaced by recursive
+  discovery, not a single hand-typed filename — single-deck
+  ``run_patch`` keeps ``backup=False`` default), ``output_dir``
+  (per-deck destination namespaces on the deck's *relative path
+  under root* to avoid stem collisions between sibling sub-trees,
+  fix from Codex P1 review). Addresses external-review finding
+  P1-3.
+- **``run_windio`` ``on_skip`` policy** (Phase 4 PR D2, merged in
+  #78). Three policies: ``"warn"`` (legacy permissive),
+  ``"fail-on-data"`` (**new default** — computational skips toggle
+  ``exit_code=1``; presentation + input skips warn), ``"fail"``
+  (strict — any skip fails). Each internal skip site is classified
+  as ``data`` (blade composite reduction), ``presentation``
+  (Campbell / spectra plot rendering), or ``input`` (Campbell
+  requested without a discovered ElastoDyn deck). CLI plumbing:
+  ``pybmodes windio --on-skip {warn,fail-on-data,fail}``.
+  **Behaviour change**: callers / automation that previously relied
+  on ``run_windio`` returning ``exit_code=0`` on blade-extraction
+  failure now see ``exit_code=1`` by default. Pass
+  ``--on-skip warn`` (or ``on_skip="warn"`` library-side) for the
+  pre-1.8.0 permissive default. Addresses external-review finding
+  P1-2.
+- **Validation workflow** (Phase 4 PR D3, merged in #79). New
+  ``.github/workflows/validation.yml`` (``workflow_dispatch`` +
+  weekly Monday cron) clones the upstream OpenFAST r-test + IEA-
+  Task-37 reference-turbine repositories from public GitHub and
+  runs ``pytest -m integration --tb=short`` hard-fail (no exit-5
+  tolerance, unlike the per-PR ``ci.yml``). The verifier-report
+  artifact is uploaded with 90-day retention. The new
+  ``[![Validation](...)]`` badge on README + VALIDATION.md links to
+  the workflow; the *Enforcement* paragraph in VALIDATION.md names
+  the CI-validated coverage explicitly (NREL r-test family +
+  IEA-Task-37 RWTs) and calls out the BModes CertTest 03/04 gap
+  (BModes is a NREL download, not GitHub, so those cases stay
+  maintainer-local enforcement). Addresses external-review
+  finding P1-1.
 
 ### Fixed
 
