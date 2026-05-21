@@ -214,7 +214,12 @@ def run_batch(
         raise ValueError(
             f"kind {kind!r} not supported (only 'elastodyn' for now)"
         )
-    if dry_run and output_dir is not None:
+    # Patch-mode safety levers are only consulted when ``patch=True``;
+    # a validation-only batch call carrying leftover ``--dry-run`` /
+    # ``--output-dir`` flags must NOT raise (the CLI help text
+    # explicitly documents the levers as ignored unless ``--patch`` is
+    # set). Codex P2 review on PR #77.
+    if patch and dry_run and output_dir is not None:
         raise ValueError(
             "dry_run is mutually exclusive with output_dir "
             "(dry_run writes nothing, output_dir writes elsewhere — "
@@ -287,10 +292,18 @@ def run_batch(
         # -before-write split) is reused unchanged.
         if patch:
             try:
-                per_deck_out = (
-                    output_root / deck.stem if output_root is not None
-                    else None
-                )
+                # Use the deck's RELATIVE path under ``root`` (not just
+                # the stem) as the per-deck destination, so two decks
+                # with the same filename in different sub-directories
+                # land in distinct sub-trees instead of silently
+                # overwriting each other. Codex P1 review on PR #77.
+                per_deck_out: "pathlib.Path | None" = None
+                if output_root is not None:
+                    try:
+                        rel_parent = deck.relative_to(root_p).parent
+                    except ValueError:
+                        rel_parent = pathlib.Path()
+                    per_deck_out = output_root / rel_parent / deck.stem
                 patch_result = run_patch(
                     deck,
                     n_modes=n_modes,

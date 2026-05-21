@@ -508,8 +508,12 @@ def test_batch_patch_default_backup_creates_bak(tmp_path: pathlib.Path) -> None:
 
 
 def test_batch_patch_output_dir_writes_copies(tmp_path: pathlib.Path) -> None:
-    """``output_dir=DIR`` writes per-deck-stem sub-directories into DIR
-    and leaves the source tree untouched."""
+    """``output_dir=DIR`` writes per-deck-relative sub-directories into
+    DIR and leaves the source tree untouched. The per-deck destination
+    namespaces on the deck's *relative path under root* (not just its
+    stem) so two decks sharing a filename in different sub-trees stay
+    distinct — see
+    :func:`test_batch_patch_output_dir_preserves_relative_subtree`."""
     if not _REFERENCE_DECKS.is_dir():
         pytest.skip("reference_decks/ not present")
     src = _REFERENCE_DECKS / "nrel5mw_land"
@@ -528,10 +532,14 @@ def test_batch_patch_output_dir_writes_copies(tmp_path: pathlib.Path) -> None:
     assert res.exit_code == 0
     # Source untouched.
     assert (staged / "NRELOffshrBsline5MW_Tower.dat").read_bytes() == tower_before
-    # Patched copies landed under <output_dir>/<deck-stem>/.
+    # Patched copies landed under
+    # ``<output_dir>/<deck-relative-parent>/<deck-stem>/``. The
+    # root for this test is ``tmp_path``; the deck lives in
+    # ``tmp_path/stage/...`` so the relative parent is ``stage/``.
     deck_stem = "NRELOffshrBsline5MW_Onshore_ElastoDyn"
-    assert (out_decks / deck_stem / "NRELOffshrBsline5MW_Tower.dat").is_file()
-    assert (out_decks / deck_stem / "NRELOffshrBsline5MW_Blade.dat").is_file()
+    per_deck = out_decks / "stage" / deck_stem
+    assert (per_deck / "NRELOffshrBsline5MW_Tower.dat").is_file()
+    assert (per_deck / "NRELOffshrBsline5MW_Blade.dat").is_file()
     # No .bak in source tree (output-dir mode skips backup).
     assert not (staged / "NRELOffshrBsline5MW_Tower.dat.bak").exists()
 
@@ -547,6 +555,65 @@ def test_batch_patch_rejects_dry_run_with_output_dir(tmp_path: pathlib.Path) -> 
             root, tmp_path / "reports",
             patch=True, dry_run=True, output_dir=tmp_path / "out",
         )
+
+
+def test_batch_safety_levers_ignored_without_patch(tmp_path: pathlib.Path) -> None:
+    """When ``patch=False``, leftover safety flags (``dry_run`` /
+    ``output_dir``) must NOT raise — the CLI help text documents them
+    as ignored unless ``--patch`` is set. Codex P2 review on PR #77
+    caught the unconditional mutual-exclusion check firing on a pure
+    validation-only batch call."""
+    root = tmp_path / "empty"
+    root.mkdir()
+    # Validation-only batch with both safety levers set — should run
+    # without raising and exit 0 (no decks found, empty tree).
+    res = run_batch(
+        root, tmp_path / "reports",
+        patch=False, dry_run=True, output_dir=tmp_path / "unused",
+    )
+    assert res.exit_code == 0
+    assert res.decks_found == 0
+
+
+def test_batch_patch_output_dir_preserves_relative_subtree(tmp_path: pathlib.Path) -> None:
+    """``output_dir`` must namespace per-deck writes by the deck's
+    *relative path under root*, not just the filename stem — otherwise
+    two decks with the same name in different sub-directories collide
+    silently. Codex P1 review on PR #77 caught the deck-stem collision
+    pattern."""
+    if not _REFERENCE_DECKS.is_dir():
+        pytest.skip("reference_decks/ not present")
+    src = _REFERENCE_DECKS / "nrel5mw_land"
+    if not src.is_dir():
+        pytest.skip("nrel5mw_land bundle not present")
+    import shutil as _shutil
+
+    # Stage the same deck in TWO sibling sub-trees so the discovered
+    # main decks share a filename stem
+    # (``NRELOffshrBsline5MW_Onshore_ElastoDyn``).
+    root = tmp_path / "tree"
+    (root / "config_A").mkdir(parents=True)
+    (root / "config_B").mkdir(parents=True)
+    _shutil.copytree(src, root / "config_A" / "deck")
+    _shutil.copytree(src, root / "config_B" / "deck")
+
+    out_decks = tmp_path / "patched_out"
+    res = run_batch(
+        root, tmp_path / "reports",
+        patch=True, output_dir=out_decks,
+    )
+    assert res.exit_code == 0
+    assert res.decks_found == 2
+
+    # Both decks must land in DISTINCT output sub-trees keyed by the
+    # full relative path, not just the deck stem.
+    deck_stem = "NRELOffshrBsline5MW_Onshore_ElastoDyn"
+    a = out_decks / "config_A" / "deck" / deck_stem
+    b = out_decks / "config_B" / "deck" / deck_stem
+    assert a.is_dir(), f"expected distinct config_A output at {a}"
+    assert b.is_dir(), f"expected distinct config_B output at {b}"
+    assert (a / "NRELOffshrBsline5MW_Tower.dat").is_file()
+    assert (b / "NRELOffshrBsline5MW_Tower.dat").is_file()
 
 
 # ---------------------------------------------------------------------------
