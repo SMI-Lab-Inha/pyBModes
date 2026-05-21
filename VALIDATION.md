@@ -244,7 +244,7 @@ pre-tag, not CI-gated.** Specifically:
   a genuine integration-test failure when data IS provided by a
   custom workflow run) fails the build.
 - The pre-tag release sequence (see
-  [`docs/release_checklist.rst`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/release_checklist.rst), step 2)
+  [`https://pybmodes.readthedocs.io/en/latest/release_checklist.html`](https://pybmodes.readthedocs.io/en/latest/release_checklist.html), step 2)
   requires the maintainer to run `pytest -m integration` locally on
   a checkout that has the upstream sources cloned, and confirm
   every case passes, before tagging a new version. The tag therefore

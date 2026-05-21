@@ -6,28 +6,39 @@
 
 `pybmodes` is a pure-Python finite-element library for wind-turbine blade and tower modal analysis. It reads OpenFAST (ElastoDyn / SubDyn / HydroDyn / MoorDyn), BModes `.bmi`, and WISDEM / WindIO ontology YAML inputs; solves the coupled flap–lag–torsion–axial vibration modes with a 15-DOF Bernoulli-Euler beam element; and emits ElastoDyn-compatible mode-shape polynomials, MAC-tracked Campbell diagrams, and bundled Markdown / HTML / CSV reports.
 
-Validated against the BModes Fortran reference solver on six benchmark cases (NREL 5MW land + OC3 monopile + OC3 Hywind floating spar, IEA-3.4-130-RWT, BModes CertTest 03 / 04) to **better than 0.01 %** on every comparison — the strict tolerance is enforced by the `pytest -m integration` suite (which needs the upstream OpenFAST / BModes decks staged under `external/`; see [`docs/data_sources.rst`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/data_sources.rst) for the layout and [`external/MANIFEST.toml`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/external/MANIFEST.toml) for the pinned SHAs + file hashes you can verify against). Public CI runs the self-contained suite (synthetic + closed-form-referenced) and tolerates "no tests collected" on the integration step when the runner has no upstream data — see [`VALIDATION.md`](VALIDATION.md) for the full per-case matrix with external-data flags.
+Validated against the BModes Fortran reference solver on six benchmark cases (NREL 5MW land + OC3 monopile + OC3 Hywind floating spar, IEA-3.4-130-RWT, BModes CertTest 03 / 04) to **better than 0.01 %** on every comparison — the strict tolerance is enforced by the `pytest -m integration` suite (which needs the upstream OpenFAST / BModes decks staged under `external/`; see [`https://pybmodes.readthedocs.io/en/latest/data_sources.html`](https://pybmodes.readthedocs.io/en/latest/data_sources.html) for the layout and [`external/MANIFEST.toml`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/external/MANIFEST.toml) for the pinned SHAs + file hashes you can verify against). Public CI runs the self-contained suite (synthetic + closed-form-referenced) and tolerates "no tests collected" on the integration step when the runner has no upstream data — see [`VALIDATION.md`](VALIDATION.md) for the full per-case matrix with external-data flags.
 
 ## Documentation
 
-The full user guide, theory notes, API reference, and validation matrix live in the Sphinx site under [`docs/`](https://github.com/SMI-Lab-Inha/pyBModes/tree/master/docs/) — built on [Read the Docs](https://pybmodes.readthedocs.io/) and reproducible locally with:
+> 📖 **The rendered documentation lives at [pybmodes.readthedocs.io](https://pybmodes.readthedocs.io/en/latest/).** Sphinx-specific roles (`:math:`, `:doc:`, `:func:`, `:class:`) inside the `.rst` source files only render correctly through the deployed site; browsing the raw source on GitHub will show them as literal text. Always link readers to the RTD URL, not the source.
+>
+> *(If the URL 404s, the Read the Docs project hasn't been imported yet — see [`docs/deployment.rst`](https://pybmodes.readthedocs.io/en/latest/deployment.html) for the one-time maintainer setup.)*
+
+| Page | What's there |
+| --- | --- |
+| [Installation](https://pybmodes.readthedocs.io/en/latest/installation.html) | PyPI / source install, extras matrix, Windows + conda quickstart, troubleshooting |
+| [Quickstart](https://pybmodes.readthedocs.io/en/latest/quickstart.html) | Nine worked recipes — synthetic tower, OpenFAST deck, monopile + SubDyn, floating coupled, Campbell sweep, WindIO one-click, MAC, batch, persistence |
+| [Theory](https://pybmodes.readthedocs.io/en/latest/theory.html) | Eigenproblem maths, 15-DOF beam element, four boundary conditions, polynomial ansatz, solver dispatch, citable references |
+| [Data sources](https://pybmodes.readthedocs.io/en/latest/data_sources.html) | Every input format — BModes `.bmi`, ElastoDyn / SubDyn / HydroDyn / MoorDyn `.dat`, WAMIT `.1` / `.hst`, WindIO `.yaml` — with snippet examples |
+| [Units](https://pybmodes.readthedocs.io/en/latest/units.html) | SI conventions, conversion tables, mode-shape normalisation, OpenFAST DOF order, common pitfalls |
+| [Limitations](https://pybmodes.readthedocs.io/en/latest/limitations.html) | Polynomial-representation limits, four specific validation-matrix edge cases, "when to reach for a different tool" |
+| [Validation matrix](https://pybmodes.readthedocs.io/en/latest/validation.html) | Per-case cross-checks against published references (cross-references [`VALIDATION.md`](VALIDATION.md)) |
+| [API reference](https://pybmodes.readthedocs.io/en/latest/api.html) | Autodoc-generated module reference |
+| [API contract](https://pybmodes.readthedocs.io/en/latest/api_contract.html) | Semver-frozen public surface + deprecation policy + stability tiers |
+| [Changelog](https://pybmodes.readthedocs.io/en/latest/changelog.html) | Versioning policy + full release history (cross-references [`CHANGELOG.md`](CHANGELOG.md)) |
+| [Contributing](https://pybmodes.readthedocs.io/en/latest/contributing.html) | Welcome scope, pre-commit, PR checklist, no-AI-attribution rule |
+| [Release checklist](https://pybmodes.readthedocs.io/en/latest/release_checklist.html) | 11-step pre-tag sequence (maintainer) |
+| [Deployment](https://pybmodes.readthedocs.io/en/latest/deployment.html) | One-time RTD setup + versioning policy (maintainer) |
+
+To build locally:
 
 ```bash
 pip install -e ".[docs]"
 make -C docs html
+# then open docs/_build/html/index.html through a real web server
+# (file:// blocks MathJax CDN in some browsers):
+python -m http.server -d docs/_build/html
 ```
-
-Direct links into the source tree:
-
-- [Installation](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/installation.rst)
-- [Quickstart](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/quickstart.rst)
-- [Theory](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/theory.rst)
-- [Data sources](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/data_sources.rst)
-- [Limitations](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/limitations.rst)
-- [Validation matrix](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/validation.rst) (cross-references [`VALIDATION.md`](VALIDATION.md))
-- [API reference](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/api.rst)
-- [API contract](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/api_contract.rst) (semver-frozen public surface)
-- [Changelog](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/changelog.rst) (cross-references [`CHANGELOG.md`](CHANGELOG.md))
 
 ## Install
 
@@ -47,7 +58,7 @@ pip install pybmodes        # (post-PyPI-release; not available yet)
 
 Take care that **`pybmodes` is a different project from `pyModeS`** (an ADS-B / Mode-S decoder). When the PyPI release lands the project name on PyPI will be `pybmodes` (lowercase, no S); double-check the package name + the GitHub `SMI-Lab-Inha/pyBModes` repo URL before installing.
 
-See [`docs/installation.rst`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/installation.rst) for the full Windows + conda quickstart and the optional-extras matrix (`[plots]`, `[windio]`, `[notebook]`, `[docs]`).
+See [`https://pybmodes.readthedocs.io/en/latest/installation.html`](https://pybmodes.readthedocs.io/en/latest/installation.html) for the full Windows + conda quickstart and the optional-extras matrix (`[plots]`, `[windio]`, `[notebook]`, `[docs]`).
 
 ## Quick example
 
@@ -66,7 +77,7 @@ params = compute_tower_params(modal)
 patch_dat("NRELOffshrBsline5MW_Onshore_ElastoDyn.dat", params)
 ```
 
-More — Campbell sweeps, WindIO one-click, mode-by-mode MAC comparison, bundled reports — in [`docs/quickstart.rst`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/quickstart.rst).
+More — Campbell sweeps, WindIO one-click, mode-by-mode MAC comparison, bundled reports — in [`https://pybmodes.readthedocs.io/en/latest/quickstart.html`](https://pybmodes.readthedocs.io/en/latest/quickstart.html).
 
 ## CLI
 

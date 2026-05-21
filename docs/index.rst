@@ -92,6 +92,7 @@ The user guide takes it from there:
 
    contributing
    release_checklist
+   deployment
 
 What this project is *not*
 --------------------------
