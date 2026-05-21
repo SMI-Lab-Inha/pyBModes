@@ -241,7 +241,14 @@ scripts run the same flows the CLI uses without going through
   (:func:`pybmodes.workflows.discover_windio_inputs` returning a
   :class:`pybmodes.workflows.WindioDiscovery`), solves blade +
   tower (or coupled floating tower + platform), optionally runs a
-  Campbell sweep, and writes a bundled report.
+  Campbell sweep, and writes a bundled report. As of 1.8.0 the
+  workflow carries an ``on_skip`` policy parameter (default
+  ``"fail-on-data"``) so a computational skip — e.g. the blade
+  composite reduction raised — toggles ``exit_code = 1`` instead
+  of silently returning a partial report; presentation-only skips
+  (Campbell plot, environmental-spectra plot) still warn. Pass
+  ``on_skip="warn"`` to recover the pre-1.8.0 permissive
+  behaviour.
 
 With this PR the full :command:`pybmodes` CLI surface is library-
 callable; :mod:`pybmodes.cli` is purely ``argparse + delegation``.

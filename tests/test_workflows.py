@@ -795,3 +795,113 @@ def test_windio_workflow_raises_on_missing_input(
 ) -> None:
     with pytest.raises(FileNotFoundError):
         run_windio(tmp_path / "does_not_exist.yaml", out_path=tmp_path / "r.md")
+
+
+# ---------------------------------------------------------------------------
+# run_windio — Phase 4 PR D2 on_skip policy (P1-2)
+# ---------------------------------------------------------------------------
+
+def test_windio_on_skip_warn_preserves_legacy_behaviour(
+    tmp_path: pathlib.Path,
+) -> None:
+    """``on_skip='warn'`` recovers the pre-1.8.0 permissive behaviour:
+    every skip just messages, exit_code stays 0. Pin the contract so
+    the policy machinery doesn't silently regress for callers who
+    explicitly opt back into the legacy permissive mode."""
+    pytest.importorskip("yaml")
+    yp = tmp_path / "tower.yaml"
+    yp.write_text(_BARE_TOWER_YAML, encoding="utf-8")
+    out = tmp_path / "report.md"
+    # campbell=True with a bare-yaml input that has no companion
+    # ElastoDyn deck → ``"campbell"`` (input) skip is appended.
+    res = run_windio(
+        yp, out_path=out, n_modes=6, campbell=True, on_skip="warn",
+    )
+    assert res.exit_code == 0
+    assert "campbell" in res.skipped
+    assert not res.errors
+
+
+def test_windio_on_skip_fail_with_no_deck_fails_on_campbell_request(
+    tmp_path: pathlib.Path,
+) -> None:
+    """``on_skip='fail'`` toggles ``exit_code=1`` on *any* skip,
+    including the ``"campbell"`` (input) skip raised when
+    ``campbell=True`` runs against a yaml with no companion deck."""
+    pytest.importorskip("yaml")
+    yp = tmp_path / "tower.yaml"
+    yp.write_text(_BARE_TOWER_YAML, encoding="utf-8")
+    out = tmp_path / "report.md"
+    res = run_windio(
+        yp, out_path=out, n_modes=6, campbell=True, on_skip="fail",
+    )
+    assert res.exit_code == 1
+    assert "campbell" in res.skipped
+    # The error message names the offending skip + its kind.
+    joined = "\n".join(res.errors)
+    assert "campbell" in joined
+    assert "fail" in joined.lower()
+
+
+def test_windio_on_skip_fail_on_data_tolerates_input_skip(
+    tmp_path: pathlib.Path,
+) -> None:
+    """``on_skip='fail-on-data'`` (the new default) treats the
+    ``"campbell"`` no-deck case as an *input* skip and warns;
+    exit_code stays 0. This is the new default, so test the bare-
+    tower yaml + ``campbell=True`` path matches the warn path on
+    exit_code while still flagging the skip."""
+    pytest.importorskip("yaml")
+    yp = tmp_path / "tower.yaml"
+    yp.write_text(_BARE_TOWER_YAML, encoding="utf-8")
+    out = tmp_path / "report.md"
+    res = run_windio(
+        yp, out_path=out, n_modes=6, campbell=True,
+        on_skip="fail-on-data",
+    )
+    assert res.exit_code == 0
+    assert "campbell" in res.skipped
+    assert not res.errors
+
+
+def test_windio_on_skip_fail_on_data_fails_when_blade_extraction_fails(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Under ``on_skip='fail-on-data'`` (the new default), a
+    computational skip (blade composite reduction raising) toggles
+    ``exit_code=1`` and surfaces the failure in ``errors``. Uses
+    monkeypatching on the deferred-import name inside the
+    ``run_windio`` body to simulate a blade-reduction error
+    independently of the optional ``[windio]`` extra."""
+    pytest.importorskip("yaml")
+    yaml_with_blade = (
+        _BARE_TOWER_YAML.replace(
+            "components:\n  tower:",
+            "components:\n  blade:\n    name: stub\n  tower:",
+        )
+    )
+    yp = tmp_path / "tower.yaml"
+    yp.write_text(yaml_with_blade, encoding="utf-8")
+
+    # Force RotatingBlade.from_windio to raise so the blade-extraction
+    # try / except inside run_windio is exercised. The patch target is
+    # the symbol looked up inside the windio workflow module.
+    from pybmodes.models import RotatingBlade
+
+    def _stub_from_windio(*args, **kwargs):  # noqa: ARG001
+        raise RuntimeError("synthetic blade-reduction failure")
+
+    monkeypatch.setattr(
+        RotatingBlade, "from_windio", classmethod(
+            lambda cls, *a, **kw: _stub_from_windio()
+        ),
+    )
+
+    out = tmp_path / "report.md"
+    res = run_windio(yp, out_path=out, n_modes=6)  # default = fail-on-data
+    assert res.exit_code == 1
+    assert "blade" in res.skipped
+    joined = "\n".join(res.errors)
+    assert "blade" in joined
+    assert "data" in joined
