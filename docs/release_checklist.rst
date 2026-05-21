@@ -38,17 +38,45 @@ list of what needs external data).
 2. Integration test suite (needs local OpenFAST + BModes decks)
 ---------------------------------------------------------------
 
+First, verify the local ``external/`` tree matches the pinned
+manifest:
+
+.. code-block:: bash
+
+   python scripts/verify_external_data.py --strict
+
+Expected: ``Summary: N PASS, 0 WARN, 0 SKIP, 0 FAIL``. A WARN
+means a SHA pin is ``TBD`` in the manifest — bump those before
+release. A FAIL means the local clone has drifted from the
+pinned SHA / file hash; ``git -C external/<clone> checkout
+<sha>`` to fix.
+
+Then run the integration suite:
+
 .. code-block:: bash
 
    pytest -m integration -q
 
 Expected: every collected test passes. If you don't have the
-upstream decks cloned under ``external/``, this step exits with
-code 5 ("no tests collected") — that's acceptable for a local
-pre-tag pass **only** if you've separately verified the integration
-track on another machine that does have the data. CI runs both
-steps; the integration job's exit-5 path is allowed but every
-other failure mode is a hard fail.
+upstream decks cloned under ``external/`` and pinned per
+``external/MANIFEST.toml``, this step exits with code 5 ("no
+tests collected") — that's acceptable for a local pre-tag pass
+**only** if you've separately verified the integration track on
+another machine that does have the data. CI runs both steps;
+the integration job's exit-5 path is allowed but every other
+failure mode is a hard fail.
+
+.. note::
+
+   The pinned manifest is the published reproducibility
+   contract for the validation matrix's external-data tracks.
+   Anyone with the manifest can verify the published 0.01 %
+   tolerance against the BModes Fortran reference solver
+   byte-for-byte; without it, the integration track is
+   lab-local. Treat the manifest pins as part of the API
+   contract — bumping a pin is a deliberate maintainer action
+   documented in the corresponding ``CHANGELOG.md`` entry
+   under *Changed*.
 
 3. Linting + type checking
 --------------------------
@@ -165,7 +193,51 @@ The ``v`` prefix is the standard convention PyPI, GitHub Releases,
 and conda-forge all expect. Push the master branch *before* the
 tag so the tag refers to a commit that's on the remote.
 
-10. GitHub Release
+The tag push fires the **PyPI publish workflow**
+(``.github/workflows/publish.yml``) — see step 10 below. Don't
+push the tag until you're ready for PyPI to receive the artefact.
+
+10. PyPI publish (automatic, but verify)
+----------------------------------------
+
+Pushing the tag fires ``Publish to PyPI`` via Trusted
+Publishing. Watch the workflow on the Actions tab:
+
+1. ``build-and-smoke`` — builds sdist + wheel, asserts the tag
+   matches ``pyproject.toml`` version, smoke-installs both into
+   fresh venvs. A failure here usually means a forgotten
+   ``MANIFEST.in`` entry or a ``[project] version`` line that
+   doesn't match the tag.
+2. ``publish`` — pulls the built artefacts and uploads to PyPI
+   via the OIDC handshake (no API token). The ``pypi``
+   environment may have required-reviewer protection turned
+   on; approve the deployment on the Actions UI if so.
+
+After the workflow goes green, verify on PyPI:
+
+.. code-block:: bash
+
+   # in a throwaway venv
+   python -m venv /tmp/pypi-check
+   /tmp/pypi-check/bin/pip install --upgrade pip
+   /tmp/pypi-check/bin/pip install pybmodes==X.Y.Z
+   /tmp/pypi-check/bin/python -c "import pybmodes; print(pybmodes.__version__)"
+
+Expected: prints ``X.Y.Z`` exactly. If pip can't find the
+version, give PyPI a few minutes to propagate to its CDN.
+
+.. note::
+
+   **Trusted Publishing must be configured PyPI-side first.**
+   The maintainer registers ``pybmodes`` on PyPI, adds a
+   Trusted Publisher entry pointing at this repository +
+   ``publish.yml`` + the ``pypi`` environment, and creates a
+   matching environment under the repo settings. The
+   ``publish.yml`` header carries the exact configuration.
+   First-time setup takes ~5 min in the PyPI UI; subsequent
+   releases are token-less and automatic.
+
+11. GitHub Release
 ------------------
 
 On https://github.com/SMI-Lab-Inha/pyBModes/releases/new :
@@ -177,8 +249,14 @@ On https://github.com/SMI-Lab-Inha/pyBModes/releases/new :
    above the detailed changelog if the changeset is large enough
    to warrant one (the X.Y.0 minor-bumps usually do; patch-only
    bumps usually don't).
-4. Set as the latest release: ✓ (unless this is a back-port).
-5. Publish.
+4. **Attach the verifier report** as a release asset: from the
+   release-checklist machine, run
+   ``python scripts/verify_external_data.py --strict > verify-vX.Y.Z.txt``
+   and upload that file. Anyone reproducing the integration
+   tolerance against the BModes Fortran reference can re-run
+   the same verifier to confirm the manifest pins.
+5. Set as the latest release: ✓ (unless this is a back-port).
+6. Publish.
 
 The GitHub Actions CI badge in README will repaint to green on the
 new tag's commit automatically.

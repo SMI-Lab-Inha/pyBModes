@@ -6,7 +6,7 @@
 
 `pybmodes` is a pure-Python finite-element library for wind-turbine blade and tower modal analysis. It reads OpenFAST (ElastoDyn / SubDyn / HydroDyn / MoorDyn), BModes `.bmi`, and WISDEM / WindIO ontology YAML inputs; solves the coupled flap–lag–torsion–axial vibration modes with a 15-DOF Bernoulli-Euler beam element; and emits ElastoDyn-compatible mode-shape polynomials, MAC-tracked Campbell diagrams, and bundled Markdown / HTML / CSV reports.
 
-Validated against the BModes Fortran reference solver on six benchmark cases (NREL 5MW land + OC3 monopile + OC3 Hywind floating spar, IEA-3.4-130-RWT, BModes CertTest 03 / 04) to **better than 0.01 %** on every comparison. See [`VALIDATION.md`](VALIDATION.md) for the full per-case matrix.
+Validated against the BModes Fortran reference solver on six benchmark cases (NREL 5MW land + OC3 monopile + OC3 Hywind floating spar, IEA-3.4-130-RWT, BModes CertTest 03 / 04) to **better than 0.01 %** on every comparison — the strict tolerance is enforced by the `pytest -m integration` suite (which needs the upstream OpenFAST / BModes decks staged under `external/`; see [`docs/data_sources.rst`](docs/data_sources.rst) for the layout and [`external/MANIFEST.toml`](external/MANIFEST.toml) for the pinned SHAs + file hashes you can verify against). Public CI runs the self-contained suite (synthetic + closed-form-referenced) and tolerates "no tests collected" on the integration step when the runner has no upstream data — see [`VALIDATION.md`](VALIDATION.md) for the full per-case matrix with external-data flags.
 
 ## Documentation
 
@@ -31,17 +31,21 @@ Direct links into the source tree:
 
 ## Install
 
-```bash
-pip install pybmodes
-```
-
-Or from source with the developer extras:
+> **PyPI status: pre-release.** The `pybmodes` distribution is not yet published to PyPI — that's tracked as a 1.x release-gate item. Until the first PyPI release lands, install from source:
 
 ```bash
 git clone https://github.com/SMI-Lab-Inha/pyBModes.git
 cd pyBModes
 pip install -e ".[dev,plots]"
 ```
+
+Once published, the canonical install will be the standard one:
+
+```bash
+pip install pybmodes        # (post-PyPI-release; not available yet)
+```
+
+Take care that **`pybmodes` is a different project from `pyModeS`** (an ADS-B / Mode-S decoder). When the PyPI release lands the project name on PyPI will be `pybmodes` (lowercase, no S); double-check the package name + the GitHub `SMI-Lab-Inha/pyBModes` repo URL before installing.
 
 See [`docs/installation.rst`](docs/installation.rst) for the full Windows + conda quickstart and the optional-extras matrix (`[plots]`, `[windio]`, `[notebook]`, `[docs]`).
 

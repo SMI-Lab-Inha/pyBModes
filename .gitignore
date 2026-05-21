@@ -37,7 +37,10 @@ CLAUDE.md
 # pybmodes' tests + build scripts skip when these are absent (independence
 # stance, see README). Contributors who want full cert-test or
 # reference-deck-build coverage clone the upstream sources under external/.
-external/
+# The MANIFEST.toml spec lives here and IS tracked — it pins the
+# upstream-repo SHAs + file hashes the integration suite expects.
+external/*
+!external/MANIFEST.toml
 
 # Generated case-study outputs — each cases/<name>/run.py regenerates
 # its own outputs/ subtree (PNGs, coefficient tables, validation

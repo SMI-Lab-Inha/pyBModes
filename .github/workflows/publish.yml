@@ -1,0 +1,113 @@
+# PyPI publish workflow.
+#
+# Fires when a tag matching ``v*.*.*`` is pushed (e.g. ``v1.7.0``).
+# Builds the sdist + wheel, runs the same smoke tests the release
+# workflow does, and — if all gates pass — publishes to PyPI via
+# Trusted Publishing.
+#
+# Trusted Publishing setup (one-time, maintainer-side):
+#   1. Register the project name ``pybmodes`` on PyPI.
+#   2. Under Publishing -> Trusted Publishers, add a new GitHub
+#      publisher with:
+#        owner          = SMI-Lab-Inha
+#        repository     = pyBModes
+#        workflow       = publish.yml
+#        environment    = pypi
+#   3. Create a GitHub environment named ``pypi`` in the repo settings
+#      with required-reviewer protection if desired.
+#
+# After step 3 a tag push triggers an automatic, token-less publish.
+# Until the maintainer completes setup, the publish step in this
+# workflow is a no-op: build + smoke runs, ``pypa/gh-action-pypi-publish``
+# fails the auth check and the workflow exits non-zero. Drop the tag
+# and re-tag once setup is complete; nothing has been published.
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build deps
+        run: pip install --upgrade pip build
+
+      - name: Confirm tag matches pyproject.toml version
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          pyproject=$(grep '^version = ' pyproject.toml | head -1 | sed -E 's/version = "([^"]+)"/\1/')
+          echo "tag:        ${tag}"
+          echo "pyproject:  ${pyproject}"
+          if [ "${tag}" != "${pyproject}" ]; then
+            echo "::error::tag and pyproject.toml version disagree — refusing to publish."
+            exit 1
+          fi
+
+      - name: Build sdist + wheel
+        run: python -m build
+
+      - name: Install wheel into a fresh venv + version sanity
+        run: |
+          python -m venv smoke
+          ./smoke/bin/pip install --upgrade pip
+          ./smoke/bin/pip install dist/pybmodes-*.whl
+          cd /tmp
+          actual=$($GITHUB_WORKSPACE/smoke/bin/python -c "import pybmodes; print(pybmodes.__version__)")
+          expected="${GITHUB_REF#refs/tags/v}"
+          echo "expected: ${expected}"
+          echo "actual:   ${actual}"
+          test "${expected}" = "${actual}"
+
+      - name: Install sdist into a fresh venv (catches MANIFEST.in gaps)
+        run: |
+          python -m venv sdist-venv
+          ./sdist-venv/bin/pip install --upgrade pip
+          ./sdist-venv/bin/pip install dist/pybmodes-*.tar.gz
+          cd /tmp
+          $GITHUB_WORKSPACE/sdist-venv/bin/python -c "import pybmodes; print(pybmodes.__version__)"
+
+      - name: Upload built artifacts for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  publish:
+    needs: build-and-smoke
+    runs-on: ubuntu-latest
+    # Trusted Publishing requires an environment with the same name as
+    # the publisher's environment field in the PyPI config.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pybmodes/
+    permissions:
+      # ``id-token: write`` is the entire auth — no API token, no
+      # secret. PyPI verifies the OIDC claim from GitHub Actions
+      # against the Trusted Publisher config.
+      id-token: write
+
+    steps:
+      - name: Download the built distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        # The official PyPA action — handles the Trusted Publishing
+        # handshake and uploads dist/* to PyPI.
+        uses: pypa/gh-action-pypi-publish@release/v1
