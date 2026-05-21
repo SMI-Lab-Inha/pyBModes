@@ -118,6 +118,15 @@ Results + serialisation
   ``save(.npz)`` / ``load(.npz)`` and ``to_json(.json)`` /
   ``from_json(.json)`` with embedded pyBmodes version + UTC
   timestamp + source-file + git-hash metadata.
+
+As of Phase 3 PR C1 of the 1.x refactor, :mod:`pybmodes.campbell` is
+a sub-package rather than a single 1301-line module. The public API
+(:class:`CampbellResult`, :func:`campbell_sweep`,
+:func:`plot_campbell`) is unchanged and re-exported from
+``pybmodes.campbell``; internal helpers live in private
+sub-modules (``_models`` / ``_classify`` / ``_mac`` / ``_sweep`` /
+``_plot``) so each file covers one concern.
+
 - :class:`pybmodes.campbell.CampbellResult` — output of
   ``campbell_sweep``; ships ``save(.npz)`` / ``load(.npz)``,
   ``to_csv(.csv)``; carries frequencies + omega_rpm + labels

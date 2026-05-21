@@ -518,6 +518,7 @@ def test_campbell_tower_too_few_modes_raises_diagnostic(
     Mirrors the existing defensive guard on the blade path.
     """
     from pybmodes import campbell as cb
+    from pybmodes.campbell import _sweep as cb_sweep
 
     requested = 4
 
@@ -529,7 +530,11 @@ def test_campbell_tower_too_few_modes_raises_diagnostic(
             shapes=[],
         )
 
-    monkeypatch.setattr(cb, "run_fem", fake_run_fem)
+    # Patch ``run_fem`` at its actual lookup site inside the sweep
+    # sub-module (post-Phase-3-C1 split). The ``cb`` alias is kept so
+    # the test reads as "monkeypatch the symbol the campbell sub-
+    # package uses".
+    monkeypatch.setattr(cb_sweep, "run_fem", fake_run_fem)
 
     # _solve_tower_once takes (tower, n_modes, n_steps) — pass a
     # placeholder pair for the tower since fake_run_fem ignores both.
