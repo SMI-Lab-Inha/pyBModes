@@ -40,7 +40,7 @@ maintainer = "Jae Hoon Seo <jaehoon.seo@inha.ac.kr>"
 # NREL 5MW land + monopile + OC3 Hywind integration tests.
 [clone.openfast_r-test]
 repo = "https://github.com/OpenFAST/r-test.git"
-sha = "dd5feaaaa500"                     # pinned 1.8.1 (was TBD in 1.8.0)
+sha = "dd5feaaaa500ba7283140107806300d551cff0a7"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/r-test"
 fetch_at = "shallow"                     # ``git clone --depth=1`` is enough
 hashes = { }                             # populated by --update; see script docstring
@@ -55,21 +55,21 @@ hashes = { }                             # populated by --update; see script doc
 
 [clone.iea_3_4_130]
 repo = "https://github.com/IEAWindTask37/IEA-3.4-130-RWT.git"
-sha = "824f8d65196f"                     # pinned 1.8.1 (was TBD in 1.8.0)
+sha = "824f8d65196f9f84ee66df5e58e3a48a70a8f0c5"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/IEA-3.4-130-RWT"
 fetch_at = "shallow"
 hashes = { }
 
 [clone.iea_10_198]
 repo = "https://github.com/IEAWindTask37/IEA-10.0-198-RWT.git"
-sha = "350cf06f5db9"                     # pinned 1.8.1 (was TBD in 1.8.0)
+sha = "350cf06f5db9cec12bcd73c2b174a5d9642958d8"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/IEA-10.0-198-RWT"
 fetch_at = "shallow"
 hashes = { }
 
 [clone.iea_15_240]
 repo = "https://github.com/IEAWindTask37/IEA-15-240-RWT.git"
-sha = "86d51c8a1ee6"                     # pinned 1.8.1 (was TBD in 1.8.0)
+sha = "86d51c8a1ee65be4f3686087a5c443c0b57e5cfb"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/IEA-15-240-RWT"
 fetch_at = "shallow"
 notes = "v1.1 tower redesign is the pinned target — Allen 2020 free-decay reference."
@@ -77,7 +77,7 @@ hashes = { }
 
 [clone.iea_22_280]
 repo = "https://github.com/IEAWindTask37/IEA-22-280-RWT.git"
-sha = "57979ece000e"                     # pinned 1.8.1 (was TBD in 1.8.0)
+sha = "57979ece000ec5cc394962b964805ddf20e387be"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/IEA-22-280-RWT"
 fetch_at = "shallow"
 hashes = { }
@@ -87,7 +87,7 @@ hashes = { }
 # ---------------------------------------------------------------------------
 [clone.wisdem]
 repo = "https://github.com/WISDEM/WISDEM.git"
-sha = "40a68818e7f2"                     # pinned 1.8.1 (was TBD in 1.8.0)
+sha = "40a68818e7f225065150786daff8d33f7e05d850"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/WISDEM"
 fetch_at = "shallow"
 hashes = { }
@@ -111,7 +111,7 @@ hashes = { }                             # populated by --update on a maintainer
 # ---------------------------------------------------------------------------
 [clone.moorpy]
 repo = "https://github.com/NREL/MoorPy.git"
-sha = "1fb29f8eca26"                     # pinned 1.8.1 (was TBD in 1.8.0)
+sha = "1fb29f8eca2618543b2df7056adfdfce0265737b"  # pinned 1.8.1
 relative_path = "external/MoorPy"
 fetch_at = "shallow"
 notes = "Optional — used for cross-comparison against pybmodes.mooring on OC3 Hywind."
@@ -119,7 +119,7 @@ hashes = { }
 
 [clone.raft]
 repo = "https://github.com/WISDEM/RAFT.git"
-sha = "a1e6a0a95326"                     # pinned 1.8.1 (was TBD in 1.8.0)
+sha = "a1e6a0a95326edaca713e031d9d06a5fd057d8fa"  # pinned 1.8.1
 relative_path = "external/RAFT"
 fetch_at = "shallow"
 notes = "Optional — used for the WindIO floating screening-tier cross-check."
