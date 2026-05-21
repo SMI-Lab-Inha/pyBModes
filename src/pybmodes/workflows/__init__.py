@@ -70,6 +70,10 @@ from pybmodes.workflows.batch import (
     BatchResult,
     run_batch,
 )
+from pybmodes.workflows.campbell import (
+    CampbellWorkflowResult,
+    run_campbell,
+)
 from pybmodes.workflows.examples import (
     ExamplesResult,
     run_examples_copy,
@@ -86,6 +90,12 @@ from pybmodes.workflows.validate import (
     ValidateResult,
     run_validate,
 )
+from pybmodes.workflows.windio import (
+    WindioDiscovery,
+    WindioResult,
+    discover_windio_inputs,
+    run_windio,
+)
 
 __all__ = [
     "WorkflowResult",
@@ -94,9 +104,15 @@ __all__ = [
     "PatchResult",
     "ReportResult",
     "BatchResult",
+    "CampbellWorkflowResult",
+    "WindioResult",
+    "WindioDiscovery",
     "run_validate",
     "run_examples_copy",
     "run_patch",
     "run_report",
     "run_batch",
+    "run_campbell",
+    "run_windio",
+    "discover_windio_inputs",
 ]

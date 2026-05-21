@@ -14,7 +14,8 @@ import warnings
 
 import pytest
 
-from pybmodes.cli import _discover_windio_inputs, main
+from pybmodes.cli import main
+from pybmodes.workflows.windio import discover_windio_inputs
 
 _DOCS = (pathlib.Path(__file__).resolve().parents[1]
          / "external" / "OpenFAST_files")
@@ -48,10 +49,10 @@ def test_windio_cli_discovery_scoping(tmp_path) -> None:
     bare = tmp_path / "scratch" / "x.yaml"
     bare.parent.mkdir()
     bare.write_text(_TOWER_ONLY, encoding="utf-8")
-    d = _discover_windio_inputs(bare)
-    assert d["yaml"] == bare
-    assert d["hydrodyn"] is None and d["moordyn"] is None \
-        and d["elastodyn"] is None
+    d = discover_windio_inputs(bare)
+    assert d.yaml == bare
+    assert d.hydrodyn is None and d.moordyn is None \
+        and d.elastodyn is None
 
     rwt = tmp_path / "MY-RWT"
     (rwt / "yaml").mkdir(parents=True)
@@ -61,10 +62,10 @@ def test_windio_cli_discovery_scoping(tmp_path) -> None:
     (rwt / "OpenFAST" / "turb_ElastoDyn.dat").write_text("x", "utf-8")
     (rwt / "OpenFAST" / "turb_ElastoDyn_tower.dat").write_text("x",
                                                                "utf-8")
-    d2 = _discover_windio_inputs(y)
+    d2 = discover_windio_inputs(y)
     # main deck found; the _tower aux file excluded.
-    assert d2["elastodyn"] is not None
-    assert d2["elastodyn"].name == "turb_ElastoDyn.dat"
+    assert d2.elastodyn is not None
+    assert d2.elastodyn.name == "turb_ElastoDyn.dat"
 
 
 def test_windio_cli_fixed_tower(tmp_path) -> None:
@@ -111,12 +112,13 @@ def test_windio_cli_iea15_industry_grade(tmp_path) -> None:
     industry-grade deck-backed coupled model (no screening warning),
     blade + coupled platform solved, report written."""
     pytest.importorskip("yaml")
-    disc = _discover_windio_inputs(_IEA15_FLOAT_Y)
+    disc = discover_windio_inputs(_IEA15_FLOAT_Y)
     for k in ("hydrodyn", "moordyn", "elastodyn"):
-        assert disc[k] is not None, f"{k} not discovered"
-        assert "umaine" in str(disc[k]).lower() \
-            or "semi" in str(disc[k]).lower(), \
-            f"{k} picked the wrong (non-floating) config: {disc[k]}"
+        val = getattr(disc, k)
+        assert val is not None, f"{k} not discovered"
+        assert "umaine" in str(val).lower() \
+            or "semi" in str(val).lower(), \
+            f"{k} picked the wrong (non-floating) config: {val}"
 
     out = tmp_path / "iea15.md"
     with warnings.catch_warnings():

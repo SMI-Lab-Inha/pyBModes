@@ -36,16 +36,22 @@ import pytest
 from pybmodes.cli import _resolve_examples_root
 from pybmodes.workflows import (
     BatchResult,
+    CampbellWorkflowResult,
     ExamplesResult,
     PatchResult,
     ReportResult,
     ValidateResult,
+    WindioDiscovery,
+    WindioResult,
     WorkflowResult,
+    discover_windio_inputs,
     run_batch,
+    run_campbell,
     run_examples_copy,
     run_patch,
     run_report,
     run_validate,
+    run_windio,
 )
 
 _SAMPLES = _resolve_examples_root() / "sample_inputs"
@@ -63,7 +69,15 @@ _NREL5MW_LAND_DAT = (
 
 @pytest.mark.parametrize(
     "cls",
-    [ValidateResult, ExamplesResult, PatchResult, ReportResult, BatchResult],
+    [
+        ValidateResult,
+        ExamplesResult,
+        PatchResult,
+        ReportResult,
+        BatchResult,
+        CampbellWorkflowResult,
+        WindioResult,
+    ],
 )
 def test_result_classes_inherit_workflow_result(cls) -> None:
     """Every per-workflow result dataclass inherits from the
@@ -428,3 +442,184 @@ def test_batch_empty_tree_writes_empty_summary(tmp_path: pathlib.Path) -> None:
     text = res.summary_path.read_text(encoding="utf-8")
     assert "filename" in text
     assert text.count("\n") == 1
+
+
+# ---------------------------------------------------------------------------
+# run_campbell
+# ---------------------------------------------------------------------------
+
+def test_campbell_runs_on_bundled_deck(tmp_path: pathlib.Path) -> None:
+    """``run_campbell`` against the bundled NREL 5MW land deck writes
+    both PNG and CSV, returns a populated typed result."""
+    if not _NREL5MW_LAND_DAT.is_file():
+        pytest.skip("bundled reference deck not present")
+    pytest.importorskip("matplotlib")
+    out_png = tmp_path / "camp.png"
+    res = run_campbell(
+        _NREL5MW_LAND_DAT,
+        max_rpm=8.0,
+        n_steps=5,
+        n_blade_modes=2,
+        n_tower_modes=2,
+        out_path=out_png,
+    )
+    assert isinstance(res, CampbellWorkflowResult)
+    assert res.exit_code == 0
+    assert res.png_path == out_png.resolve()
+    assert res.csv_path == out_png.with_suffix(".csv").resolve()
+    assert out_png.is_file()
+    assert res.csv_path is not None and res.csv_path.is_file()
+    assert res.sweep is not None
+    assert res.orders == [1, 2, 3, 6, 9]
+
+
+def test_campbell_parses_orders_string(tmp_path: pathlib.Path) -> None:
+    """Comma-separated ``orders`` string parses the same way the CLI
+    does."""
+    if not _NREL5MW_LAND_DAT.is_file():
+        pytest.skip("bundled reference deck not present")
+    pytest.importorskip("matplotlib")
+    res = run_campbell(
+        _NREL5MW_LAND_DAT,
+        max_rpm=6.0,
+        n_steps=3,
+        orders="1,3",
+        n_blade_modes=2,
+        n_tower_modes=2,
+        out_path=tmp_path / "c.png",
+    )
+    assert res.orders == [1, 3]
+
+
+def test_campbell_rejects_zero_max_rpm(tmp_path: pathlib.Path) -> None:
+    """``max_rpm <= 0`` is a usage error (CLI translates to exit 2)."""
+    if not _NREL5MW_LAND_DAT.is_file():
+        pytest.skip("bundled reference deck not present")
+    with pytest.raises(ValueError, match="max_rpm"):
+        run_campbell(
+            _NREL5MW_LAND_DAT, max_rpm=0.0, out_path=tmp_path / "c.png",
+        )
+
+
+def test_campbell_rejects_n_steps_lt_2(tmp_path: pathlib.Path) -> None:
+    if not _NREL5MW_LAND_DAT.is_file():
+        pytest.skip("bundled reference deck not present")
+    with pytest.raises(ValueError, match="n_steps"):
+        run_campbell(
+            _NREL5MW_LAND_DAT,
+            max_rpm=6.0, n_steps=1, out_path=tmp_path / "c.png",
+        )
+
+
+def test_campbell_rejects_malformed_orders(tmp_path: pathlib.Path) -> None:
+    if not _NREL5MW_LAND_DAT.is_file():
+        pytest.skip("bundled reference deck not present")
+    with pytest.raises(ValueError, match="orders"):
+        run_campbell(
+            _NREL5MW_LAND_DAT,
+            max_rpm=6.0, orders="1,xx,3", out_path=tmp_path / "c.png",
+        )
+
+
+def test_campbell_raises_on_missing_file(tmp_path: pathlib.Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        run_campbell(
+            tmp_path / "missing.dat", max_rpm=6.0,
+            out_path=tmp_path / "c.png",
+        )
+
+
+# ---------------------------------------------------------------------------
+# run_windio + discover_windio_inputs
+# ---------------------------------------------------------------------------
+
+_BARE_TOWER_YAML = """\
+name: minimal
+components:
+  tower:
+    outer_shape_bem:
+      reference_axis:
+        z: {grid: [0.0, 1.0], values: [0.0, 50.0]}
+      outer_diameter:
+        grid: [0.0, 1.0]
+        values: [5.0, 3.0]
+    internal_structure_2d_fem:
+      layers:
+        - name: steel
+          material: steel
+          thickness:
+            grid: [0.0, 1.0]
+            values: [0.05, 0.03]
+materials:
+  - name: steel
+    E: 2.1e11
+    rho: 7850
+    nu: 0.3
+"""
+
+
+def test_discover_windio_bare_yaml_yields_no_decks(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A bare yaml outside any RWT layout returns an empty discovery
+    (the labelled screening-preview path)."""
+    pytest.importorskip("yaml")
+    yp = tmp_path / "tower.yaml"
+    yp.write_text(_BARE_TOWER_YAML, encoding="utf-8")
+    disc = discover_windio_inputs(yp)
+    assert isinstance(disc, WindioDiscovery)
+    assert disc.yaml == yp
+    assert disc.hydrodyn is None
+    assert disc.moordyn is None
+    assert disc.elastodyn is None
+
+
+def test_discover_windio_scopes_to_turbine_root(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A yaml inside an ``RWT-like`` tree with an ``OpenFAST/`` sibling
+    picks the main ElastoDyn deck under that root; the aux ``_tower``
+    file is excluded."""
+    pytest.importorskip("yaml")
+    rwt = tmp_path / "MY-RWT"
+    (rwt / "yaml").mkdir(parents=True)
+    (rwt / "OpenFAST").mkdir()
+    yp = rwt / "yaml" / "turb.yaml"
+    yp.write_text(_BARE_TOWER_YAML, encoding="utf-8")
+    (rwt / "OpenFAST" / "turb_ElastoDyn.dat").write_text("x", "utf-8")
+    (rwt / "OpenFAST" / "turb_ElastoDyn_tower.dat").write_text("x", "utf-8")
+    disc = discover_windio_inputs(yp)
+    assert disc.elastodyn is not None
+    assert disc.elastodyn.name == "turb_ElastoDyn.dat"
+
+
+def test_discover_windio_raises_on_missing_path(
+    tmp_path: pathlib.Path,
+) -> None:
+    with pytest.raises(FileNotFoundError):
+        discover_windio_inputs(tmp_path / "does_not_exist.yaml")
+
+
+def test_windio_workflow_fixed_tower(tmp_path: pathlib.Path) -> None:
+    """``run_windio`` on a bare tower yaml writes a Markdown report and
+    returns a populated typed result with ``is_floating=False``."""
+    pytest.importorskip("yaml")
+    yp = tmp_path / "tower.yaml"
+    yp.write_text(_BARE_TOWER_YAML, encoding="utf-8")
+    out = tmp_path / "report.md"
+    res = run_windio(yp, out_path=out, n_modes=6)
+    assert isinstance(res, WindioResult)
+    assert res.exit_code == 0
+    assert res.yaml == yp
+    assert res.is_floating is False
+    assert res.report_path == out.resolve()
+    assert out.is_file() and out.stat().st_size > 0
+    assert res.modal is not None
+    assert res.discovery is not None and res.discovery.elastodyn is None
+
+
+def test_windio_workflow_raises_on_missing_input(
+    tmp_path: pathlib.Path,
+) -> None:
+    with pytest.raises(FileNotFoundError):
+        run_windio(tmp_path / "does_not_exist.yaml", out_path=tmp_path / "r.md")

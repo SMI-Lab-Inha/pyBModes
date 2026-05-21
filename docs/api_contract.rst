@@ -215,9 +215,20 @@ scripts run the same flows the CLI uses without going through
   :class:`pybmodes.workflows.BatchResult` — walk a directory of
   ElastoDyn decks, validate + optionally patch each, write a
   summary CSV plus per-deck validation reports.
+- :func:`pybmodes.workflows.run_campbell` /
+  :class:`pybmodes.workflows.CampbellWorkflowResult` — rotor-speed
+  sweep + Campbell-diagram PNG + per-mode-tracked CSV.
+- :func:`pybmodes.workflows.run_windio` /
+  :class:`pybmodes.workflows.WindioResult` — one-click WindIO
+  ontology entry point: discovers the ontology + companion
+  OpenFAST decks scoped to the turbine root
+  (:func:`pybmodes.workflows.discover_windio_inputs` returning a
+  :class:`pybmodes.workflows.WindioDiscovery`), solves blade +
+  tower (or coupled floating tower + platform), optionally runs a
+  Campbell sweep, and writes a bundled report.
 
-Campbell / windio workflows land in the follow-up PR (Phase 2 PR
-B3).
+With this PR the full :command:`pybmodes` CLI surface is library-
+callable; :mod:`pybmodes.cli` is purely ``argparse + delegation``.
 
 Mooring + hydro
 ^^^^^^^^^^^^^^^

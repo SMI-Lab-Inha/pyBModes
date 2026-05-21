@@ -207,6 +207,14 @@ directly without :mod:`subprocess`.
    :members:
    :show-inheritance:
 
+.. automodule:: pybmodes.workflows.campbell
+   :members:
+   :show-inheritance:
+
+.. automodule:: pybmodes.workflows.windio
+   :members:
+   :show-inheritance:
+
 CLI
 ---
 
