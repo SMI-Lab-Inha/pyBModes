@@ -79,7 +79,7 @@ DOFs, no offsets, no inertial-vs-structural twist split. pyBmodes
 exact transformation.
 
 Re-running the validator on the upstream NREL 5MW land-based deck
-(`docs/OpenFAST_files/r-test/.../5MW_Land_DLL_WTurb`) with the
+(`external/OpenFAST_files/r-test/.../5MW_Land_DLL_WTurb`) with the
 compatibility flag on vs off:
 
 | Block      | file_RMS (compat off)\* | file_RMS (compat on) | ratio (compat off) | ratio (compat on) |
@@ -606,7 +606,7 @@ and gates pyBmodes against the analytical reference at ≤ 0.1 % across
 the Ω ∈ [0, 12] rad/s sweep.
 
 Reference: BModes (v1.03.01) executed locally on the two example decks
-shipped at ``docs/BModes/docs/examples/``. Outputs:
+shipped at ``external/BModes/docs/examples/``. Outputs:
 
 - ``CS_Monopile.out`` — 1.03.01 run, 20-mode dump
 - ``OC3Hywind.out``  — 1.03.01 run, 20-mode dump
@@ -614,7 +614,7 @@ shipped at ``docs/BModes/docs/examples/``. Outputs:
 Both reference cases are validated by [`tests/test_certtest.py`](../tests/test_certtest.py):
 ``test_certtest_cs_monopile`` and ``test_certtest_oc3hywind``.
 
-Decks under test (both shipped at `docs/BModes/docs/examples/`):
+Decks under test (both shipped at `external/BModes/docs/examples/`):
 
 - `CS_Monopile.bmi` — *NREL 5MW Reference Turbine* (Jonkman et al. 2009) on the *OC3 Monopile* configuration (Jonkman & Musial 2010), with mooring stiffness representing soil-foundation reactions at the seabed.
 - `OC3Hywind.bmi` — *NREL 5MW* on the *OC3 Hywind* floating-spar platform (Jonkman 2010), with hydrodynamic added-mass + hydrostatic-restoring + mooring 6×6 matrices.

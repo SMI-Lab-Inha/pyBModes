@@ -24,7 +24,7 @@ import numpy as np
 import pytest
 
 _DOCS = (pathlib.Path(__file__).resolve().parents[1]
-         / "docs" / "OpenFAST_files")
+         / "external" / "OpenFAST_files")
 _IEA15_FLOAT_Y = (_DOCS / "IEA-15-240-RWT/WT_Ontology/"
                   "IEA-15-240-RWT_VolturnUS-S.yaml")
 _IEA15_HD = (_DOCS / "IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-UMaineSemi/"
@@ -888,7 +888,7 @@ def test_from_windio_floating_injected_platform_support(tmp_path) -> None:
 
 
 def test_injected_platform_tower_length_is_draft_invariant(tmp_path) -> None:
-    """Codex-review P1 regression (shipped in v1.4.2, fixed 1.4.3):
+    """Static-review P1 regression (shipped in v1.4.2, fixed 1.4.3):
     the FEM beam length is ``radius + draft - hub_rad``
     (``make_params``), so the injected branch must pass ``radius =
     flexible_length - draft`` for it to cancel to ``flexible_length``.

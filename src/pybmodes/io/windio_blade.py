@@ -1,3 +1,18 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Read a WindIO ontology ``.yaml`` blade and reduce it to the FEM
 section-property table (issue #35).
 
@@ -119,7 +134,7 @@ _TWIST_RADIAN_CEILING = 2.0
 
 def _twist_to_degrees(twist_raw: np.ndarray) -> np.ndarray:
     """Return blade twist in **degrees**, auto-detecting the source
-    unit (issue #47 follow-up — Frazer & Nash static review).
+    unit (issue #47 follow-up — static review).
 
     ``np.degrees`` was previously applied unconditionally, which is
     correct for radian-convention windIO files (IEA-3.4) but turned a
@@ -146,7 +161,7 @@ def _read_blade_elastic(
       be parsed (schema drift / malformed data). The caller must not
       silently degrade to the approximate PreComp path on this case
       (it would hide a typo behind a plausible but lower-fidelity
-      result, issue #47 follow-up — Frazer & Nash static review): in
+      result, issue #47 follow-up — static review): in
       ``elastic="auto"`` it warns, in ``"file"`` it raises.
 
     ``holders`` are the candidate dicts the block may live under —
@@ -165,8 +180,8 @@ def _read_blade_elastic(
       flatten of the symmetric 6×6.
 
     The 6×6 is **decoupled** to pyBmodes' Euler–Bernoulli beam at the
-    elastic / shear centres and principal elastic axes (issue #50 —
-    Kieran Mercer, Frazer & Nash): the raw reference-axis diagonal
+    elastic / shear centres and principal elastic axes (issue #50):
+    the raw reference-axis diagonal
     ``K44``/``K55`` is *not* ``EI_flap``/``EI_edge`` for an offset /
     pre-twisted blade — see :mod:`pybmodes.io._precomp.decouple`. Both
     dialects carry the full 6×6 (modern ``stiffness_matrix`` ships the
@@ -187,7 +202,7 @@ def _read_blade_elastic(
         path uses — **not** magnitude-sorted. A schema-labelled
         ``i_flap > i_edge`` (or ``i_cp = 0``, already diagonal) is
         therefore preserved, never silently swapped (issue #50
-        follow-up — Frazer & Nash static review)."""
+        follow-up — static review)."""
         la, lb, _ang, V = _principal_2x2(np.array([[a, c], [c, b]]))
         return _assign_flap_edge(la, lb, V)
 
@@ -387,8 +402,8 @@ def read_windio_blade(
     def _blended(s: float) -> Profile:
         # A single-airfoil blade (constant profile) is a valid input
         # shape; without this guard ``len(af_grid) - 2 = -1`` makes
-        # ``np.clip`` and the ``j + 1`` index misbehave (Frazer & Nash
-        # static review). Reuse the one profile everywhere.
+        # ``np.clip`` and the ``j + 1`` index misbehave (static
+        # review). Reuse the one profile everywhere.
         if len(af_grid) < 2:
             only = af_labels[0]
             return cache.setdefault(only, _profile(only))
@@ -450,7 +465,7 @@ def windio_blade_section_props(
     / malformed), ``"auto"`` does not silently fall back to the
     lower-fidelity PreComp result — it emits a ``UserWarning`` naming
     the parse problem before reducing the layup, and ``"file"``
-    raises (issue #47 follow-up — Frazer & Nash static review).
+    raises (issue #47 follow-up — static review).
     """
     if elastic not in ("auto", "precomp", "file"):
         raise ValueError(

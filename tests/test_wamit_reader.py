@@ -3,7 +3,7 @@
 Verifies that :class:`WamitReader` and :class:`HydroDynReader` extract the
 right dimensional values from the IEA-15-240-RWT-UMaineSemi WAMIT output
 files shipped with the upstream IEA-15-240-RWT repo (gitignored under
-``docs/OpenFAST_files/``). Skips at module level when those files aren't
+``external/OpenFAST_files/``). Skips at module level when those files aren't
 present on the local machine.
 
 Numeric expectations are derived from a manual WAMIT v7 redimensionalisation
@@ -33,7 +33,7 @@ pytestmark = pytest.mark.integration
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 DECK_DIR = (
-    REPO_ROOT / "docs" / "OpenFAST_files" / "IEA-15-240-RWT" / "OpenFAST"
+    REPO_ROOT / "external" / "OpenFAST_files" / "IEA-15-240-RWT" / "OpenFAST"
     / "IEA-15-240-RWT-UMaineSemi"
 )
 HD_PATH = DECK_DIR / "IEA-15-240-RWT-UMaineSemi_HydroDyn.dat"
@@ -44,7 +44,7 @@ if not (HD_PATH.is_file() and DOT1.is_file() and HST.is_file()):
     pytest.skip(
         "IEA-15-240-RWT-UMaineSemi WAMIT data not present under "
         f"{DECK_DIR}; clone the upstream IEA-15-240-RWT repo into "
-        "docs/OpenFAST_files/ to run these tests.",
+        "external/OpenFAST_files/ to run these tests.",
         allow_module_level=True,
     )
 

@@ -1,0 +1,39 @@
+# MANIFEST.in — controls what goes into the source distribution
+# (``python -m build --sdist``). The wheel build is driven by
+# pyproject.toml's [tool.setuptools.package-data]; this file ensures
+# the sdist also ships the project-root metadata and the bundled
+# example library.
+
+include LICENSE
+include README.md
+include CHANGELOG.md
+include CITATION.cff
+include CONTRIBUTING.md
+include CODE_OF_CONDUCT.md
+include SECURITY.md
+include VALIDATION.md
+include pyproject.toml
+include .readthedocs.yaml
+
+# Bundled examples + reference decks. The ``_examples/**/*`` glob in
+# pyproject.toml's package-data already covers these for the wheel,
+# but ``recursive-include`` is needed to put them in the sdist too.
+recursive-include src/pybmodes/_examples *
+
+# Sphinx documentation source. Tests don't depend on it; users who
+# rebuild docs from sdist need it. Notebooks and ``external/`` are
+# intentionally excluded.
+recursive-include docs *.md *.rst *.py
+recursive-include docs/_static *
+
+# Exclude things that should never reach the sdist.
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store
+global-exclude Thumbs.db
+prune external
+prune docs/_build
+prune .pytest_cache
+prune .mypy_cache
+prune htmlcov
+prune .pytest-tmp

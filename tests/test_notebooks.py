@@ -48,7 +48,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 WALKTHROUGH = REPO_ROOT / "notebooks" / "walkthrough.ipynb"
 IEA15_WALKTHROUGH = REPO_ROOT / "cases" / "iea15_umainesemi_walkthrough.ipynb"
 IEA15_DECK_DIR = (
-    REPO_ROOT / "docs" / "OpenFAST_files" / "IEA-15-240-RWT" / "OpenFAST"
+    REPO_ROOT / "external" / "OpenFAST_files" / "IEA-15-240-RWT" / "OpenFAST"
     / "IEA-15-240-RWT-UMaineSemi"
 )
 
@@ -110,7 +110,7 @@ if not IEA15_WALKTHROUGH.is_file():
 
 def test_iea15_walkthrough_friendly_error_when_data_absent() -> None:
     """When the upstream OpenFAST decks are NOT present under
-    ``docs/OpenFAST_files/IEA-15-240-RWT/...``, the notebook's first
+    ``external/OpenFAST_files/IEA-15-240-RWT/...``, the notebook's first
     code cell must raise a ``FileNotFoundError`` whose message names
     the upstream IEA-15-240-RWT repository. This is the documented
     contract that lets the notebook ship under ``cases/`` (which is

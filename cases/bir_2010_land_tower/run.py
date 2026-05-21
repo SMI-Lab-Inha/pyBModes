@@ -1,3 +1,18 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Reproduce Bir 2010 Figures 4, 5a, 5b in the same plot convention.
 
 Bir, G. S. (2010), NREL/CP-500-47953, "Verification of BModes: Rotary
@@ -23,7 +38,7 @@ This script generates three PNGs:
 
 For Figure 4 we synthesise a uniform-cantilever tower in a temp
 directory (no third-party data). For Figures 5a / 5b we use the
-``Test03_tower`` deck from ``docs/BModes/CertTest/`` — pyBmodes already
+``Test03_tower`` deck from ``external/BModes/CertTest/`` — pyBmodes already
 matches this BModes reference at six-digit precision (``test_certtest_03``
 in the validation suite).
 
@@ -55,7 +70,7 @@ apply_style()
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-CERT_DIR = REPO_ROOT / "docs" / "BModes" / "CertTest"
+CERT_DIR = REPO_ROOT / "external" / "BModes" / "CertTest"
 TEST03_BMI = CERT_DIR / "Test03_tower.bmi"
 
 OUTPUT_DIR = pathlib.Path(__file__).resolve().parent / "outputs"

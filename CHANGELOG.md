@@ -8,14 +8,109 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+Project-infrastructure round. No public-API change; no numerical
+change. Re-license + docs site + governance scaffolding + CI hardening.
+
+### Changed
+
+- **Re-licensed MIT → Apache 2.0.** ``LICENSE`` is the Apache 2.0
+  text with copyright ``2024-2026 Jae Hoon Seo, Marine Structural
+  Mechanics and Integrity Lab (SMI Lab), Inha University``;
+  ``pyproject.toml`` classifier and README badge updated; the
+  bundled ``_examples/`` and ``reference_decks/`` README provenance
+  notes re-state the new licence. The book-citation reference to
+  "MIT Press" in ``mooring.py`` is unrelated to project licensing
+  and is preserved.
+- **Upstream-data directories relocated to ``external/``** (issue
+  raised in static review). ``docs/{BModes, OpenFAST_files, MoorPy,
+  RAFT, references}`` → ``external/{...}``; the ``docs/`` tree is
+  now reserved for the Sphinx documentation site. ``.gitignore``,
+  local development notes, README, RELEASE_CHECKLIST,
+  every case-study ``run.py``, every visualisation script, the
+  reference-turbine ``build.py``, and 30 tracked files in total
+  point at ``external/`` after the rewrite. Integration tests
+  unchanged behaviourally; they skip when the data is absent.
+- **``docs/RELEASE_CHECKLIST.md`` moved to
+  ``docs/release_checklist.rst``** to slot into the new Sphinx
+  developer-guide toctree.
+
+### Added
+
+- **Sphinx documentation site** (``docs/``) hosted on Read the Docs
+  (``.readthedocs.yaml``). Flat reStructuredText tree — 13 pages:
+  ``index``, ``installation``, ``quickstart``, ``theory``,
+  ``data_sources``, ``units``, ``limitations``, ``validation``,
+  ``api``, ``api_contract``, ``changelog``, ``contributing``,
+  ``release_checklist``. ``CHANGELOG.md`` / ``VALIDATION.md`` /
+  ``CONTRIBUTING.md`` are pulled in via ``.. include::`` so the site
+  never drifts from the source. Furo theme, autodoc with numpy-style
+  napoleon, intersphinx into numpy / scipy / matplotlib, copy-button.
+  MyST-parser is registered only to back the ``.. include::`` of the
+  root-level Markdown files; new docs/ pages should be ``.rst``.
+  ``docs/Makefile`` + ``docs/make.bat`` for local builds. New
+  ``[docs]`` extra in ``pyproject.toml`` pinned to the Sphinx 8.x
+  line until the ``sphinx-autodoc-typehints`` 3.x deprecation
+  backlog clears.
+- **README.md condensed to ~ 100 lines** (down from ~ 890). The
+  detailed feature tour, code examples, case-study tables, public-API
+  enumeration, development workflow, and compatibility policy now
+  live in the corresponding ``docs/*.rst`` pages; the README's job
+  is to point users at the right doc page in five seconds.
+- **Governance files** (industry-standard set):
+  ``CONTRIBUTING.md`` (explicit-path-staging rule, pre-commit, nox
+  sessions, PR checklist), ``SECURITY.md`` (vulnerability scope +
+  private reporting channel), ``CODE_OF_CONDUCT.md`` (Contributor
+  Covenant v2.1, maintainer as enforcement contact),
+  ``CITATION.cff`` (Zenodo / "Cite this repository" widget,
+  authored under SMI Lab, Inha University).
+- **Pre-commit hooks** (``.pre-commit-config.yaml``): ruff fix,
+  trailing-whitespace, end-of-file-fixer, check-yaml, check-toml,
+  check-merge-conflict, check-added-large-files, mixed-line-ending,
+  and codespell. Same ruff scope as CI (``src tests scripts``).
+- **``MANIFEST.in``** so the sdist includes ``LICENSE``, ``README``,
+  ``CHANGELOG``, ``VALIDATION``, ``CITATION``, ``CONTRIBUTING``,
+  ``CODE_OF_CONDUCT``, ``SECURITY``, the docs source, and the
+  bundled examples — with ``external/`` and ``docs/_build/``
+  excluded.
+- **``noxfile.py``** with seven sessions: ``lint`` / ``type`` /
+  ``tests`` / ``integration`` / ``docs`` / ``build`` /
+  ``audit_validation``. Default session set is ``lint + type +
+  tests + docs``.
+- **New CI jobs in ``.github/workflows/ci.yml``**: a ``docs`` job
+  that builds the Sphinx site and uploads it as a workflow
+  artifact, and a ``sdist`` job that builds the source
+  distribution and verifies it installs from source on a clean
+  Python (complements the existing ``wheel-smoke`` job).
+- **Release-readiness workflow**
+  (``.github/workflows/release.yml``, manually triggered via
+  ``workflow_dispatch``). Runs lint, type-check, default pytest,
+  validation-matrix audit, sample verifier, Sphinx docs build,
+  sdist, wheel, and cross-install version sanity; uploads the
+  dist and docs as artifacts. Pre-tag gate that goes beyond the
+  per-PR CI.
+
+### Fixed
+
+- **Blade Campbell labels for operating-only sweeps.** In
+  ``plot_campbell`` (issue #54 static-review follow-up), blade-mode
+  labels were positioned using a comb scaled to ``xmax = rpm.max()``,
+  which parked early-comb positions left of the blade curve for any
+  sweep whose ``omega_rpm`` doesn't start at 0 (e.g.
+  ``[6.9, 12.1]``). ``np.interp`` then silently clamped to
+  ``curve[0]``, so the bracketed Hz was misleading too. The comb
+  fraction is now scaled to the *curve domain*
+  (``rpm.min() + frac × (rpm.max() - rpm.min())``) for blade
+  labels; tower / platform labels (which sit on full-axis
+  ``axhline``s) keep the original full-axis comb. Backward-compatible
+  on ``rpm.min() == 0``. Regression test ``test_plot_campbell_blade_
+  label_anchored_on_curve_for_positive_rpm`` pins the new behaviour.
 
 ## [1.7.0] — 2026-05-18
 
 ### Added
 
-- **``plot_campbell`` ``operating_rpm`` and ``freq_max`` (issue #54,
-  Kieran Mercer, Frazer & Nash).** ``operating_rpm=(lo, hi)`` shades
+- **``plot_campbell`` ``operating_rpm`` and ``freq_max`` (issue #54).**
+  ``operating_rpm=(lo, hi)`` shades
   the operating rotor-speed window grey (outside stays white) and
   draws a ``↔ Operating Speed Range`` marker. ``freq_max`` sets the
   frequency-axis top; ``None`` (default) auto-caps just above the
@@ -59,7 +154,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **``Tower.from_windio`` / ``Tower.from_geometry`` gain ``n_nodes``
-  and ``tip_mass`` (issue #35, Kieran Mercer, Frazer & Nash).**
+  and ``tip_mass`` (issue #35).**
 
   - ``n_nodes`` — request an FE mesh of *N* evenly-spaced stations:
     the tower geometry (outer diameter / wall thickness) is linearly
@@ -89,8 +184,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **``campbell_sweep`` accepts already-loaded models (issue #51,
-  Kieran Mercer, Frazer & Nash).** ``input_path`` (and
+- **``campbell_sweep`` accepts already-loaded models (issue #51).**
+  ``input_path`` (and
   ``tower_input``) now take a path **or** a constructed
   :class:`~pybmodes.models.RotatingBlade` /
   :class:`~pybmodes.models.Tower` from *any* constructor —
@@ -109,8 +204,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **Modern ``elastic_properties`` named flap/edge inertia is no
-  longer silently swapped (issue #50 follow-up — Frazer & Nash
-  static review).** The parametrised ``inertia_matrix`` principal
+  longer silently swapped (issue #50 follow-up — static
+  review).** The parametrised ``inertia_matrix`` principal
   moments were taken as the closed-form ``½(i_f+i_e) ∓ rad``
   eigenvalues, which for ``i_cp`` absent / zero reduces to
   ``min``/``max`` — so a schema-labelled blade with ``i_flap >
@@ -127,8 +222,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **WindIO published blade stiffness is now decoupled at the elastic
-  / shear centre and principal elastic axes (issue #50, reported by
-  Kieran Mercer, Frazer & Nash).** The 1.5.0 published-properties
+  / shear centre and principal elastic axes (issue #50).** The 1.5.0 published-properties
   path read the raw reference-axis 6×6 *diagonal*
   (``K44→EI_flap``, ``K55→EI_edge``, ``K66→GJ``). A WindIO /
   BeamDyn sectional 6×6 is expressed about the blade reference axis,
@@ -168,8 +262,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **WindIO blades now prefer the file's *published* distributed beam
-  properties over the PreComp reduction (issue #48, requested by
-  Kieran Mercer, Frazer & Nash).** When a WindIO blade carries an
+  properties over the PreComp reduction (issue #48).** When a WindIO blade carries an
   ``elastic_properties`` block (modern, named ``K11``..``K66`` /
   ``mass`` / ``i_flap`` / ``i_edge`` — e.g. IEA-15) **or** an
   ``elastic_properties_mb.six_x_six`` block (the 21-element
@@ -187,8 +280,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   diagonal-beam limitation; the point is to reproduce the *reference
   diagonal* exactly, not re-derive it).
 
-- **Campbell / mode-shape plotting fixes (issue #47, reported by
-  Kieran Mercer, Frazer & Nash).** Three defects in the floating-case
+- **Campbell / mode-shape plotting fixes (issue #47).** Three defects in the floating-case
   plots are fixed and two new opt-in knobs added:
 
   - ``plot_campbell(..., log_freq=True)`` no longer drops the per-rev
@@ -237,7 +329,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **WindIO blade static-review hardening (Frazer & Nash).**
+- **WindIO blade static-review hardening.**
 
   - **Blade twist units are now auto-detected.** ``np.degrees`` was
     applied to ``outer_shape*.twist`` unconditionally. That is correct
@@ -330,8 +422,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **`CampbellResult` empty-sweep exemption now compares expected
-  empty *shapes*, not just `.size`** (Codex PR follow-up — a real
-  refinement of the 1.4.6 fix). A zero-*size* but wrong-*shape*
+  empty *shapes*, not just `.size`** (static-review follow-up — a
+  real refinement of the 1.4.6 fix). A zero-*size* but wrong-*shape*
   array (`omega_rpm=(0,2)`, `mac_to_previous=(2,0)`,
   `participation=(2,0,3)`) is `.size == 0` yet implies steps/modes;
   the exemption now requires the canonical empty shapes exactly —
@@ -344,19 +436,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **`CampbellResult` empty-sweep exemption now also requires empty
-  `omega_rpm` and `mac_to_previous`** (Codex PR follow-up — a genuine
-  gap in the 1.4.5 tightening, not stale). A `(0, 0)` frequencies
+  `omega_rpm` and `mac_to_previous`** (static-review follow-up — a
+  genuine gap in the 1.4.5 tightening, not stale). A `(0, 0)` frequencies
   array with stray rotor-speed or MAC rows but no frequency rows
   previously passed validation and could be saved/loaded as an
   inconsistent archive; it is now rejected. Regression-tested.
 
 ## [1.4.5] — 2026-05-17
 
-Third hardening round (Frazer & Nash follow-up): six edge-case
+Third hardening round (static-review follow-up): six edge-case
 invariant-tightening fixes. All fail-loud; no public name removed;
 every fix has a regression test.
 
-The two Codex PR comments in this round were **stale** — they
+The two static-review comments in this round were **stale** — they
 reviewed superseded commit diffs. Both were already fixed in the
 released code: the injected-platform `radius + draft` length bug
 (fixed 1.4.3 → released 1.4.4) and the shared-span check (already a
@@ -391,8 +483,8 @@ round-trips per-mode span grids). No code change for those.
 
 ## [1.4.4] — 2026-05-17
 
-Second hardening round from a follow-up static-review pass (Frazer &
-Nash Consultancy), which confirmed the 1.4.3 fixes landed. All
+Second hardening round from a follow-up static-review pass, which
+confirmed the 1.4.3 fixes landed. All
 additive / fail-loud; no public name removed; every fix has a
 regression test. (1.4.3 was a merged intermediate tag; its content
 is included here — 1.4.4 is the published release.)
@@ -433,9 +525,8 @@ is included here — 1.4.4 is the published release.)
 
 ## [1.4.3] — 2026-05-17
 
-Hardening release from two independent static-review passes (Frazer &
-Nash Consultancy + the Codex PR reviewer). All additive / fail-loud;
-no public name removed.
+Hardening release from two independent static-review passes. All
+additive / fail-loud; no public name removed.
 
 ### Fixed
 
@@ -497,8 +588,8 @@ plot inputs, draft-invariant beam length). Gates: ruff + mypy
 ### Added
 
 - **Separately-designed floater input
-  (`Tower.from_windio_floating(..., platform_support=...)`, issue #35,
-  asked by Kieran Mercer, Frazer & Nash Consultancy).** The tower
+  (`Tower.from_windio_floating(..., platform_support=...)`, issue #35).**
+  The tower
   geometry comes from the WindIO ontology while the floating platform
   is supplied *verbatim* as a `PlatformSupport` (its own `A_inf` /
   `C_hst` / `mooring_K` / 6×6 inertia / `draft` / `ref_msl`) — the
@@ -515,7 +606,7 @@ plot inputs, draft-invariant beam length). Gates: ruff + mypy
   caller owns the platform fidelity). `PlatformSupport` and
   `TipMassProps` are now exported from `pybmodes.io`.
 - **6-DOF floating-platform rigid-body modes on the Campbell diagram**
-  (issue #39, requested by Kieran Mercer, Frazer & Nash Consultancy).
+  (issue #39).
   `pybmodes.campbell.plot_campbell` gains `platform_modes=[(dof, f),
   …]` and `log_freq=` (both default-off — the diagram is byte-
   identical without them). The six platform rigid-body modes
@@ -755,7 +846,7 @@ preserving for well-formed input; no public name change):
     from their OpenFAST files (`from_elastodyn_with_mooring`) —
     IEA-15 UMaineSemi, IEA-22 Semi, NREL-5MW OC4 DeepCwind — and
     `tests/test_asymmetric_platform.py` covers the hand-authored
-    `.bmi` route (symmetric and asymmetric — TheMercer's workflow).
+    `.bmi` route (symmetric and asymmetric — the hand-authored .bmi workflow).
 
 ### Fixed
 
@@ -1169,8 +1260,8 @@ preserving for well-formed input; no public name change):
   ansatz can represent) — the footnote now spells out *why* rather
   than implying the path doesn't exist. Pass-2 static review.
 - **`src/pybmodes/_examples/sample_inputs/README.md` — broken
-  `../../docs/BModes` link.** The relative link to
-  `../../docs/BModes/docs/examples/` didn't resolve from the
+  `../../external/BModes` link.** The relative link to
+  `../../external/BModes/docs/examples/` didn't resolve from the
   packaged-wheel location, and the target is gitignored under the
   Independence stance anyway. Replaced with plain text that names
   the path and explains the local-only / upstream-clone story
@@ -1246,7 +1337,7 @@ preserving for well-formed input; no public name change):
 
 - **IEA-15 UMaineSemi walkthrough relocated `notebooks/ → cases/`.** The
   walkthrough at `notebooks/iea15_umainesemi_walkthrough.ipynb` depends
-  on upstream OpenFAST decks under `docs/OpenFAST_files/` (gitignored
+  on upstream OpenFAST decks under `external/OpenFAST_files/` (gitignored
   per the Independence stance), so a fresh clone got a notebook that
   errored on the first cell. The `notebooks/` directory is contractually
   self-contained (`notebooks/walkthrough.ipynb` runs entirely on
@@ -1351,8 +1442,8 @@ including the floating-platform additions originally documented as
 - **Hungarian MAC tracking on the Campbell sweep.** The greedy `argmax(mac)` mode-pairing inside `_solve_blade_sweep` is replaced with a global Hungarian assignment via `scipy.optimize.linear_sum_assignment(maximize=True)`. The old `_greedy_assignment` symbol is kept as a deprecated alias. `CampbellResult.mac_to_previous` (new field, `(N, n_total_modes)`) exposes per-step tracking confidence — NaN on row 0 (no previous step) and on tower columns (tower modes don't change with rotor speed). `_solve_blade_sweep` now restores `bbmi.rot_rpm` via `try`/`finally` so the caller's BMI is unmutated by the sweep.
 - **Campbell input-validation hardening.** `campbell_sweep` rejects NaN, inf, negative, and unsorted `omega_rpm` arrays with explicit `ValueError`s naming the offending element.
 - **`pybmodes.io._elastodyn` sub-package.** The 1315-line `elastodyn_reader.py` is split into `types.py` (dataclasses), `lex.py` (line + token scanning helpers), `parser.py` (line-driven flavour parsers), `writer.py` (canonical re-emitters), and `adapter.py` (`to_pybmodes_tower` / `to_pybmodes_blade` plus the `_stack_*` / `_rotary_inertia_floor` / `_build_bmi_skeleton` / `_tower_top_assembly_mass` helpers). `pybmodes.io.elastodyn_reader` becomes a re-export shim — every public name plus the private helpers `pybmodes.io.subdyn_reader` depends on (`_rotary_inertia_floor`, `_stack_*_section_props`, `_tower_top_assembly_mass`, `_build_bmi_skeleton`, `_resolve_relative`) stay importable from the historical dotted path.
-- **`scripts/audit_validation_claims.py`.** Parses every `tests/...` link in `VALIDATION.md`, asserts each path exists and contains at least one `def test_…` method. Runs as a required CI step alongside ruff and mypy, plus step 4.5 of `docs/RELEASE_CHECKLIST.md`. Gates "claim ahead of test" drift mechanically.
-- **`docs/RELEASE_CHECKLIST.md`** — 11-step pre-tag verification sequence (default + integration pytest, ruff + mypy, sample-input verifier, validation-matrix audit, reference-deck regeneration, notebook smoke, case-script regen, version + CHANGELOG promotion, tag + push, GitHub Release, post-release sanity).
+- **`scripts/audit_validation_claims.py`.** Parses every `tests/...` link in `VALIDATION.md`, asserts each path exists and contains at least one `def test_…` method. Runs as a required CI step alongside ruff and mypy, plus step 4.5 of `docs/release_checklist.rst`. Gates "claim ahead of test" drift mechanically.
+- **`docs/release_checklist.rst`** — 11-step pre-tag verification sequence (default + integration pytest, ruff + mypy, sample-input verifier, validation-matrix audit, reference-deck regeneration, notebook smoke, case-script regen, version + CHANGELOG promotion, tag + push, GitHub Release, post-release sanity).
 - **Three floating reference decks** under `reference_decks/`: `nrel5mw_oc3spar/` (NREL 5MW on the OC3 Hywind spar), `nrel5mw_oc4semi/` (NREL 5MW on the OC4 DeepCwind semi), `iea15mw_umainesemi/` (IEA-15-240-RWT on the UMaine VolturnUS-S semi). All generated via the existing `Tower.from_elastodyn(...)` cantilever path with no platform / hydro / mooring matrices in the modal eigenproblem — matching what ElastoDyn assumes at runtime. The IEA-15 UMaine case ends at `Overall: WARN` on `TwSSM2Sh` (1.6 % RMS, ratio 1.00) — an unavoidable representation limit of the constrained 6th-order polynomial form for that tower's section-property gradient, documented inline in the deck's `validation_report.txt`.
 - **`pybmodes.io._elastodyn` cantilever path used for floating polynomial generation.** OpenFAST ElastoDyn source-code audit (May 2026) established that the polynomial ansatz `SHP = Σ c_i · (h/H)^(i+1)` algebraically forces `SHP(0) = SHP'(0) = 0` and the modal eigenproblem in `Coeff` (lines 5141-5267) integrates only the tower beam plus `TwrTpMass` — no platform / hydro / mooring matrices. Platform 6-DOF motion is added at runtime via the rigid-body sum (lines 7485-7540). The correct polynomial basis for every ElastoDyn configuration (land, monopile, floating) is therefore the clamped-base cantilever. Findings published in `reference_decks/FLOATING_CASES.md` (rewritten) and `cases/ECOSYSTEM_FINDING.md` (new "Floating-deck polynomials" section).
 
@@ -1376,7 +1467,7 @@ including the floating-platform additions originally documented as
 
 ### Added
 
-- **Sample-input library** (`cases/sample_inputs/`) — pyBmodes-authored, MIT-licensed `.bmi` and section-property `.dat` files committed to the repo. Four analytical-reference cases at the top level (uniform isotropic cantilever blade, uniform tower with concentrated top mass, rotating uniform blade per Wright 1982 / Bir 2009 Table 3a, rotating pinned-free cable per Bir 2009 Eq. 8) exercising all four `hub_conn` BCs plus tower / blade and rotating / non-rotating splits. `cases/sample_inputs/verify.py` runs all four against closed-form references at < 1 % RMS. Plus `reference_turbines/` sub-directory with seven RWT samples (NREL 5MW land + OC3 monopile + OC3 Hywind, IEA-3.4-130-RWT land, IEA-10-198-RWT / IEA-15-240-RWT / IEA-22-280-RWT monopile), each shipping tower BMI + blade BMI + per-side section-properties + per-turbine README; regenerable from upstream ElastoDyn decks via `reference_turbines/build.py`.
+- **Sample-input library** (`cases/sample_inputs/`) — pyBmodes-authored, Apache 2.0-licensed `.bmi` and section-property `.dat` files committed to the repo. Four analytical-reference cases at the top level (uniform isotropic cantilever blade, uniform tower with concentrated top mass, rotating uniform blade per Wright 1982 / Bir 2009 Table 3a, rotating pinned-free cable per Bir 2009 Eq. 8) exercising all four `hub_conn` BCs plus tower / blade and rotating / non-rotating splits. `cases/sample_inputs/verify.py` runs all four against closed-form references at < 1 % RMS. Plus `reference_turbines/` sub-directory with seven RWT samples (NREL 5MW land + OC3 monopile + OC3 Hywind, IEA-3.4-130-RWT land, IEA-10-198-RWT / IEA-15-240-RWT / IEA-22-280-RWT monopile), each shipping tower BMI + blade BMI + per-side section-properties + per-turbine README; regenerable from upstream ElastoDyn decks via `reference_turbines/build.py`.
 - **Three floating reference decks** under `reference_decks/`: NREL 5MW on the OC3 Hywind floating spar (`nrel5mw_oc3spar/`), NREL 5MW on the OC4 DeepCwind semi-submersible (`nrel5mw_oc4semi/`), and IEA-15-240-RWT on the UMaine VolturnUS-S semi (`iea15mw_umainesemi/`). All three generated via the existing `Tower.from_elastodyn(...)` cantilever path; post-patch validation reports shipped per case. Two reach `Overall: PASS`; the IEA-15 UMaine case reaches `Overall: WARN` on `TwSSM2Sh` (1.6 % RMS) — a representation limit of the constrained 6th-order polynomial form for that specific tower's section-property gradient, with an auto-emitted explanatory footer in the report.
 - **Canonical `tow_support = 1` block on monopile BMI samples** in `cases/sample_inputs/reference_turbines/` — full CS_Monopile.bmi-format section structure (3×3 platform-inertia, 6×6 hydro_M / hydro_K / mooring_K, distributed added-mass + distributed elastic-stiffness, tension wires) with zero-valued matrices for the rigid-clamp combined pile + tower model. Layout is BModes-JJ-readable unmodified; the all-zero matrices add nothing to the eigenvalue problem.
 - **OpenFAST ElastoDyn and WISDEM source-code audit** documenting the load-bearing question of which boundary condition ElastoDyn assumes for the tower modal basis at runtime. Findings published in `cases/ECOSYSTEM_FINDING.md` (new "Floating-deck polynomials" section) and `reference_decks/FLOATING_CASES.md` (rewritten end-to-end). Conclusion: the ElastoDyn polynomial ansatz `SHP = Σ_{i=1..PolyOrd-1} c_i · (h/H)^(i+1)` (`ElastoDyn.f90:2486-2495`) algebraically forces `SHP(0) = SHP'(0) = 0`; the modal eigenproblem in `Coeff` (lines 5141-5267) integrates only the tower beam plus `TwrTpMass` with no platform / hydro / mooring matrices; platform 6-DOF motion enters at runtime via the rigid-body sum (lines 7485-7540). Therefore the **correct polynomial basis for ALL ElastoDyn configurations — land, monopile, floating — is the clamped-base cantilever in the platform-attached frame**.

@@ -1,0 +1,75 @@
+# Pre-commit hooks — https://pre-commit.com
+# Install once per clone with: pre-commit install
+# Run on the whole tree with:   pre-commit run --all-files
+#
+# Mirror the ruff config in pyproject.toml so a pre-commit run and a
+# direct ``ruff check`` produce identical results.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        # The Apache 2.0 LICENSE text has significant trailing
+        # whitespace on a couple of indented appendix lines (keep
+        # verbatim for license-detection tools); vendored BModes /
+        # OpenFAST data ships in upstream-specified formatting.
+        exclude: ^(LICENSE|src/pybmodes/_examples/|external/).*$
+      - id: end-of-file-fixer
+        # Same exclusions as trailing-whitespace, for the same reason.
+        exclude: ^(LICENSE|src/pybmodes/_examples/|external/).*$
+      - id: check-yaml
+        # GitHub Actions workflows use ``on:`` which YAML aliases to
+        # the boolean ``True``; allow that.
+        args: ["--unsafe"]
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2000"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+        # Vendored BModes / OpenFAST data (under ``_examples/`` and
+        # ``external/``) ship in their upstream line-ending convention
+        # — Fortran-format ``.bmi`` / ``.dat`` / ``.out`` files are
+        # commonly CRLF and forcing LF risks breaking the reference
+        # parsers. The Windows-authored Sphinx ``make.bat`` also stays
+        # CRLF.
+        exclude: ^(docs/make\.bat|src/pybmodes/_examples/|external/).*$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+        # Same scope as CI (.github/workflows/ci.yml).
+        files: ^(src|tests|scripts)/
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        # Project terms / variable names that trip the dictionary.
+        # ``unparseable`` is the spelling our error messages use;
+        # ``fo`` is a coordinate-axis variable name in
+        # ``io/_precomp/arc_resolver.py``; ``re-use`` is a style
+        # choice. Move large lists into ``.codespellrc`` if this
+        # gets unwieldy.
+        args:
+          - --ignore-words-list=fro,iy,nd,te,ot,bu,arange,ND,Nd,unparseable,fo,re-use
+        exclude: ^(LICENSE|CHANGELOG\.md|external/|.*\.bmi$|.*\.dat$|.*\.out$|.*\.ipynb$)
+
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.5.5
+    hooks:
+      - id: insert-license
+        name: Apache 2.0 header (Python source + scripts + cases)
+        # Scope mirrors the one-shot scaffold: src/pybmodes/, scripts/,
+        # cases/, plus noxfile.py at the repo root. Tests deliberately
+        # excluded — test files conventionally don't carry the header.
+        files: ^(src/pybmodes/.*\.py|scripts/.*\.py|cases/.*\.py|noxfile\.py)$
+        args:
+          - --license-filepath=.license_header.txt
+          - --comment-style=#
+          # The header is 14 lines; scan a little further so we still
+          # detect it when a future shebang or coding declaration
+          # pushes the marker line down.
+          - --detect-license-in-X-top-lines=20

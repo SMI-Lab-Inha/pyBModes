@@ -13,7 +13,7 @@ The four cases mirror the upstream certification cases:
 
 The cert-test data files are local-only and are not
 committed under ``tests/data/``. This module reads them in place from
-``docs/BModes/CertTest/`` and skips at module level when that directory
+``external/BModes/CertTest/`` and skips at module level when that directory
 is missing (e.g. on CI for contributors who don't have a local copy).
 """
 
@@ -36,7 +36,7 @@ from pybmodes.models import RotatingBlade, Tower
 # ``pytest -m integration`` (default ``pytest`` deselects them).
 pytestmark = pytest.mark.integration
 
-CERT_DIR = pathlib.Path(__file__).resolve().parents[1] / "docs" / "BModes" / "CertTest"
+CERT_DIR = pathlib.Path(__file__).resolve().parents[1] / "external" / "BModes" / "CertTest"
 OUT_DIR = CERT_DIR / "TestFiles"
 
 if not CERT_DIR.is_dir() or not OUT_DIR.is_dir():
@@ -142,7 +142,7 @@ def test_certtest_04_tower_wire_supported_landbase():
 # ---------------------------------------------------------------------------
 # Offshore reference cases — CS_Monopile (soft monopile) and OC3Hywind
 # (floating spar). Reference outputs come from a local BModes JJ run on
-# the bundled examples in ``docs/BModes/docs/examples/``. These exercise
+# the bundled examples in ``external/BModes/docs/examples/``. These exercise
 # ``hub_conn = 3`` (axial+torsion locked, lateral free) and ``hub_conn = 2``
 # (free-free) plus the full ``PlatformSupport`` matrix-assembly path
 # (hydro-mass, hydro-stiffness, mooring-stiffness, platform-inertia 6×6
@@ -151,7 +151,7 @@ def test_certtest_04_tower_wire_supported_landbase():
 
 OFFSHORE_DIR = (
     pathlib.Path(__file__).resolve().parents[1]
-    / "docs" / "BModes" / "docs" / "examples"
+    / "external" / "BModes" / "docs" / "examples"
 )
 _OFFSHORE_CASES = {
     "CS_Monopile": ("CS_Monopile.bmi", "CS_Monopile.out"),

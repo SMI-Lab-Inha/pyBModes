@@ -1,0 +1,38 @@
+# Citation File Format — https://citation-file-format.github.io
+# Used by GitHub's "Cite this repository" widget, Zenodo, and most
+# reference managers.
+cff-version: 1.2.0
+message: "If you use pyBmodes in academic work, please cite it as below."
+type: software
+title: "pyBmodes — Python finite-element library for wind turbine blade and tower modal analysis"
+abstract: >-
+  pyBmodes is a pure-Python finite-element library for wind turbine
+  blade and tower modal analysis. It reads OpenFAST / ElastoDyn /
+  SubDyn / HydroDyn / MoorDyn decks, BModes .bmi decks, and WISDEM /
+  WindIO ontology YAML files; solves the coupled flap-lag-torsion-
+  axial vibration modes with a 15-DOF Bernoulli-Euler beam element;
+  and emits ElastoDyn-compatible mode-shape polynomials, MAC-tracked
+  Campbell diagrams, and bundled reports. Validated against the
+  BModes Fortran reference solver on six benchmark cases (NREL 5MW
+  land + OC3 monopile + OC3 Hywind floating spar, IEA-3.4-130-RWT,
+  BModes CertTest 03/04) to better than 0.01 % on every comparison.
+authors:
+  - family-names: Seo
+    given-names: Jae Hoon
+    email: jaehoon.seo@inha.ac.kr
+    affiliation: "Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University"
+    orcid: "https://orcid.org/0000-0003-1047-2119" 
+version: 1.7.0
+date-released: "2026-05-21"
+license: Apache-2.0
+repository-code: "https://github.com/SMI-Lab-Inha/pyBModes"
+url: "https://github.com/SMI-Lab-Inha/pyBModes"
+keywords:
+  - wind turbine
+  - modal analysis
+  - finite element method
+  - OpenFAST
+  - ElastoDyn
+  - BModes
+  - WindIO
+  - floating offshore wind

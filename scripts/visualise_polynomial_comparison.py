@@ -1,3 +1,18 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Plot pyBmodes' fit, the upstream r-test polynomial, and the raw FEM
 mode shape on the same axes for the NREL 5MW 2nd-bending tower modes
 (TwFAM2Sh and TwSSM2Sh).
@@ -61,7 +76,7 @@ from pybmodes.models import Tower  # noqa: E402
 # really demonstrates the gap when the upstream deck is present.
 _UPSTREAM_DECK = (
     REPO_ROOT
-    / "docs" / "OpenFAST_files" / "r-test" / "glue-codes" / "openfast"
+    / "external" / "OpenFAST_files" / "r-test" / "glue-codes" / "openfast"
     / "5MW_Land_DLL_WTurb" / "NRELOffshrBsline5MW_Onshore_ElastoDyn.dat"
 )
 _REFERENCE_DECK = (
@@ -157,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.input.is_file():
         print(f"error: input deck not found: {args.input}", file=sys.stderr)
         print(
-            "  The upstream r-test deck under docs/OpenFAST_files/ is "
+            "  The upstream r-test deck under external/OpenFAST_files/ is "
             "gitignored;\n"
             "  see VALIDATION.md for how to clone it "
             "locally,\n"

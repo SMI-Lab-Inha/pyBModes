@@ -8,14 +8,19 @@ version = "1.7.0"
 description = "Python finite-element library for wind turbine blade and tower modal analysis (OpenFAST/ElastoDyn)"
 readme = "README.md"
 license = { file = "LICENSE" }
-authors = [{ name = "Jae Hoon Seo", email = "jaehoon.seo@inha.ac.kr" }]
+authors = [
+    { name = "Jae Hoon Seo", email = "jaehoon.seo@inha.ac.kr" },
+]
+maintainers = [
+    { name = "Jae Hoon Seo", email = "jaehoon.seo@inha.ac.kr" },
+]
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
     "scipy>=1.11",
 ]
 classifiers = [
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -73,6 +78,28 @@ notebook = [
     # cheaper than asking contributors to remember to pair them.
     "matplotlib>=3.7",
 ]
+docs = [
+    # Sphinx documentation site (hosted on Read the Docs; see
+    # .readthedocs.yaml). MyST-parser lets the site include the
+    # existing CHANGELOG.md / VALIDATION.md / README.md directly
+    # via ``include`` directives, so docs and the markdown source
+    # stay in lockstep.
+    # Pin Sphinx to the 8.x line: Sphinx 9.0 (released 2026) emits
+    # ``RemovedInSphinx10Warning`` deprecations that fail strict
+    # (-W) builds until the ecosystem catches up. Relax the upper
+    # pin once a 9-compatible plugin set is available.
+    "sphinx>=7,<9",
+    "furo>=2024.1",
+    "myst-parser>=2",
+    "linkify-it-py>=2",
+    "sphinx-copybutton>=0.5",
+    # pybmodes' public API references numpy / scipy / matplotlib
+    # in its docstrings; intersphinx pulls in their objects.inv.
+    "numpy",
+    "scipy",
+    "matplotlib>=3.7",
+    "pyyaml>=6",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -108,7 +135,7 @@ addopts = """\
     --cov-report=term-missing:skip-covered\
 """
 markers = [
-    "integration: requires external OpenFAST / BModes reference decks under docs/",
+    "integration: requires external OpenFAST / BModes reference decks under external/",
     "slow: longer numerical validation cases (>1 s wall time per test)",
 ]
 

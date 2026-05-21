@@ -19,7 +19,7 @@ you want to:
 The four cases together exercise the four boundary conditions
 pyBmodes supports (`hub_conn ∈ {1, 4}` here; `hub_conn ∈ {2, 3}` are
 covered by the bundled offshore certtest decks under
-`docs/BModes/docs/examples/` when you have those locally), the tower
+`external/BModes/docs/examples/` when you have those locally), the tower
 + blade beam-type split, the rotating + non-rotating split, and the
 tip-mass + no-tip-mass split.
 
@@ -89,10 +89,10 @@ section headers, value-then-label data lines, two-line block
 separators — that pyBmodes' parser shares with BModes JJ (Fortran),
 so the same files can also be fed to BModes JJ for cross-solver
 verification. They differ from BModes' own example decks under
-`docs/BModes/docs/examples/` only in that the parameter values here
+`external/BModes/docs/examples/` only in that the parameter values here
 come from peer-reviewed analytical references rather than industry
 reference turbines, so they're safe to redistribute under pyBmodes'
-MIT licence.
+Apache 2.0 licence.
 
 ## See also
 
@@ -100,14 +100,14 @@ MIT licence.
   validation tests, which build the FEM matrices directly without
   going through the BMI parser. Each case here mirrors one of the
   whitebox tests with the same physical parameters.
-- `docs/BModes/docs/examples/` (local-only, gitignored under the
+- `external/BModes/docs/examples/` (local-only, gitignored under the
   project's "Independence stance") — BModes JJ's own example decks
   `OC3Hywind.bmi` and `CS_Monopile.bmi` for offshore + floating +
   rigid-monopile configurations. Clone the upstream BModes
   repository into your local checkout to populate this directory;
   the path is intentionally not linked because the target isn't
   tracked in git and the previous relative link
-  (`../../docs/BModes/docs/examples/`) didn't resolve from inside
+  (`../../external/BModes/docs/examples/`) didn't resolve from inside
   the packaged wheel anyway.
 - [`tests/_synthetic_bmi.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/_synthetic_bmi.py) — the
   programmatic `.bmi` writer used by tests for in-tmp_path round-trip

@@ -1,8 +1,23 @@
+# Copyright 2024-2026 Jae Hoon Seo
+# Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Generate pyBmodes-authored BMI samples for the open-literature
 **reference wind turbines** (RWTs) cited in the wind-energy literature.
 
 The output BMI + section-property files are *redistributable under
-pyBmodes' MIT licence*: every numerical value is sourced from the
+pyBmodes' Apache 2.0 licence*: every numerical value is sourced from the
 named open-access publication or its public companion deck, the file
 format + commentary are pyBmodes-authored, and the project's
 The independence stance forbids only verbatim *copies* of
@@ -55,7 +70,7 @@ Each turbine whose source `.dat` files are present locally produces
 ``<id>/<id>_tower.bmi`` + ``<id>/<id>_tower_sec_props.dat`` +
 ``<id>/<id>_blade.bmi`` + ``<id>/<id>_blade_sec_props.dat`` +
 ``<id>/README.md``. Turbines whose source files are absent (e.g. on
-a fresh clone without ``docs/OpenFAST_files/``) are skipped.
+a fresh clone without ``external/OpenFAST_files/``) are skipped.
 """
 
 from __future__ import annotations
@@ -913,10 +928,10 @@ TURBINES = [
                               "tower-bending of the combined pile + tower "
                               "system."),
         sources=_config(
-            "docs/OpenFAST_files/IEA-10.0-198-RWT/openfast/IEA-10.0-198-RWT_ElastoDyn.dat",
-            "docs/OpenFAST_files/IEA-10.0-198-RWT/openfast/IEA-10.0-198-RWT_ElastoDyn_tower.dat",
-            "docs/OpenFAST_files/IEA-10.0-198-RWT/openfast/IEA-10.0-198-RWT_ElastoDyn_blade.dat",
-            "docs/OpenFAST_files/IEA-10.0-198-RWT/openfast/IEA-10.0-198-RWT_SubDyn.dat",
+            "external/OpenFAST_files/IEA-10.0-198-RWT/openfast/IEA-10.0-198-RWT_ElastoDyn.dat",
+            "external/OpenFAST_files/IEA-10.0-198-RWT/openfast/IEA-10.0-198-RWT_ElastoDyn_tower.dat",
+            "external/OpenFAST_files/IEA-10.0-198-RWT/openfast/IEA-10.0-198-RWT_ElastoDyn_blade.dat",
+            "external/OpenFAST_files/IEA-10.0-198-RWT/openfast/IEA-10.0-198-RWT_SubDyn.dat",
         ),
     ),
     dict(
@@ -933,10 +948,10 @@ TURBINES = [
                               "(IEA-15 monopile tower-bending of the "
                               "combined pile + tower system)."),
         sources=_config(
-            "docs/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-Monopile/IEA-15-240-RWT-Monopile_ElastoDyn.dat",
-            "docs/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-Monopile/IEA-15-240-RWT-Monopile_ElastoDyn_tower.dat",
-            "docs/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT/IEA-15-240-RWT_ElastoDyn_blade.dat",
-            "docs/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-Monopile/IEA-15-240-RWT-Monopile_SubDyn.dat",
+            "external/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-Monopile/IEA-15-240-RWT-Monopile_ElastoDyn.dat",
+            "external/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-Monopile/IEA-15-240-RWT-Monopile_ElastoDyn_tower.dat",
+            "external/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT/IEA-15-240-RWT_ElastoDyn_blade.dat",
+            "external/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-Monopile/IEA-15-240-RWT-Monopile_SubDyn.dat",
         ),
     ),
     dict(
@@ -953,10 +968,10 @@ TURBINES = [
                               "tower-bending of the combined pile + tower "
                               "system."),
         sources=_config(
-            "docs/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Monopile/IEA-22-280-RWT_ElastoDyn.dat",
-            "docs/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Monopile/IEA-22-280-RWT_ElastoDyn_tower.dat",
-            "docs/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT/IEA-22-280-RWT_ElastoDyn_blade.dat",
-            "docs/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Monopile/IEA-22-280-RWT_SubDyn.dat",
+            "external/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Monopile/IEA-22-280-RWT_ElastoDyn.dat",
+            "external/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Monopile/IEA-22-280-RWT_ElastoDyn_tower.dat",
+            "external/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT/IEA-22-280-RWT_ElastoDyn_blade.dat",
+            "external/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Monopile/IEA-22-280-RWT_SubDyn.dat",
         ),
     ),
     dict(
@@ -982,9 +997,9 @@ TURBINES = [
         published_fa1_source=("Jonkman 2010 Table 9-1: 1st FA tower-bending "
                               "of the OC3 Hywind system"),
         sources=_config(
-            "docs/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC3Spar_DLL_WTurb_WavesIrr/"
+            "external/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC3Spar_DLL_WTurb_WavesIrr/"
             "NRELOffshrBsline5MW_OC3Hywind_ElastoDyn.dat",
-            "docs/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC3Spar_DLL_WTurb_WavesIrr/"
+            "external/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC3Spar_DLL_WTurb_WavesIrr/"
             "NRELOffshrBsline5MW_OC3Hywind_ElastoDyn_Tower.dat",
             "src/pybmodes/_examples/reference_decks/nrel5mw_oc3monopile/NRELOffshrBsline5MW_Blade.dat",
         ),
@@ -1008,17 +1023,17 @@ TURBINES = [
         published_fa1_source=("Robertson et al. 2014 §3.5: 1st-FA tower-"
                               "bending of the OC4 DeepCwind semi system"),
         sources=_config(
-            "docs/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC4Semi_WSt_WavesWN/"
+            "external/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC4Semi_WSt_WavesWN/"
             "NRELOffshrBsline5MW_OC4DeepCwindSemi_ElastoDyn.dat",
-            "docs/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC4Semi_WSt_WavesWN/"
+            "external/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC4Semi_WSt_WavesWN/"
             "NRELOffshrBsline5MW_OC4DeepCwindSemi_ElastoDyn_Tower.dat",
             "src/pybmodes/_examples/reference_decks/nrel5mw_oc3monopile/NRELOffshrBsline5MW_Blade.dat",
             rel_moordyn=(
-                "docs/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC4Semi_WSt_WavesWN/"
+                "external/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC4Semi_WSt_WavesWN/"
                 "NRELOffshrBsline5MW_OC4DeepCwindSemi_MoorDyn.dat"
             ),
             rel_hydrodyn=(
-                "docs/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC4Semi_WSt_WavesWN/"
+                "external/OpenFAST_files/r-test/glue-codes/openfast/5MW_OC4Semi_WSt_WavesWN/"
                 "NRELOffshrBsline5MW_OC4DeepCwindSemi_HydroDyn.dat"
             ),
         ),
@@ -1046,18 +1061,18 @@ TURBINES = [
                               "(IEAWindTask37/IEA-15-240-RWT): redesigned "
                               "floating tower target 1st-FA ≈ 0.49 Hz"),
         sources=_config(
-            "docs/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-UMaineSemi/"
+            "external/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-UMaineSemi/"
             "IEA-15-240-RWT-UMaineSemi_ElastoDyn.dat",
-            "docs/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-UMaineSemi/"
+            "external/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-UMaineSemi/"
             "IEA-15-240-RWT-UMaineSemi_ElastoDyn_tower.dat",
-            "docs/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT/"
+            "external/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT/"
             "IEA-15-240-RWT_ElastoDyn_blade.dat",
             rel_moordyn=(
-                "docs/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-UMaineSemi/"
+                "external/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-UMaineSemi/"
                 "IEA-15-240-RWT-UMaineSemi_MoorDyn.dat"
             ),
             rel_hydrodyn=(
-                "docs/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-UMaineSemi/"
+                "external/OpenFAST_files/IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-UMaineSemi/"
                 "IEA-15-240-RWT-UMaineSemi_HydroDyn.dat"
             ),
         ),
@@ -1084,18 +1099,18 @@ TURBINES = [
                               "report still in preparation per the IEA-22-280-"
                               "RWT repository README)"),
         sources=_config(
-            "docs/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Semi/"
+            "external/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Semi/"
             "IEA-22-280-RWT-Semi_ElastoDyn.dat",
-            "docs/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Semi/"
+            "external/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Semi/"
             "IEA-22-280-RWT-Semi_ElastoDyn_tower.dat",
-            "docs/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT/"
+            "external/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT/"
             "IEA-22-280-RWT_ElastoDyn_blade.dat",
             rel_moordyn=(
-                "docs/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Semi/"
+                "external/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Semi/"
                 "IEA-22-280-RWT-Semi_MoorDyn.dat"
             ),
             rel_hydrodyn=(
-                "docs/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Semi/"
+                "external/OpenFAST_files/IEA-22-280-RWT/OpenFAST/IEA-22-280-RWT-Semi/"
                 "IEA-22-280-RWT-Semi_HydroDyn_PotMod.dat"
             ),
         ),
@@ -1124,18 +1139,18 @@ TURBINES = [
                               "tower-bending of the CentralTower / semi-"
                               "submersible system"),
         sources=_config(
-            "docs/OpenFAST_files/IFE-UPSCALE-25MW-RWT/input/OpenFAST/CentralTower/"
+            "external/OpenFAST_files/IFE-UPSCALE-25MW-RWT/input/OpenFAST/CentralTower/"
             "UPSCALE-25MW-C_ElastoDyn.dat",
-            "docs/OpenFAST_files/IFE-UPSCALE-25MW-RWT/input/OpenFAST/CentralTower/"
+            "external/OpenFAST_files/IFE-UPSCALE-25MW-RWT/input/OpenFAST/CentralTower/"
             "UPSCALE-25MW-C_ElastoDyn_tower.dat",
-            "docs/OpenFAST_files/IFE-UPSCALE-25MW-RWT/input/OpenFAST/AeroData/"
+            "external/OpenFAST_files/IFE-UPSCALE-25MW-RWT/input/OpenFAST/AeroData/"
             "UPSCALE-25MW_ElastoDyn_blade_s27.dat",
             rel_moordyn=(
-                "docs/OpenFAST_files/IFE-UPSCALE-25MW-RWT/input/OpenFAST/CentralTower/"
+                "external/OpenFAST_files/IFE-UPSCALE-25MW-RWT/input/OpenFAST/CentralTower/"
                 "UPSCALE-25MW-C_MoorDyn.dat"
             ),
             rel_hydrodyn=(
-                "docs/OpenFAST_files/IFE-UPSCALE-25MW-RWT/input/OpenFAST/CentralTower/"
+                "external/OpenFAST_files/IFE-UPSCALE-25MW-RWT/input/OpenFAST/CentralTower/"
                 "UPSCALE-25MW-C_HydroDyn.dat"
             ),
         ),
@@ -1244,8 +1259,8 @@ def _readme_for(
         f"\n"
         f"All numerical values in these BMI and section-properties files are "
         f"sourced from the named publication's distributed structural data. "
-        f"The file format and commentary are pyBmodes-authored (MIT-"
-        f"licensed). Generated by "
+        f"The file format and commentary are pyBmodes-authored "
+        f"(Apache 2.0-licensed). Generated by "
         f"`src/pybmodes/_examples/sample_inputs/reference_turbines/build.py`.\n"
     )
 

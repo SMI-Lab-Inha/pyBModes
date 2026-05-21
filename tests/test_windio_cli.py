@@ -17,7 +17,7 @@ import pytest
 from pybmodes.cli import _discover_windio_inputs, main
 
 _DOCS = (pathlib.Path(__file__).resolve().parents[1]
-         / "docs" / "OpenFAST_files")
+         / "external" / "OpenFAST_files")
 _IEA15_RWT = _DOCS / "IEA-15-240-RWT"
 _IEA15_FLOAT_Y = _IEA15_RWT / "WT_Ontology/IEA-15-240-RWT_VolturnUS-S.yaml"
 

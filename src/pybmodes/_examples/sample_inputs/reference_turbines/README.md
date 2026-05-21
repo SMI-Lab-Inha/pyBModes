@@ -6,7 +6,7 @@ spanning **2009 – 2024** in publication date and **3.4 – 22 MW** in
 rated power. Every numerical value is sourced from the named
 publication or its public companion deck; the file format,
 commentary, and citations are pyBmodes-authored and the files are
-MIT-licensed alongside the rest of the project.
+Apache 2.0-licensed alongside the rest of the project.
 
 Each turbine ships **two BMI samples** — one for the tower, one for
 the blade — so the sample library exercises both halves of the
@@ -111,7 +111,7 @@ prediction directly from the upstream decks; a pre-baked sample BMI
 for these floaters can be authored by a downstream user using the
 same workflow `build.py` uses for the OC3 sample. For the OC3
 Hywind, the canonical `OC3Hywind.bmi` (gitignored under
-`docs/BModes/docs/examples/`) is also a valid input — the bundled
+`external/BModes/docs/examples/`) is also a valid input — the bundled
 sample at [`07_nrel5mw_oc3hywind_spar/`](07_nrel5mw_oc3hywind_spar/)
 is a re-emission with citations to Jonkman (2010) for
 redistributability.
@@ -126,7 +126,7 @@ section-properties) plus the per-turbine README. Sources for three of
 the seven turbines (NREL 5MW land, NREL 5MW OC3 monopile, IEA-3.4) are
 in the bundled [`reference_decks/`](../../reference_decks/); sources
 for the other monopile sub-cases (IEA-10, IEA-15, IEA-22 monopiles)
-live under `docs/OpenFAST_files/<turbine>/` which is gitignored under
+live under `external/OpenFAST_files/<turbine>/` which is gitignored under
 the project's "Independence stance" — `build.py` reads them when
 present and skips otherwise. The OC3 Hywind floating sample (07) is
 authored inline in `build.py` from Jonkman (2010) Table 9-1 values
@@ -142,7 +142,7 @@ Or, from a source checkout's repo root without installing::
     python src/pybmodes/_examples/sample_inputs/reference_turbines/build.py
 
 The script discovers each turbine's upstream ElastoDyn ``.dat`` decks
-under ``docs/OpenFAST_files/`` (gitignored) and re-emits the bundled
+under ``external/OpenFAST_files/`` (gitignored) and re-emits the bundled
 samples; turbines whose upstream sources aren't present are skipped
 silently, so a fresh clone that just wants the four NREL / IEA-3.4
 sub-cases works without cloning the larger OpenFAST repositories.

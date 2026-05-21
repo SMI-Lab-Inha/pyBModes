@@ -1,0 +1,99 @@
+name: Bug report
+description: Report a defect — wrong number, broken parse, unexpected crash, regression vs a prior release.
+title: "[BUG] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. The more
+        precise the reproducer, the faster we can fix it.
+
+        For **security** vulnerabilities (maliciously crafted input
+        files, deserialisation issues, supply-chain concerns) do not
+        file a public issue — see [SECURITY.md](../SECURITY.md).
+
+  - type: input
+    id: version
+    attributes:
+      label: pyBmodes version
+      description: "Output of `python -c 'import pybmodes; print(pybmodes.__version__)'`."
+      placeholder: "e.g. 1.7.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: "Output of `python --version`."
+      placeholder: "e.g. 3.11.9"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install pyBmodes?
+      options:
+        - "pip install pybmodes (from PyPI)"
+        - "pip install -e . (editable source checkout)"
+        - "conda / mamba"
+        - "Other"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "e.g. Windows 11 / Ubuntu 22.04 / macOS 14"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: A clear, single-sentence summary of the defect.
+      placeholder: "pybmodes patch silently swaps TwFAM1Sh and TwSSM1Sh for IEA-15 …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: What the documentation / API / a published reference says should happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Minimal reproducer
+      description: |
+        A runnable snippet plus any input files (a few lines from the
+        relevant `.bmi` / `.dat` / `.yaml`). The smaller, the better.
+        If the input data is licensed and you can't share it, name
+        the deck and version (e.g. "OpenFAST r-test v3.5.5 NREL5MW
+        5MW_Land_DLL_WTurb").
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Traceback or unexpected output
+      description: Paste the full traceback if it crashed, or the actual vs expected numbers if the bug is numerical.
+      render: text
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: |
+        Citable reference, related issue, observed behaviour in a
+        prior version, anything else that helps narrow the cause.
