@@ -61,14 +61,15 @@ Checks performed (see :func:`check_model` for the details):
 10. Floating model has *some* restoring (``hydro_K`` or ``mooring_K``
     non-zero); with neither, the rigid-body modes collapse to ~0 Hz
     (WARN).
-
-   Checks 8–10 are the "floating-model readiness" gates: they catch the
-   seakeeping omissions a non-specialist makes when a WindIO ``.yaml``
-   (geometry + material only) is treated as sufficient for a floating
-   system — it is not, the way it is for a land tower (issue #95).
 11. The requested ``n_modes`` does not exceed the model's DOF count.
 12. The polynomial-fit design matrix on the mesh stations is not
     ill-conditioned (cond > 1e4 ⇒ WARN, > 1e6 ⇒ ERROR).
+
+Checks 7–10 are the "floating-model readiness" gates (``hub_conn = 2``
+only): they catch the seakeeping omissions a non-specialist makes when
+a WindIO ``.yaml`` (geometry + material only) is treated as sufficient
+for a floating system — it is not, the way it is for a land tower
+(issue #95).
 """
 
 from __future__ import annotations
