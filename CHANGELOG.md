@@ -8,7 +8,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.11.0] — 2026-05-23
+
+A minor feature release: a WindIO monopile + tower constructor (#92) and a
+`check_model` guard that catches the implausible-platform-CM-offset input
+error behind #95. Additive and backward-compatible; no numerical change to
+any existing model.
+
 ### Added
+
+- **`check_model` gate for an implausibly large horizontal platform CM offset
+  (#95).** `cm_pform_x` / `cm_pform_y` on a `PlatformSupport` are the CM offset
+  *from the tower axis*; a value comparable to the platform's own size is
+  almost always a coordinate-origin offset leaking into the field, which
+  injects spurious surge/sway↔yaw coupling, shifts the rigid-body frequencies,
+  and mislabels the modes. The new check warns (WARN) when the horizontal
+  offset magnitude exceeds the platform's yaw radius of gyration `√(I_yaw/m)`,
+  turning a previously silent input error into an actionable message at the
+  call site. New `CheckOptions.platform_cm_offset_gyradius_factor` (default
+  `1.0`) tunes the threshold; the `PlatformSupport.cm_pform_x` / `cm_pform_y`
+  docs now state explicitly that they are tower-axis-relative (not a global
+  coordinate). Surfaced the diagnosis on #95: the reported "yaw on the first
+  mode" was this input error (a ~39 m CM offset on the IEA-15 VolturnUS-S),
+  not a classifier regression — with `cm_pform_x ≈ 0` the rigid-body modes
+  label cleanly.
 
 - **`Tower.from_windio_with_monopile(yaml, …)` — WindIO monopile + tower
   splice (#92).** `from_windio` reduces a *single* tube; there was no WindIO

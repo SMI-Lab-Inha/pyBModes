@@ -49,8 +49,13 @@ Checks performed (see :func:`check_model` for the details):
    ``1e-6 · max|A|``). Rank deficiency is **not** flagged — surge /
    sway / yaw hydrostatic restoring is legitimately zero on most
    floaters and mooring layouts can be low-rank by design.
-7. The requested ``n_modes`` does not exceed the model's DOF count.
-8. The polynomial-fit design matrix on the mesh stations is not
+7. The horizontal platform CM offset (``cm_pform_x`` / ``cm_pform_y``)
+   does not exceed the platform's yaw radius of gyration
+   ``√(I_yaw / m)`` — a larger value is almost always a coordinate-
+   origin offset leaking into a field that means "CM offset from the
+   tower axis", which mislabels the rigid-body modes (issue #95).
+8. The requested ``n_modes`` does not exceed the model's DOF count.
+9. The polynomial-fit design matrix on the mesh stations is not
    ill-conditioned (cond > 1e4 ⇒ WARN, > 1e6 ⇒ ERROR).
 """
 
@@ -146,6 +151,7 @@ def check_model(
     _check_ei_ratio(sp, out)
     _check_rna_vs_tower_mass(bmi, sp, out)
     _check_support_conditioning(bmi, out)
+    _check_platform_cm_offset(bmi, out)
     if n_modes is not None:
         _check_n_modes_vs_dof(bmi, n_modes, out)
     _check_polyfit_conditioning(bmi, out)
@@ -383,6 +389,62 @@ def _check_support_conditioning(bmi, out: list[ModelWarning]) -> None:
                 f"likely has a transcription error worth fixing.",
                 f"bmi.support.{name}",
             ))
+
+
+def _check_platform_cm_offset(bmi, out: list[ModelWarning]) -> None:
+    """Flag an implausibly large horizontal platform CM offset.
+
+    ``cm_pform_x`` / ``cm_pform_y`` are the platform CM offset *from the
+    tower axis* — for a standard floater the tower sits at or near the
+    platform centroid, so these are small. A horizontal offset that
+    rivals the platform's own size (its yaw radius of gyration
+    ``√(I_yaw / m)``) is almost always a coordinate-origin value leaking
+    into the field; it injects spurious surge/sway↔yaw coupling through
+    the rigid-arm transform, shifts the rigid-body frequencies, and
+    mislabels the modes (issue #95). Emitted as WARN, not ERROR — a
+    genuinely large offset is physically representable, just unusual.
+    """
+    from pybmodes.io.bmi import PlatformSupport
+
+    if not isinstance(bmi.support, PlatformSupport):
+        return
+    sup = bmi.support
+    cm_x = float(getattr(sup, "cm_pform_x", 0.0) or 0.0)
+    cm_y = float(getattr(sup, "cm_pform_y", 0.0) or 0.0)
+    offset = float(np.hypot(cm_x, cm_y))
+    if offset == 0.0:
+        return
+
+    # Yaw radius of gyration r_g = √(I_yaw / m). Use the platform mass
+    # and the 6×6 inertia's yaw (5,5) term; bail quietly if either is
+    # unavailable / non-positive (can't form a meaningful scale).
+    mass = float(getattr(sup, "mass_pform", 0.0) or 0.0)
+    i_mat = np.asarray(sup.i_matrix, dtype=float)
+    if mass <= 0.0 and i_mat.shape == (6, 6) and np.isfinite(i_mat[0, 0]):
+        mass = float(i_mat[0, 0])      # i_matrix[0,0] is the platform mass
+    if mass <= 0.0 or i_mat.shape != (6, 6):
+        return
+    i_yaw = float(i_mat[5, 5])
+    if not np.isfinite(i_yaw) or i_yaw <= 0.0:
+        return
+    r_g = float(np.sqrt(i_yaw / mass))
+    if r_g <= 0.0:
+        return
+
+    if offset > _CHECK_OPTIONS.platform_cm_offset_gyradius_factor * r_g:
+        out.append(ModelWarning(
+            "WARN",
+            f"Horizontal platform CM offset (cm_pform_x={cm_x:.3g} m, "
+            f"cm_pform_y={cm_y:.3g} m, magnitude {offset:.3g} m) exceeds the "
+            f"platform's yaw radius of gyration √(I_yaw/m) = {r_g:.3g} m. "
+            f"cm_pform_x / cm_pform_y are the CM offset FROM THE TOWER AXIS — "
+            f"a value this large is usually a coordinate-origin offset leaking "
+            f"into the field; it injects spurious surge/sway↔yaw coupling that "
+            f"shifts the rigid-body frequencies and mislabels the modes. Set "
+            f"them to the CM offset relative to the tower axis (≈0 for a tower "
+            f"on the platform centroid).",
+            "bmi.support.cm_pform_x",
+        ))
 
 
 def _check_n_modes_vs_dof(
