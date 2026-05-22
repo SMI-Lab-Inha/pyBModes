@@ -763,6 +763,38 @@ def test_from_windio_floating_yaml_only_modal_smoke(tmp_path) -> None:
     assert f[6] > 5.0 * f[5]
 
 
+def test_from_windio_floating_screening_honors_rna_tip(tmp_path) -> None:
+    """Regression (issue #83): in the screening tier (no companion
+    ElastoDyn deck, no injected ``platform_support``) the caller-
+    supplied ``rna_tip`` must be carried onto the tower top, not
+    silently replaced with a zero lump. Pre-fix the screening branch
+    re-assigned ``rna_tip`` to an all-zero ``TipMassProps``, dropping
+    the argument; the injected-platform branch already honoured it."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.bmi import TipMassProps
+    from pybmodes.models import Tower
+
+    p = tmp_path / "fowt.yaml"
+    p.write_text(_FLOAT_TURBINE, encoding="utf-8")
+
+    rna = TipMassProps(
+        mass=1.2e6, cm_offset=0.0, cm_axial=4.0,
+        ixx=5.0e7, iyy=3.0e7, izz=3.0e7, ixy=0.0, izx=0.0, iyz=0.0,
+    )
+    with pytest.warns(UserWarning, match="SCREENING-fidelity"):
+        m = Tower.from_windio_floating(p, water_depth=200.0, rna_tip=rna)
+    # The passed RNA lump survives onto the assembled tower top.
+    assert m._bmi.tip_mass.mass == pytest.approx(1.2e6)
+    assert m._bmi.tip_mass.cm_axial == pytest.approx(4.0)
+    assert m._bmi.tip_mass.iyy == pytest.approx(3.0e7)
+
+    # Default (no rna_tip) still yields a bare tower top — the zero
+    # default is preserved, only the silent override is removed.
+    with pytest.warns(UserWarning, match="SCREENING-fidelity"):
+        m0 = Tower.from_windio_floating(p, water_depth=200.0)
+    assert m0._bmi.tip_mass.mass == 0.0
+
+
 @pytest.mark.integration
 @pytest.mark.skipif(
     not (_IEA15_FLOAT_Y.is_file() and _IEA15_HD.is_file()

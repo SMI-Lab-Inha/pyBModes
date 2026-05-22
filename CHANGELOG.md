@@ -91,6 +91,14 @@ items:
 
 ### Fixed
 
+- **``Tower.from_windio_floating`` now honours a caller-supplied
+  ``rna_tip`` in the screening tier** (issue #83). When no companion
+  ElastoDyn deck and no injected ``platform_support`` were given, the
+  screening path unconditionally reset ``rna_tip`` to a zero tower-top
+  lump, silently dropping the argument; it now uses the passed value as
+  the default (a discovered ElastoDyn deck still overrides it with the
+  deck-derived RNA, unchanged). The injected-platform branch already
+  behaved correctly. Regression test in ``tests/test_windio_floating.py``.
 - **Documentation consistency.** ``VALIDATION.md``'s closing section
   no longer says integration coverage is "developer-local … not
   CI-gated" — it now splits the **CI-gated public required set**
