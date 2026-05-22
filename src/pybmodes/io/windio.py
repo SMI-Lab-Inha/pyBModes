@@ -49,6 +49,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from pybmodes.io.sec_props import SectionProperties
+
 
 def _require_yaml():
     """Import PyYAML or raise the documented friendly error.
@@ -140,6 +142,8 @@ class WindIOTubular:
     rho: float
     nu: float
     outfitting_factor: float
+    z_base: float = 0.0         # m, absolute base elevation (reference_axis.z[0])
+    z_top: float = 0.0          # m, absolute top elevation (reference_axis.z[-1])
 
 
 def _interp(grid: np.ndarray, values: np.ndarray, at: np.ndarray,
@@ -288,6 +292,184 @@ def read_windio_tubular(
         flexible_length=flexible_length,
         E=E, rho=rho, nu=nu,
         outfitting_factor=outfitting,
+        z_base=float(z_vals[0]),
+        z_top=float(z_vals[-1]),
+    )
+
+
+@dataclass
+class WindIOMonopileTower:
+    """A monopile + tower spliced into a single fixed-bottom cantilever.
+
+    The combined cantilever runs from the monopile base (mudline,
+    ``z_base``) up through the transition piece (``z_transition``, where
+    the monopile meets the tower) to the tower top (``z_top``). The
+    section-property table carries both segments' own wall schedules and
+    materials, joined at the transition with a near-coincident station
+    pair so the FE interpolant captures the cross-section step.
+    """
+
+    section_props: SectionProperties
+    combined_length: float            # m, z_top - z_base
+    el_loc: np.ndarray                # normalised FE node boundaries [0, 1]
+    transition_frac: float            # normalised transition-piece location
+    z_base: float                     # mudline elevation (m)
+    z_transition: float               # transition-piece elevation (m)
+    z_top: float                      # tower-top elevation (m)
+
+
+def read_windio_monopile_tower(
+    yaml_path: str | pathlib.Path,
+    *,
+    component_tower: str = "tower",
+    component_monopile: str = "monopile",
+    thickness_interp: str = "linear",
+    n_nodes: int | None = None,
+) -> WindIOMonopileTower:
+    """Reduce the ``monopile`` and ``tower`` components and splice them
+    into one fixed-bottom cantilever (issue #92).
+
+    Each component is reduced independently through the closed-form
+    circular-tube relations (so they keep their own wall schedule and
+    steel grade), then concatenated bottom-to-top at the transition
+    piece — the elevation where the monopile top meets the tower base.
+    The result is the WindIO analog of
+    :func:`pybmodes.io.subdyn_reader.to_pybmodes_pile_tower` (the
+    ElastoDyn + SubDyn splice).
+
+    Parameters
+    ----------
+    yaml_path : path to a WindIO ontology file carrying both a
+        ``monopile`` and a ``tower`` component.
+    component_tower, component_monopile : component names to splice
+        (defaults ``"tower"`` / ``"monopile"``).
+    thickness_interp : ``"linear"`` or ``"piecewise_constant"`` — passed
+        through to each component's reduction (see
+        :func:`read_windio_tubular`).
+    n_nodes : optional FE-mesh refinement, applied **per segment**: each
+        of the monopile and tower is re-gridded onto ``n_nodes`` evenly-
+        spaced stations (geometry interpolated, tube properties
+        recomputed exactly), mirroring :meth:`Tower.from_windio`'s
+        ``n_nodes``. ``None`` keeps each component's native WindIO grid.
+
+    Raises
+    ------
+    ValueError : when the monopile top and tower base do not meet at a
+        common transition-piece elevation (a gap or overlap of more than
+        1 mm), since a non-contiguous pair cannot be spliced into one
+        beam.
+    """
+    import numpy as _np
+
+    from pybmodes.io._elastodyn.adapter import _tower_element_boundaries
+    from pybmodes.io.geometry import tubular_section_props
+
+    mp = read_windio_tubular(
+        yaml_path, component=component_monopile, thickness_interp=thickness_interp,
+    )
+    tw = read_windio_tubular(
+        yaml_path, component=component_tower, thickness_interp=thickness_interp,
+    )
+
+    # The monopile top and tower base must describe the same transition
+    # piece. WindIO encodes both as absolute reference_axis.z, so they
+    # should coincide (e.g. IEA-15: monopile z ends at +15 m, tower z
+    # starts at +15 m). A gap/overlap means the segments aren't
+    # contiguous and can't be spliced into a single beam.
+    gap = abs(mp.z_top - tw.z_base)
+    if gap > 1.0e-3:
+        raise ValueError(
+            f"WindIO monopile top (z={mp.z_top:g} m) and tower base "
+            f"(z={tw.z_base:g} m) do not meet at a common transition piece "
+            f"(gap {gap:g} m). read_windio_monopile_tower splices contiguous "
+            f"segments; check the components' reference_axis.z."
+        )
+
+    z_base = mp.z_base
+    z_transition = mp.z_top
+    z_top = tw.z_top
+    combined_length = z_top - z_base
+    if combined_length <= 0.0:
+        raise ValueError(
+            f"WindIO monopile+tower combined length must be positive; got "
+            f"{combined_length:g} m (monopile base z={z_base:g}, tower top "
+            f"z={z_top:g}). Check the components' reference_axis.z ordering "
+            f"(base -> top)."
+        )
+    transition_frac = (z_transition - z_base) / combined_length
+
+    def _reduce(t: WindIOTubular) -> tuple[np.ndarray, SectionProperties]:
+        grid = _np.asarray(t.station_grid, dtype=float)
+        od = _np.asarray(t.outer_diameter, dtype=float)
+        wt = _np.asarray(t.wall_thickness, dtype=float)
+        if n_nodes is not None:
+            if not isinstance(n_nodes, int) or isinstance(n_nodes, bool) \
+                    or n_nodes < 2:
+                raise ValueError(
+                    f"n_nodes must be an integer >= 2; got {n_nodes!r}"
+                )
+            fine = _np.linspace(float(grid[0]), float(grid[-1]), n_nodes)
+            od = _np.interp(fine, grid, od)
+            wt = _np.interp(fine, grid, wt)
+            grid = fine
+        sp = tubular_section_props(
+            grid, od, wt, E=t.E, rho=t.rho, nu=t.nu,
+            outfitting_factor=t.outfitting_factor,
+        )
+        return grid, sp
+
+    mp_grid, mp_sp = _reduce(mp)
+    tw_grid, tw_sp = _reduce(tw)
+
+    # Map each component's own [0, 1] grid onto the combined [0, 1].
+    mp_frac = mp_grid * transition_frac
+    tw_frac = transition_frac + tw_grid * (1.0 - transition_frac)
+
+    # Near-coincident station pair at the transition so the section-table
+    # interpolant resolves the cross-section step (same device as
+    # to_pybmodes_pile_tower): nudge the monopile's top station down by a
+    # tiny eps; the tower's bottom station sits exactly at the transition.
+    eps = 1.0e-9
+    mp_frac_sp = mp_frac.copy()
+    if mp_frac_sp.size >= 2:
+        mp_frac_sp[-1] = max(mp_frac_sp[-1] - eps, mp_frac_sp[-2] + eps / 2)
+
+    span_loc = _np.concatenate([mp_frac_sp, tw_frac])
+    zeros = _np.zeros_like(span_loc)
+    sp = SectionProperties(
+        title="WindIO monopile + tower (combined cantilever)",
+        n_secs=int(span_loc.size),
+        span_loc=span_loc,
+        str_tw=zeros.copy(),
+        tw_iner=zeros.copy(),
+        mass_den=_np.concatenate([mp_sp.mass_den, tw_sp.mass_den]),
+        flp_iner=_np.concatenate([mp_sp.flp_iner, tw_sp.flp_iner]),
+        edge_iner=_np.concatenate([mp_sp.edge_iner, tw_sp.edge_iner]),
+        flp_stff=_np.concatenate([mp_sp.flp_stff, tw_sp.flp_stff]),
+        edge_stff=_np.concatenate([mp_sp.edge_stff, tw_sp.edge_stff]),
+        tor_stff=_np.concatenate([mp_sp.tor_stff, tw_sp.tor_stff]),
+        axial_stff=_np.concatenate([mp_sp.axial_stff, tw_sp.axial_stff]),
+        cg_offst=zeros.copy(),
+        sc_offst=zeros.copy(),
+        tc_offst=zeros.copy(),
+    )
+
+    # FE mesh: a clean node sits exactly at the transition (no degenerate
+    # eps-length element). Use each segment's (un-gapped) station grid as
+    # element boundaries, with the duplicate-station guard, then drop the
+    # shared transition node from the tower segment.
+    mp_el = _tower_element_boundaries(mp_frac)
+    tw_el = _tower_element_boundaries(tw_frac)
+    el_loc = _np.concatenate([mp_el, tw_el[1:]])
+
+    return WindIOMonopileTower(
+        section_props=sp,
+        combined_length=float(combined_length),
+        el_loc=el_loc,
+        transition_frac=float(transition_frac),
+        z_base=float(z_base),
+        z_transition=float(z_transition),
+        z_top=float(z_top),
     )
 
 

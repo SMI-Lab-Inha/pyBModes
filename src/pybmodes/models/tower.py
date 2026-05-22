@@ -55,6 +55,43 @@ if TYPE_CHECKING:
     from pybmodes.io.bmi import PlatformSupport, TipMassProps
 
 
+def _coerce_tip_mass(
+    tip_mass: TipMassProps | float | None,
+) -> TipMassProps:
+    """Normalise a ``tip_mass`` argument to a :class:`TipMassProps`.
+
+    Accepts a :class:`~pybmodes.io.bmi.TipMassProps` (returned as-is), a
+    bare float (the tower-top RNA *mass* in kg; offsets and inertia
+    default to zero — the common case), or ``None`` (zero tip mass).
+    Shared by the geometry-derived constructors (``from_geometry``,
+    ``from_windio``, ``from_windio_with_monopile``).
+    """
+    import numpy as _np
+
+    from pybmodes.io.bmi import TipMassProps
+
+    if isinstance(tip_mass, TipMassProps):
+        return tip_mass
+    if tip_mass is None:
+        m = 0.0
+    else:
+        try:
+            m = float(tip_mass)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "tip_mass must be a TipMassProps or a float "
+                f"(RNA mass in kg); got {tip_mass!r}"
+            ) from exc
+        if not _np.isfinite(m) or m < 0.0:
+            raise ValueError(
+                f"tip_mass (kg) must be finite and >= 0; got {m!r}"
+            )
+    return TipMassProps(
+        mass=m, cm_offset=0.0, cm_axial=0.0,
+        ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
+    )
+
+
 class Tower:
     """Compute natural frequencies and mode shapes for a tower.
 
@@ -231,7 +268,6 @@ class Tower:
             _build_bmi_skeleton,
             _tower_element_boundaries,
         )
-        from pybmodes.io.bmi import TipMassProps
         from pybmodes.io.geometry import tubular_section_props
 
         grid = _np.asarray(station_grid, dtype=float)
@@ -256,28 +292,7 @@ class Tower:
             grid, od, wt,
             E=E, rho=rho, nu=nu, outfitting_factor=outfitting_factor,
         )
-        if tip_mass is None:
-            tip_mass = TipMassProps(
-                mass=0.0, cm_offset=0.0, cm_axial=0.0,
-                ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
-            )
-        elif not isinstance(tip_mass, TipMassProps):
-            # Bare-scalar convenience: a tower-top RNA *mass* in kg.
-            try:
-                m = float(tip_mass)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    "tip_mass must be a TipMassProps or a float "
-                    f"(RNA mass in kg); got {tip_mass!r}"
-                ) from exc
-            if not _np.isfinite(m) or m < 0.0:
-                raise ValueError(
-                    f"tip_mass (kg) must be finite and >= 0; got {m!r}"
-                )
-            tip_mass = TipMassProps(
-                mass=m, cm_offset=0.0, cm_axial=0.0,
-                ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
-            )
+        tip_mass = _coerce_tip_mass(tip_mass)
         el_loc = _tower_element_boundaries(grid)
         bmi = _build_bmi_skeleton(
             title="geometry-derived tower",
@@ -366,6 +381,92 @@ class Tower:
             tip_mass=tip_mass,
             n_nodes=n_nodes,
         )
+
+    @classmethod
+    def from_windio_with_monopile(
+        cls,
+        yaml_path: str | pathlib.Path,
+        *,
+        component_tower: str = "tower",
+        component_monopile: str = "monopile",
+        thickness_interp: str = "linear",
+        tip_mass: TipMassProps | float | None = None,
+        n_nodes: int | None = None,
+    ) -> Tower:
+        """Build a combined **monopile + tower** fixed-bottom cantilever
+        from a WindIO ontology ``.yaml`` (issue #92).
+
+        :meth:`from_windio` reduces a *single* tube; this constructor
+        reduces the ``monopile`` and ``tower`` components separately
+        (each keeps its own wall schedule and steel grade) and splices
+        them bottom-to-top at the transition piece — the elevation where
+        the monopile top meets the tower base — into one cantilever
+        clamped at the mudline (``hub_conn = 1``), with the RNA lumped at
+        the tower top via ``tip_mass``. It is the WindIO analog of
+        :meth:`from_elastodyn_with_subdyn` (the ElastoDyn + SubDyn
+        splice).
+
+        Parameters
+        ----------
+        yaml_path : path to a WindIO ontology file carrying both a
+            ``monopile`` and a ``tower`` component.
+        component_tower, component_monopile : component names to splice
+            (defaults ``"tower"`` / ``"monopile"``).
+        thickness_interp : ``"linear"`` (default) or
+            ``"piecewise_constant"`` — see :meth:`from_windio`.
+        tip_mass : optional tower-top RNA lump — a
+            :class:`pybmodes.io.bmi.TipMassProps` **or a bare float**
+            (RNA mass in kg). ``None`` -> zero tip mass.
+        n_nodes : optional FE-mesh refinement applied **per segment**
+            (each of the monopile and tower is re-gridded onto
+            ``n_nodes`` evenly-spaced stations), mirroring
+            :meth:`from_windio`'s ``n_nodes``. ``None`` keeps each
+            component's native WindIO grid.
+
+        Notes
+        -----
+        Requires the optional ``[windio]`` extra (PyYAML). This is the
+        **rigid fixed-base** monopile path: the pile is clamped at the
+        mudline with no soil flexibility, matching
+        :meth:`from_elastodyn_with_subdyn` and the bundled monopile
+        samples. Distributed soil springs (a Winkler ``distr_k`` /
+        ``hub_conn = 3`` foundation) and Morison hydrodynamics are out of
+        scope here and tracked separately. Raises ``ValueError`` if the
+        monopile top and tower base do not meet at a common
+        transition-piece elevation.
+        """
+        from pybmodes.io._elastodyn.adapter import _build_bmi_skeleton
+        from pybmodes.io.windio import read_windio_monopile_tower
+
+        mt = read_windio_monopile_tower(
+            yaml_path,
+            component_tower=component_tower,
+            component_monopile=component_monopile,
+            thickness_interp=thickness_interp,
+            n_nodes=n_nodes,
+        )
+        tip = _coerce_tip_mass(tip_mass)
+        bmi = _build_bmi_skeleton(
+            title=(
+                f"WindIO monopile+tower (mudline z={mt.z_base:g} m, "
+                f"TP z={mt.z_transition:g} m, top z={mt.z_top:g} m)"
+            ),
+            beam_type=2,
+            radius=mt.combined_length,
+            hub_rad=0.0,
+            rot_rpm=0.0,
+            precone=0.0,
+            n_elements=max(mt.el_loc.size - 1, 1),
+            el_loc=mt.el_loc,
+            tip_mass_props=tip,
+        )
+        bmi.hub_conn = 1
+
+        obj = cls.__new__(cls)
+        obj._bmi = bmi
+        obj._sp = mt.section_props
+        obj.coeff_validation = None
+        return obj
 
     @classmethod
     def from_elastodyn_with_mooring(
