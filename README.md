@@ -43,7 +43,11 @@ python -m http.server -d docs/_build/html
 
 ## Install
 
-> **PyPI status: pre-release.** The `pybmodes` distribution is not yet published to PyPI — that's tracked as a 1.x release-gate item. Until the first PyPI release lands, install from source:
+```bash
+pip install pybmodes
+```
+
+That installs the runtime core (`numpy` + `scipy`). Add an extra for optional features — `[plots]`, `[windio]`, `[notebook]`, `[docs]` (matrix below). For a source / editable checkout (contributors, or tracking `master`):
 
 ```bash
 git clone https://github.com/SMI-Lab-Inha/pyBModes.git
@@ -51,13 +55,7 @@ cd pyBModes
 pip install -e ".[dev,plots]"
 ```
 
-Once published, the canonical install will be the standard one:
-
-```bash
-pip install pybmodes        # (post-PyPI-release; not available yet)
-```
-
-Take care that **`pybmodes` is a different project from `pyModeS`** (an ADS-B / Mode-S decoder). When the PyPI release lands the project name on PyPI will be `pybmodes` (lowercase, no S); double-check the package name + the GitHub `SMI-Lab-Inha/pyBModes` repo URL before installing.
+Take care that **`pybmodes` is a different project from `pyModeS`** (an ADS-B / Mode-S decoder). The PyPI name is `pybmodes` (lowercase, no S); double-check the package name + the GitHub `SMI-Lab-Inha/pyBModes` repo URL before installing.
 
 See [`https://pybmodes.readthedocs.io/en/latest/installation.html`](https://pybmodes.readthedocs.io/en/latest/installation.html) for the full Windows + conda quickstart and the optional-extras matrix (`[plots]`, `[windio]`, `[notebook]`, `[docs]`).
 

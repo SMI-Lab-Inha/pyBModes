@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+(nothing yet)
+
+## [1.9.0] — 2026-05-22
+
 Static-review follow-up on top of 1.8.1. No numerical change; the only
 public-API change is one new opt-in keyword (``allow_legacy_pickle``).
 Security, release-integrity, validation-coverage, and source-quality
