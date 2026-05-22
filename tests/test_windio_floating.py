@@ -971,6 +971,44 @@ def test_injected_platform_tower_length_is_draft_invariant(tmp_path) -> None:
         assert np.all(np.isfinite(np.asarray(res.frequencies)))
 
 
+def test_from_windio_floating_n_nodes_refines_mesh(tmp_path) -> None:
+    """issue #58: ``from_windio_floating`` gains the same ``n_nodes``
+    mesh-refinement kwarg as ``from_windio`` / ``from_geometry``. It
+    re-grids only the tower beam (the platform assembly is untouched), so
+    the FE station count tracks ``n_nodes`` exactly and the coupled model
+    still solves. Uses the injected-platform tier (self-contained, no
+    screening warning)."""
+    pytest.importorskip("yaml")
+    from pybmodes.models import Tower
+
+    p = tmp_path / "fowt.yaml"
+    p.write_text(_FLOAT_TURBINE, encoding="utf-8")
+    ps = _stable_platform_support()
+
+    native = Tower.from_windio_floating(p, platform_support=ps)
+    refined = Tower.from_windio_floating(p, platform_support=ps, n_nodes=40)
+
+    assert refined._bmi.el_loc.size == 40                 # exact mesh size
+    assert refined._bmi.el_loc.size > native._bmi.el_loc.size
+    f = np.asarray(
+        refined.run(n_modes=12, check_model=False).frequencies, float
+    )
+    assert np.all(np.isfinite(f)) and np.all(np.diff(f) >= -1e-6)
+
+
+def test_from_windio_floating_n_nodes_guard(tmp_path) -> None:
+    pytest.importorskip("yaml")
+    from pybmodes.models import Tower
+
+    p = tmp_path / "fowt.yaml"
+    p.write_text(_FLOAT_TURBINE, encoding="utf-8")
+    for bad in (1, 0, -3, 2.5, True):
+        with pytest.raises(ValueError, match="n_nodes must be"):
+            Tower.from_windio_floating(
+                p, platform_support=_stable_platform_support(), n_nodes=bad,
+            )
+
+
 def test_injected_platform_mutually_exclusive_with_decks(tmp_path) -> None:
     """platform_support + a companion deck is ambiguous (two platform
     sources) → a clear ValueError, not a silent precedence rule."""

@@ -553,6 +553,7 @@ class Tower:
         elastodyn_dat: str | pathlib.Path | None = None,
         platform_support: PlatformSupport | None = None,
         rna_tip: TipMassProps | None = None,
+        n_nodes: int | None = None,
         rho: float = 1025.0,
         g: float = 9.80665,
     ) -> Tower:
@@ -605,6 +606,14 @@ class Tower:
           frequencies inherit the validated PlatformSupport assembly;
           this path adds no new numerics.
 
+        ``n_nodes`` re-grids the tower beam onto that many evenly-spaced
+        stations (geometry linearly interpolated, closed-form tube
+        properties recomputed exactly), mirroring :meth:`from_windio` /
+        :meth:`from_geometry` (issue #58 — uniform mesh-refinement kwarg
+        across the WindIO/geometry constructors). ``None`` keeps the
+        WindIO grid. It refines only the tower discretisation; the
+        platform assembly is unaffected.
+
         Sets ``hub_conn = 2`` / ``tow_support = 1`` and reuses the
         existing BModes-JJ-validated free-free ``PlatformSupport`` FEM
         unchanged. Needs the optional ``[windio]`` extra. For
@@ -622,7 +631,7 @@ class Tower:
         )
         from pybmodes.io.bmi import PlatformSupport, TipMassProps
         from pybmodes.io.geometry import tubular_section_props
-        from pybmodes.io.windio import read_windio_tubular
+        from pybmodes.io.windio import WindIOTubular, read_windio_tubular
         from pybmodes.io.windio_floating import (
             added_mass,
             hydrostatic_restoring,
@@ -630,6 +639,32 @@ class Tower:
             rigid_body_inertia,
         )
         from pybmodes.mooring import MooringSystem
+
+        if n_nodes is not None and (
+            not isinstance(n_nodes, int) or isinstance(n_nodes, bool)
+            or n_nodes < 2
+        ):
+            raise ValueError(
+                f"n_nodes must be an integer >= 2; got {n_nodes!r}"
+            )
+
+        def _tower_grid_od_wt(
+            geom: WindIOTubular,
+        ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            """Tower ``(station_grid, outer_diameter, wall_thickness)``,
+            re-gridded onto ``n_nodes`` evenly-spaced stations when
+            requested — geometry linearly interpolated, closed-form tube
+            properties recomputed exactly downstream. Mirrors
+            :meth:`from_geometry`'s issue-#35 mesh refinement."""
+            grid = np.asarray(geom.station_grid, dtype=float)
+            od = np.asarray(geom.outer_diameter, dtype=float)
+            wt = np.asarray(geom.wall_thickness, dtype=float)
+            if n_nodes is not None:
+                fine = np.linspace(float(grid[0]), float(grid[-1]), n_nodes)
+                od = np.interp(fine, grid, od)
+                wt = np.interp(fine, grid, wt)
+                grid = fine
+            return grid, od, wt
 
         # Fail fast (with one clear message) on an explicitly-supplied
         # deck path that does not exist — a deep FileNotFoundError from
@@ -674,8 +709,9 @@ class Tower:
                     "PlatformSupport, not both."
                 )
             gt = read_windio_tubular(yaml_path, component=component_tower)
+            t_grid, t_od, t_wt = _tower_grid_od_wt(gt)
             sp = tubular_section_props(
-                gt.station_grid, gt.outer_diameter, gt.wall_thickness,
+                t_grid, t_od, t_wt,
                 E=gt.E, rho=gt.rho, nu=gt.nu,
                 outfitting_factor=gt.outfitting_factor,
                 title="WindIO floating tower (injected platform)",
@@ -684,7 +720,7 @@ class Tower:
                 mass=0.0, cm_offset=0.0, cm_axial=0.0,
                 ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
             )
-            el_loc = _tower_element_boundaries(gt.station_grid)
+            el_loc = _tower_element_boundaries(t_grid)
             # The FEM beam length is ``radius + draft - hub_rad``
             # (``make_params``). The deck path makes this cancel to
             # ``flexible_length`` by passing ``radius = tower_top =
@@ -716,8 +752,9 @@ class Tower:
 
         # --- tower beam (validated Phase-1 tubular path) ---------------
         gt = read_windio_tubular(yaml_path, component=component_tower)
+        t_grid, t_od, t_wt = _tower_grid_od_wt(gt)
         sp = tubular_section_props(
-            gt.station_grid, gt.outer_diameter, gt.wall_thickness,
+            t_grid, t_od, t_wt,
             E=gt.E, rho=gt.rho, nu=gt.nu,
             outfitting_factor=gt.outfitting_factor,
             title="WindIO floating tower",
@@ -857,7 +894,7 @@ class Tower:
             cm_pform_x=cm_x, cm_pform_y=cm_y,
         )
 
-        el_loc = _tower_element_boundaries(gt.station_grid)
+        el_loc = _tower_element_boundaries(t_grid)
         bmi = _build_bmi_skeleton(
             title="WindIO floating tower + platform",
             beam_type=2,

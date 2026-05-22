@@ -8,7 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+### Added
+
+- **`Tower.from_windio_floating(..., n_nodes=N)`** (issue #58) — the
+  WindIO floating constructor now takes the same `n_nodes` mesh-
+  refinement keyword as `Tower.from_windio` / `from_geometry`,
+  re-gridding the tower beam onto `N` evenly-spaced stations (geometry
+  linearly interpolated, closed-form tube properties recomputed
+  exactly); the platform assembly is untouched. Completes the uniform
+  `n_nodes` surface across the WindIO/geometry constructors. The deck /
+  BMI readers are intentionally left without it — re-sampling their
+  tabulated section properties would silently smooth deliberately
+  stepped decks. Additive, non-breaking (default `None` keeps the
+  WindIO grid).
 
 ## [1.9.0] — 2026-05-22
 
