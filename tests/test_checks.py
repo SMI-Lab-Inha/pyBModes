@@ -15,6 +15,7 @@ in place before invoking ``check_model``.
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 
 import numpy as np
@@ -356,6 +357,63 @@ class TestCheckModel:
         """The axisymmetric / symmetric default (offset 0) never warns."""
         tower = self._build_cm_offset_tower(cm_x=0.0, cm_y=0.0)
         assert _filter(check_model(tower), "cm_pform_x") == []
+
+    # --- floating-model readiness (issue #95) ---------------------------
+    def test_zero_added_mass_warns(self) -> None:
+        """A floating model with no added mass (hydro_M = 0) warns — the
+        single most common seakeeping omission."""
+        tower = self._build_cm_offset_tower(cm_x=0.0)
+        tower._bmi.support = dataclasses.replace(
+            tower._bmi.support, hydro_M=np.zeros((6, 6)),
+        )
+        hits = _filter(check_model(tower), "hydro_M")
+        assert len(hits) == 1 and hits[0].severity == "WARN"
+        assert "added mass" in hits[0].message.lower()
+
+    def test_added_mass_present_is_silent(self) -> None:
+        """A populated hydro_M does not warn."""
+        tower = self._build_cm_offset_tower(cm_x=0.0)   # hydro_M = eye·1e6
+        assert _filter(check_model(tower), "hydro_M") == []
+
+    def test_no_restoring_warns(self) -> None:
+        """No hydrostatic restoring AND no mooring stiffness → the
+        rigid-body modes collapse to ~0 Hz; warn."""
+        tower = self._build_cm_offset_tower(cm_x=0.0)
+        tower._bmi.support = dataclasses.replace(
+            tower._bmi.support,
+            hydro_K=np.zeros((6, 6)), mooring_K=np.zeros((6, 6)),
+        )
+        hits = _filter(check_model(tower), "mooring_K")
+        assert any(
+            w.severity == "WARN" and "no restoring" in w.message.lower()
+            for w in hits
+        )
+
+    def test_restoring_present_is_silent(self) -> None:
+        """Mooring stiffness alone (no hydrostatic) still counts as
+        restoring — no warning."""
+        tower = self._build_cm_offset_tower(cm_x=0.0)
+        tower._bmi.support = dataclasses.replace(
+            tower._bmi.support, hydro_K=np.zeros((6, 6)),
+        )  # mooring_K still populated
+        hits = [w for w in check_model(tower) if "no restoring" in w.message.lower()]
+        assert hits == []
+
+    def test_non_physical_platform_inertia_errors(self) -> None:
+        """A negative i_matrix diagonal entry is non-physical → ERROR."""
+        tower = self._build_cm_offset_tower(cm_x=0.0)
+        bad = tower._bmi.support.i_matrix.copy()
+        bad[4, 4] = -1.0                               # negative pitch inertia
+        tower._bmi.support = dataclasses.replace(tower._bmi.support, i_matrix=bad)
+        hits = _filter(check_model(tower), "i_matrix")
+        assert any(w.severity == "ERROR" for w in hits)
+
+    def test_physical_platform_inertia_is_silent(self) -> None:
+        """A well-formed positive inertia does not error."""
+        tower = self._build_cm_offset_tower(cm_x=0.0)
+        hits = [w for w in check_model(tower)
+                if w.location in ("bmi.support.i_matrix", "bmi.support.mass_pform")]
+        assert hits == []
 
 
 # ---------------------------------------------------------------------------
