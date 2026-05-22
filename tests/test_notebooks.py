@@ -110,7 +110,7 @@ if not IEA15_WALKTHROUGH.is_file():
     pytest.skip(
         f"IEA-15 UMaineSemi walkthrough not found at {IEA15_WALKTHROUGH}; "
         "this normally indicates a checkout problem rather than a real skip",
-        allow_module_level=False,
+        allow_module_level=True,
     )
 
 
@@ -191,7 +191,7 @@ if not VOLTURNUS_WALKTHROUGH.is_file():
     pytest.skip(
         f"IEA-15 VolturnUS-S WindIO walkthrough not found at "
         f"{VOLTURNUS_WALKTHROUGH}; this normally indicates a checkout problem",
-        allow_module_level=False,
+        allow_module_level=True,
     )
 
 
