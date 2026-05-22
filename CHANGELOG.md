@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-05-22
+
+Static-review follow-up on top of 1.9.0: a deterministic fix for the
+2nd-tower FA/SS degenerate-pair resolution (the only numerical change —
+affected symmetric-tower polynomial coefficients move toward the
+reproducible result; frequencies unchanged), the `n_nodes` mesh-refinement
+keyword on the WindIO floating constructor, and validation-integrity /
+reference-accuracy hardening.
+
 ### Changed
 
 - **`verify_external_data.py --strict` no longer reports a bare PASS for an
