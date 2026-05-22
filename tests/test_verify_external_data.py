@@ -216,3 +216,53 @@ def test_update_allows_missing_with_flag(tmp_path, monkeypatch):
     # (nothing computable here, so it's a no-op write) and exits 0.
     rc = ved._do_update({"ghost": dict(_GHOST)}, dry_run=False, allow_missing=True)
     assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# tagged-archive entries: no git HEAD, so --strict must verify content
+# hashes — a present archive with empty hashes is UNVERIFIED, not PASS.
+# ---------------------------------------------------------------------------
+def _archive_spec(**over) -> dict:
+    spec = {
+        "relative_path": "external/arc",
+        "sha": "v3.00.00",
+        "fetch_at": "tagged-archive",
+        "optional": True,
+        "hashes": {},
+    }
+    spec.update(over)
+    return spec
+
+
+def test_tagged_archive_present_without_hashes_warns_under_strict(tmp_path, monkeypatch):
+    """Regression (static review): a present tagged-archive clone with no
+    content hash pins must WARN under --strict — it has no git HEAD to
+    check, so an empty ``hashes`` table means it was never verified. The
+    old code returned a misleading PASS."""
+    monkeypatch.setattr(ved, "REPO_ROOT", tmp_path)
+    (tmp_path / "external" / "arc").mkdir(parents=True)
+    spec = _archive_spec()
+    assert ved._verify_clone("arc", spec, strict=True).status == "WARN"
+    # Without --strict it stays a lenient PASS (archive present).
+    assert ved._verify_clone("arc", spec, strict=False).status == "PASS"
+
+
+def test_tagged_archive_with_matching_hash_passes_under_strict(tmp_path, monkeypatch):
+    """A tagged-archive entry whose pinned content hash matches the file
+    PASSes under --strict (the hash check is the verification)."""
+    monkeypatch.setattr(ved, "REPO_ROOT", tmp_path)
+    d = tmp_path / "external" / "arc"
+    d.mkdir(parents=True)
+    (d / "x.txt").write_bytes(b"hello\n")
+    spec = _archive_spec(hashes={"x.txt": ved._sha256(d / "x.txt")})
+    assert ved._verify_clone("arc", spec, strict=True).status == "PASS"
+
+
+def test_tagged_archive_with_mismatched_hash_fails_under_strict(tmp_path, monkeypatch):
+    """A tagged-archive entry whose pinned hash does NOT match FAILs."""
+    monkeypatch.setattr(ved, "REPO_ROOT", tmp_path)
+    d = tmp_path / "external" / "arc"
+    d.mkdir(parents=True)
+    (d / "x.txt").write_bytes(b"hello\n")
+    spec = _archive_spec(hashes={"x.txt": "0" * 64})
+    assert ved._verify_clone("arc", spec, strict=True).status == "FAIL"

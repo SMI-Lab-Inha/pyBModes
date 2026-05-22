@@ -159,14 +159,6 @@ def read_subdyn(path: str | pathlib.Path) -> SubDynFile:
     return _parse(text.splitlines(), source_file=path)
 
 
-def _strip_comment(line: str) -> str:
-    """Drop trailing ``!``-style or ``-`` comments after a value/label line."""
-    # SubDyn comments start with ``!`` or ``-`` after the label; keep
-    # everything up to the first such marker that comes after at least one
-    # non-whitespace token.
-    return line
-
-
 def _parse_float(tok: str) -> float:
     return float(tok.strip().replace("d", "e").replace("D", "E"))
 

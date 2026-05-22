@@ -28,8 +28,6 @@ import re
 
 from pybmodes.elastodyn.params import BladeElastoDynParams, TowerElastoDynParams
 
-_MISSING: list[str] = []   # sentinel for type checking
-
 
 def patch_dat(
     path: str | pathlib.Path,
@@ -64,6 +62,13 @@ def patch_dat(
 
     replacements = params.as_dict()
     missing = list(replacements.keys())
+    # Precompile one pattern per parameter name (each depends only on the
+    # name, not the line) so the regex isn't rebuilt for every
+    # line × remaining-parameter combination.
+    patterns = {
+        name: re.compile(r'^(\s*)\S+(\s+' + re.escape(name) + r')(\s.*)?$')
+        for name in missing
+    }
 
     for i, line in enumerate(lines):
         # Capture the original line ending (\n, \r\n, \r, or none for EOF) so
@@ -75,10 +80,7 @@ def patch_dat(
         for name in list(missing):
             # Match: optional whitespace, any value, whitespace, then the exact
             # parameter name as a whole token (word boundary or end-of-field).
-            pattern = re.compile(
-                r'^(\s*)\S+(\s+' + re.escape(name) + r')(\s.*)?$'
-            )
-            m = pattern.match(body)
+            m = patterns[name].match(body)
             if m:
                 value = replacements[name]
                 tail  = m.group(3) if m.group(3) is not None else ''

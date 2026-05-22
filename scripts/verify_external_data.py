@@ -187,6 +187,21 @@ def _verify_clone(
                 f"archive-only clone present at {rel}; pass --strict "
                 f"to verify file hashes.",
             )
+        # Under --strict an archive-only entry has no git HEAD to check, so
+        # content hash pins are the ONLY thing that verifies it. An empty
+        # ``hashes`` table means the present clone was never actually
+        # checked — report WARN rather than the misleading PASS the
+        # fall-through would otherwise produce. Declare ``hash_files`` and
+        # run --update on a maintainer machine to pin the hashes.
+        if not spec.get("hashes"):
+            return CloneResult(
+                name, "WARN",
+                f"archive-only clone at {rel} is present but UNVERIFIED — "
+                f"no content hashes pinned (tagged-archive entries have no "
+                f"git HEAD to check). Declare ``hash_files`` and run "
+                f"`verify_external_data.py --update` on a maintainer "
+                f"machine to pin them.",
+            )
         # fall through to hash check
     else:
         if not (clone_dir / ".git").exists():

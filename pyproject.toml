@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pybmodes"
-version = "1.9.0"
+version = "1.10.0"
 description = "Python finite-element library for wind turbine blade and tower modal analysis (OpenFAST/ElastoDyn)"
 readme = "README.md"
 license = { file = "LICENSE" }

@@ -8,6 +8,75 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-05-22
+
+Static-review follow-up on top of 1.9.0: a deterministic fix for the
+2nd-tower FA/SS degenerate-pair resolution (the only numerical change —
+affected symmetric-tower polynomial coefficients move toward the
+reproducible result; frequencies unchanged), the `n_nodes` mesh-refinement
+keyword on the WindIO floating constructor, and validation-integrity /
+reference-accuracy hardening.
+
+### Changed
+
+- **`verify_external_data.py --strict` no longer reports a bare PASS for an
+  unverified `tagged-archive` entry.** Such entries (the BModes clone) have
+  no git HEAD to check, so content hash pins are their only verification;
+  a present archive with an empty `hashes` table now reports **WARN**
+  ("present but UNVERIFIED") instead of PASS. The BModes manifest entry
+  gained a `hash_files` list (the Test03 / Test04 decks) so a maintainer
+  `--update` can pin real EOL-normalized content hashes and promote it to
+  a genuine PASS.
+
+- **`ModalResult.from_json` now refuses an unsupported `schema_version`.**
+  The reader checks the embedded `schema_version` (written as `"1"` by
+  `to_json`) and raises `ValueError` on any other value rather than
+  silently parsing a future-schema file under the v1 layout — closing the
+  gap between the documented serialisation contract ("older loaders refuse
+  a higher version") and the code. A payload with no `schema_version` key
+  is still accepted as `"1"` (lenient for any pre-field files). Files
+  written by current pyBmodes are `"1"` and unaffected.
+
+### Fixed
+
+- **Deterministic degenerate-pair resolution (2nd tower FA/SS).** The
+  symmetric-tower FA/SS degenerate-pair resolver accepted its rotation on a
+  *twist-inclusive* purity metric while only aligning the bending (flap +
+  lag) DOFs. For a clean-but-slightly-twisted 2nd-tower-bending pair that
+  metric sat right on the 0.99 accept threshold, so floating-point / BLAS-
+  thread-ordering noise could flip the gate, leave the mixed eigenvectors
+  for the classifier, and swap the 2nd FA/SS family members — producing
+  non-reproducible `TwFAM2Sh` / `TwSSM2Sh` polynomial coefficients (up to
+  ~2× off, e.g. the NREL 5MW land `TwSSM2Sh` round-trip). The accept gate
+  now keys on a twist-free bending-purity metric (`_bending_purity`);
+  torsion contamination is still rejected, deterministically, by the
+  existing torsion-energy gate in `_select_tower_family`. The coefficient
+  validator now also measures `file_rms` / `pybmodes_rms` against the same
+  rotated shape the fit used, so the per-block ratio/verdict is meaningful
+  for degenerate pairs. Tower **frequencies** are unaffected (rotation is a
+  basis change within the degenerate eigenspace); only the per-block
+  polynomial coefficients on affected symmetric towers change — toward the
+  reproducible single-thread result.
+
+- **Citation links point at canonical sources.** `VALIDATION.md` and
+  `docs/theory.rst` now link Bir (2010) and Jonkman (2007) to their
+  `docs.nrel.gov` PDFs and Bir (2009) to its AIAA DOI (`10.2514/6.2009-1035`)
+  instead of indirect OSTI biblio records, and add the BModes User Guide
+  (Bir 2005, NREL/TP-500-39133). The "BModes is not on GitHub" claim in
+  `VALIDATION.md`, `external/MANIFEST.toml`, and the historical changelog /
+  release-notes is corrected — the BModes Fortran source + CertTest decks
+  are on GitHub (`old-NWTC/BModes`); only the patched BModes_JJ binary
+  behind the CS_Monopile / OC3Hywind reference outputs is distribution-
+  restricted.
+
+- **Internal code-quality cleanups (no behaviour change).** Removed dead
+  helpers (`subdyn_reader._strip_comment` no-op, `elastodyn.writer._MISSING`
+  unused sentinel), merged two byte-identical `bmi._read_platform_inertia_*`
+  readers into one, precompiled the `patch_dat` coefficient regex once per
+  parameter (was rebuilt per line × parameter), vectorised the solver's
+  per-column L2 normalisation, and replaced a hand-rolled mooring step clamp
+  with `np.clip`.
+
 ### Added
 
 - **`Tower.from_windio_floating(..., n_nodes=N)`** (issue #58) — the
@@ -326,8 +395,8 @@ change. Four threads landed:
   per-PR CI.
 - **Unified :class:`pybmodes.io.ParseError` hierarchy** (Phase 1 PR
   A3). Six per-format subclasses
-  (``BmiParseError``, ``ElastoDynParseError``, ``MoorDynParseError``,
-  ``OutParseError``, ``SubDynParseError``, ``WindIOParseError``)
+  (``BMIParseError``, ``ElastoDynParseError``, ``SubDynParseError``,
+  ``WAMITParseError``, ``MoorDynParseError``, ``WindIOParseError``)
   let library callers catch parse errors precisely. Twenty-nine
   regression tests pin hashability and ``__eq__`` semantics
   (static review caught the original ``@dataclass`` shadowing of
@@ -462,9 +531,9 @@ Phase 4 — static-review hardening
   the workflow; the *Enforcement* paragraph in VALIDATION.md names
   the CI-validated coverage explicitly (NREL r-test family +
   IEA-Task-37 RWTs) and calls out the BModes CertTest 03/04 gap
-  (BModes is a NREL download, not GitHub, so those cases stay
-  maintainer-local enforcement). Addresses static-review
-  finding P1-1.
+  (the BModes CertTest decks are government-funded reference data not
+  bundled in CI, so those cases stay maintainer-local enforcement).
+  Addresses static-review finding P1-1.
 
 ### Fixed
 

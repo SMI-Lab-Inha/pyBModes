@@ -226,8 +226,7 @@ class Line:
             # magnitude so we don't overshoot into nonphysical territory.
             max_dH = 0.5 * abs(H)
             max_dV = 0.5 * max(abs(V), W * L * 0.01)
-            step[0] = max(-max_dH, min(max_dH, step[0]))
-            step[1] = max(-max_dV, min(max_dV, step[1]))
+            step = np.clip(step, (-max_dH, -max_dV), (max_dH, max_dV))
             H = max(H + step[0], 1e-6 * W * L)  # floor H to keep asinh well-defined
             V = V + step[1]
         else:

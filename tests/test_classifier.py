@@ -21,6 +21,7 @@ from pybmodes.elastodyn.params import (
     _BENDING_ACCEPT_THRESHOLD,
     _DEGENERATE_FREQ_RTOL,
     _TORSION_REJECT_THRESHOLD,
+    _bending_purity,
     _is_degenerate_pair,
     _kinetic_participation,
     _resolve_degenerate_pair,
@@ -434,3 +435,86 @@ def test_iea34_mode_torsion_reported() -> None:
         "the bending-accept threshold should sit above the torsion-"
         "reject threshold"
     )
+
+
+# ---------------------------------------------------------------------------
+# Determinism: the rotation gate keys on bending separation, not on a
+# twist-inclusive purity that flips across its threshold under floating-
+# point / BLAS-ordering noise (the latent FA2/SS2-swap regression).
+# ---------------------------------------------------------------------------
+
+
+def _twisted_degenerate_pair(
+    *, twist_amp: float, n: int = 21,
+) -> tuple[NodeModeShape, NodeModeShape]:
+    """A clean FA/SS degenerate bending pair where the FA mode carries a
+    small twist content. The bending DOFs separate perfectly; only the
+    twist-inclusive purity is dragged below the 0.99 gate."""
+    span = np.linspace(0.0, 1.0, n)
+    curve = span ** 2 * (3.0 - 2.0 * span)
+    zeros = np.zeros(n)
+    true_fa = NodeModeShape(
+        mode_number=1, freq_hz=0.5, span_loc=span,
+        flap_disp=curve, flap_slope=zeros,
+        lag_disp=zeros, lag_slope=zeros,
+        twist=twist_amp * curve,
+    )
+    true_ss = NodeModeShape(
+        mode_number=2, freq_hz=0.5, span_loc=span,
+        flap_disp=zeros, flap_slope=zeros,
+        lag_disp=curve, lag_slope=zeros,
+        twist=zeros,
+    )
+    return true_fa, true_ss
+
+
+def test_degenerate_pair_rotates_despite_subthreshold_twist() -> None:
+    """A degenerate bending pair given in a mixed basis still rotates to
+    clean FA / SS when it carries a small (sub-torsion-threshold) twist.
+
+    The twist amplitude (20 %) drags the *twist-inclusive* purity to
+    ~0.96 — below the 0.99 accept gate — so the previous gate rejected the
+    rotation, kept the mixed eigenvectors, and emitted a RuntimeWarning.
+    The bending-only gate accepts it. Regression for the BLAS-ordering-
+    dependent FA2/SS2 swap.
+    """
+    true_fa, true_ss = _twisted_degenerate_pair(twist_amp=0.2)
+    mix_a, mix_b = _rotate_shape_pair(true_fa, true_ss, math.radians(30.0))
+
+    # Sanity: the twist-inclusive metric on the aligned FA shape is below
+    # the gate (this is what used to reject the rotation).
+    fa_aligned, ss_aligned, _ = _resolve_degenerate_pair(mix_a, mix_b)
+    p_fa_twist, _ = _shape_participation(fa_aligned)
+    assert p_fa_twist < 0.99, (
+        f"fixture should sit below the twist-inclusive gate; got {p_fa_twist:.4f}"
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)  # must NOT warn / reject
+        rotated = _rotate_degenerate_pairs([mix_a, mix_b])
+
+    assert rotated[0] is not mix_a, "expected the pair to be rotated, not kept"
+    p_fa, _ = _bending_purity(rotated[0])
+    _, p_ss = _bending_purity(rotated[1])
+    assert p_fa > 0.99 and p_ss > 0.99, (
+        f"bending separation should be clean; got p_FA={p_fa:.4f}, p_SS={p_ss:.4f}"
+    )
+
+
+def test_degenerate_resolution_basis_invariant_with_twist() -> None:
+    """Resolving the same physical twisted pair from different input bases
+    yields identical FA and SS polynomial coefficients (deterministic
+    canonicalisation, independent of the eigensolver's arbitrary basis)."""
+    true_fa, true_ss = _twisted_degenerate_pair(twist_amp=0.2)
+
+    fa_coeffs: list[np.ndarray] = []
+    ss_coeffs: list[np.ndarray] = []
+    for ang in (0.0, 30.0, -75.0, 110.0):
+        a, b = _rotate_shape_pair(true_fa, true_ss, math.radians(ang))
+        rot = _rotate_degenerate_pairs([a, b])
+        fa_coeffs.append(fit_mode_shape(rot[0].span_loc, rot[0].flap_disp).coefficients())
+        ss_coeffs.append(fit_mode_shape(rot[1].span_loc, rot[1].lag_disp).coefficients())
+
+    for fa, ss in zip(fa_coeffs[1:], ss_coeffs[1:]):
+        np.testing.assert_allclose(fa, fa_coeffs[0], atol=1e-9)
+        np.testing.assert_allclose(ss, ss_coeffs[0], atol=1e-9)

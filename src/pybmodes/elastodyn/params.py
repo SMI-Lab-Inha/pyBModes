@@ -383,6 +383,33 @@ def _shape_participation(shape: NodeModeShape) -> tuple[float, float]:
     return (fa / total, ss / total)
 
 
+def _bending_purity(shape: NodeModeShape) -> tuple[float, float]:
+    """Return ``(p_FA, p_SS)`` over the *bending* DOFs only (flap + lag).
+
+    Twist is deliberately **excluded** from the denominator — unlike
+    :func:`_shape_participation`, which keeps it for reporting. The
+    degenerate-pair resolver derives its rotation angle and accept gate
+    from the flap/lag bending subspace only (twist is still rotated
+    consistently with the eigenvector basis, just not used to choose the
+    angle or decide acceptance), so a small amount of real torsion
+    coupling (~1-3 % of modal energy) must not decide whether the rotation
+    is accepted: with
+    twist in the denominator the accept gate sits right on the 0.99
+    boundary for a clean-but-slightly-twisted 2nd-tower pair and flips
+    across it under floating-point / BLAS-ordering noise, which non-
+    deterministically left the mixed pair for the classifier and swapped
+    the 2nd FA/SS family members (and their polynomial coefficients).
+    Torsion contamination is handled separately and deterministically by
+    the torsion-energy gate in :func:`_select_tower_family`.
+    """
+    fa = float(np.sum(shape.flap_disp ** 2))
+    ss = float(np.sum(shape.lag_disp ** 2))
+    total = fa + ss
+    if total <= 0.0:
+        return (0.0, 0.0)
+    return (fa / total, ss / total)
+
+
 def _rotate_shape_pair(
     shape_i: NodeModeShape,
     shape_j: NodeModeShape,
@@ -469,11 +496,13 @@ def _rotate_degenerate_pairs(
 
     Walks consecutive mode pairs. When a pair's relative frequency gap
     is below ``_DEGENERATE_FREQ_RTOL`` (1e-4), runs
-    :func:`_resolve_degenerate_pair` and verifies the rotated pair has
-    p_FA ≥ 0.99 in the first slot and p_SS ≥ 0.99 in the second. If both
-    pass, the rotated shapes replace the originals in the returned list.
-    Otherwise the originals are kept and a ``RuntimeWarning`` is emitted
-    — the pair is genuinely coupled (e.g. anisotropic stiffness or
+    :func:`_resolve_degenerate_pair` and verifies the rotated pair
+    separates cleanly in the bending DOFs — ``_bending_purity`` p_FA ≥ 0.99
+    in the first slot and p_SS ≥ 0.99 in the second (twist excluded from
+    the metric; see :func:`_bending_purity` for why). If both pass, the
+    rotated shapes replace the originals in the returned list. Otherwise
+    the originals are kept and a ``RuntimeWarning`` is emitted — the
+    bending pair is genuinely coupled (e.g. anisotropic stiffness or
     asymmetric tip mass that the resolver's symmetric model can't undo)
     and downstream classification has to handle it via participation
     ratio alone.
@@ -491,8 +520,12 @@ def _rotate_degenerate_pairs(
     while i < n - 1:
         if _is_degenerate_pair(out[i], out[i + 1]):
             fa_aligned, ss_aligned, _theta = _resolve_degenerate_pair(out[i], out[i + 1])
-            p_fa, _ = _shape_participation(fa_aligned)
-            _, p_ss = _shape_participation(ss_aligned)
+            # Accept on bending separation only (flap + lag), so a small,
+            # sub-threshold twist content can't flip the gate non-
+            # deterministically. Torsion contamination is rejected later,
+            # deterministically, in _select_tower_family.
+            p_fa, _ = _bending_purity(fa_aligned)
+            _, p_ss = _bending_purity(ss_aligned)
             if (p_fa >= _DEGENERATE_PURITY_THRESHOLD
                     and p_ss >= _DEGENERATE_PURITY_THRESHOLD):
                 out[i], out[i + 1] = fa_aligned, ss_aligned
@@ -502,11 +535,12 @@ def _rotate_degenerate_pairs(
                 f"Degenerate eigenpair (modes "
                 f"{out[i].mode_number}/{out[i + 1].mode_number} at "
                 f"{out[i].freq_hz:.4f} Hz) did not separate cleanly into "
-                f"FA / SS after rotation (p_FA={p_fa:.3f}, p_SS={p_ss:.3f}); "
-                f"leaving original eigenvectors unchanged. The pair may be "
-                f"genuinely coupled (anisotropic stiffness, asymmetric tip "
-                f"mass, or torsion contamination) rather than a clean "
-                f"symmetric degeneracy.",
+                f"FA / SS after rotation (bending p_FA={p_fa:.3f}, "
+                f"p_SS={p_ss:.3f}); leaving original eigenvectors unchanged. "
+                f"The bending pair may be genuinely coupled (anisotropic "
+                f"stiffness or asymmetric tip mass that the resolver's "
+                f"symmetric model can't undo) rather than a clean symmetric "
+                f"degeneracy.",
                 RuntimeWarning,
                 stacklevel=3,
             )

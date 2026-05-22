@@ -40,6 +40,7 @@ import numpy as np
 
 from pybmodes.elastodyn.params import (
     _remove_root_rigid_motion,
+    _rotate_degenerate_pairs,
     compute_blade_params,
     compute_tower_params_report,
 )
@@ -255,7 +256,16 @@ def validate_dat_coefficients(
     tower_modal = tower_model.run(n_modes=n_modes, check_model=False)
     tower_params, tower_report = compute_tower_params_report(tower_modal)
 
-    by_mode = {s.mode_number: s for s in tower_modal.shapes}
+    # ``compute_tower_params_report`` fits its polynomials to the
+    # degenerate-pair-rotated shapes (see ``_rotate_degenerate_pairs``).
+    # Build ``by_mode`` from the SAME rotated shapes so each block's
+    # file_rms (file polynomial vs the mode shape) and pybmodes_rms (the
+    # fit's residual) are measured against one consistent shape — for a
+    # degenerate FA/SS pair the unrotated and rotated shapes differ, which
+    # otherwise made the ratio (and PASS/WARN/FAIL verdict) meaningless.
+    # Rotation preserves mode_number, so the keys are unchanged.
+    shapes_for_fit = _rotate_degenerate_pairs(tower_modal.shapes)
+    by_mode = {s.mode_number: s for s in shapes_for_fit}
     fa1 = by_mode[tower_report.selected_fa_modes[0]]
     fa2 = by_mode[tower_report.selected_fa_modes[1]]
     ss1 = by_mode[tower_report.selected_ss_modes[0]]
