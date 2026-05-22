@@ -252,6 +252,8 @@ def decouple_inertia(M: np.ndarray) -> DecoupledInertia:
 
 
 __all__ = [
-    "DecoupledStiffness", "DecoupledInertia",
-    "decouple_stiffness", "decouple_inertia",
+    "DecoupledInertia",
+    "DecoupledStiffness",
+    "decouple_inertia",
+    "decouple_stiffness",
 ]

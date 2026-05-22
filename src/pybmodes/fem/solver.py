@@ -104,7 +104,7 @@ def solve_modes(
                 ngd, n_modes,
             )
             return eigvals, eigvecs
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # eigsh can fail to converge on near-singular K, on
             # poorly-conditioned M, or when MKL throws an ARPACK
             # error. Fall back to dense in any such case so the

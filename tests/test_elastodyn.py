@@ -324,7 +324,7 @@ class TestTowerElementBoundaries:
         for i in range(10):
             base = i / 10.0
             pairs.extend([base, base + eps])
-        stations = np.array(pairs[:-1] + [1.0], dtype=float)
+        stations = np.array([*pairs[:-1], 1.0], dtype=float)
         assert float(np.diff(stations).min()) < 1e-4
 
         out = _tower_element_boundaries(stations)

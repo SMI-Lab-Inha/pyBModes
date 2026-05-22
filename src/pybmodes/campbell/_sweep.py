@@ -190,12 +190,12 @@ def _solve_tower_once(
 
 
 def campbell_sweep(
-    input_path: "str | pathlib.Path | RotatingBlade | Tower",
+    input_path: str | pathlib.Path | RotatingBlade | Tower,
     omega_rpm: np.ndarray,
     n_blade_modes: int = 4,
     n_tower_modes: int = 4,
     *,
-    tower_input: "str | pathlib.Path | Tower | None" = None,
+    tower_input: str | pathlib.Path | Tower | None = None,
     track_by_mac: bool = True,
 ) -> CampbellResult:
     """Build a Campbell-diagram dataset for the given turbine.

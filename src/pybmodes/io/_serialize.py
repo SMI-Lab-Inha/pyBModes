@@ -61,7 +61,7 @@ def _capture_metadata(source_file: pathlib.Path | str | None = None) -> dict[str
 
     meta: dict[str, Any] = {
         "pybmodes_version": pybmodes_version,
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
         "source_file": str(source_file) if source_file is not None else None,
         "git_hash": _try_git_hash(),
     }

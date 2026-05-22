@@ -556,7 +556,7 @@ def test_from_windio_mooring_topology_and_props(tmp_path) -> None:
     lt = ms.line_types["chain"]
     assert lt.diam == 0.185
     assert lt.mass_per_length_air == pytest.approx(686.0)
-    assert lt.EA == pytest.approx(3.27e9)
+    assert pytest.approx(3.27e9) == lt.EA
     # wet weight from explicit mass: (m − ρ·π/4·d²)·g
     w_exp = (686.0 - 1025.0 * 0.25 * np.pi * 0.185**2) * 9.80665
     assert lt.w == pytest.approx(w_exp, rel=1e-6)
@@ -652,7 +652,7 @@ def test_from_windio_mooring_vs_from_moordyn_iea15() -> None:
         rt = ref.line_types.get(nm) or next(iter(ref.line_types.values()))
         assert lt.mass_per_length_air == pytest.approx(
             rt.mass_per_length_air, rel=1e-9)
-        assert lt.EA == pytest.approx(rt.EA, rel=1e-9)
+        assert pytest.approx(rt.EA, rel=1e-9) == lt.EA
         assert lt.w == pytest.approx(rt.w, rel=1e-9)
 
     Kw = ws.stiffness_matrix()

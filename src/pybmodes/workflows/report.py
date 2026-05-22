@@ -68,19 +68,19 @@ class ReportResult(WorkflowResult):
         blade-side findings were missing in 0.x and are restored here.
     """
 
-    out_path: "pathlib.Path | None" = None
-    tower_modal: "ModalResult | None" = None
-    blade_modal: "ModalResult | None" = None
-    tower_params: "TowerElastoDynParams | None" = None
-    blade_params: "BladeElastoDynParams | None" = None
-    validation: "ValidationResult | None" = None
-    campbell: "CampbellResult | None" = None
-    check_warnings: list["ModelWarning"] = field(default_factory=list)
+    out_path: pathlib.Path | None = None
+    tower_modal: ModalResult | None = None
+    blade_modal: ModalResult | None = None
+    tower_params: TowerElastoDynParams | None = None
+    blade_params: BladeElastoDynParams | None = None
+    validation: ValidationResult | None = None
+    campbell: CampbellResult | None = None
+    check_warnings: list[ModelWarning] = field(default_factory=list)
 
 
 def run_report(
-    dat_path: "str | pathlib.Path",
-    out_path: "str | pathlib.Path",
+    dat_path: str | pathlib.Path,
+    out_path: str | pathlib.Path,
     *,
     n_modes: int = 10,
     format: ReportFormat = "md",

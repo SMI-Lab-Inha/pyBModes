@@ -32,7 +32,6 @@ from __future__ import annotations
 import math
 import pathlib
 import warnings
-from typing import Optional
 
 import numpy as np
 
@@ -68,9 +67,9 @@ class MooringSystem:
         depth: float,
         rho: float = 1025.0,
         g: float = 9.80665,
-        line_types: Optional[dict[str, LineType]] = None,
-        points: Optional[dict[int, Point]] = None,
-        lines: Optional[list[Line]] = None,
+        line_types: dict[str, LineType] | None = None,
+        points: dict[int, Point] | None = None,
+        lines: list[Line] | None = None,
     ) -> None:
         self.depth = float(depth)
         self.rho = float(rho)
@@ -155,7 +154,7 @@ class MooringSystem:
 
     def solve_equilibrium(
         self,
-        body_r6_init: Optional[np.ndarray] = None,
+        body_r6_init: np.ndarray | None = None,
         tol: float = 1e-4,
         max_iter: int = 50,
         dx: float = 0.1,
@@ -209,7 +208,7 @@ class MooringSystem:
 
     def stiffness_matrix(
         self,
-        body_r6: Optional[np.ndarray] = None,
+        body_r6: np.ndarray | None = None,
         dx: float = 0.1,
         dtheta: float = 0.1,
     ) -> np.ndarray:
@@ -313,9 +312,9 @@ class MooringSystem:
         # recognised forms we therefore strictly parse the value;
         # unknown keys are tolerated (informational rows are common
         # in MoorDyn OPTIONS blocks).
-        depth_override: Optional[float] = None
-        rho_override: Optional[float] = None
-        g_override: Optional[float] = None
+        depth_override: float | None = None
+        rho_override: float | None = None
+        g_override: float | None = None
         if "OPTIONS" in sections:
             for raw in sections["OPTIONS"]:
                 parts = raw.split()
@@ -490,7 +489,7 @@ class MooringSystem:
         floating,
         *,
         depth: float,
-        moordyn_fallback: "pathlib.Path | str | None" = None,
+        moordyn_fallback: pathlib.Path | str | None = None,
         rho: float = 1025.0,
         g: float = 9.80665,
     ) -> MooringSystem:

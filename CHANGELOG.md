@@ -8,13 +8,73 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+Static-review follow-up on top of 1.8.1. No public-API change; no
+numerical change. Release-integrity, validation-coverage, and
+source-quality items:
+
+### Changed
+
+- **PyPI publishing is now gated on external validation.** A new
+  ``validation-gate`` job in ``.github/workflows/publish.yml`` queries
+  the Actions API and refuses to publish unless the *Validation
+  (external data)* workflow has a **successful run on the exact commit
+  being tagged**. The release ordering is now: run validation on the
+  release commit → confirm green → push the ``vX.Y.Z`` tag. Closes the
+  gap where a tag push could publish after build/smoke alone without
+  the integration-tolerance workflow ever having run on that commit.
+- **The validation workflow now exercises every required manifest
+  clone, and ``--strict`` fails on a missing one.** Cloning in
+  ``validation.yml`` is manifest-driven via
+  ``verify_external_data.py --clone`` (no hardcoded URL/SHA list), so
+  CI now fetches OpenFAST r-test, IEA-3.4 / IEA-10 / IEA-15 / IEA-22,
+  and WISDEM — previously only r-test, IEA-3.4, and IEA-15. Manifest
+  entries gained an ``optional`` flag (MoorPy / RAFT / BModes); under
+  ``--strict`` a missing **required** clone is now a hard FAIL instead
+  of a silent SKIP, so a verifier report can't look acceptable while a
+  pinned non-optional entry went unchecked. README + ``VALIDATION.md``
+  coverage text updated to match.
+- **Expanded the ruff ruleset beyond ``E/F/W/I``.** Added ``UP`` (py-
+  upgrade), ``B`` (bugbear), ``C4`` (comprehensions), ``SIM``, ``PIE``,
+  and ``RUF`` with a documented ``ignore`` list (the ambiguous-unicode
+  rules fire on legitimate engineering glyphs; a few stylistic rules
+  are deliberately deferred). Safe autofixes applied across the tree.
+- **Raised the global mypy floor and roughly tripled the strict-typed
+  surface.** New package-wide flags ``warn_redundant_casts``,
+  ``strict_equality``, ``no_implicit_optional``, ``warn_unused_ignores``,
+  ``extra_checks``; the per-module strict-override list grew from 10 to
+  29 modules (every pure-logic / typed-dataclass module that passes
+  ``--disallow-untyped-defs --warn-return-any``; parsers and matplotlib
+  helpers stay loose).
+- **Neutral-provenance scrub.** Replaced the remaining
+  "external-review" wording in ``validation.yml``, ``CHANGELOG.md``, and
+  a test comment with the project's neutral vocabulary ("static
+  review" / "follow-up"), per ``CONTRIBUTING.md`` §3.
+
+### Added
+
+- **Real ``verify_external_data.py --update`` write-back** (replacing
+  the previous stub): re-pins each clone ``sha`` to local ``HEAD`` and
+  recomputes the ``hashes`` table from per-clone ``hash_files``
+  declarations — now declared for **all six required clones** (r-test,
+  IEA-3.4 / 10 / 15 / 22, WISDEM). A declared ``hash_files`` path that
+  can't be resolved (typo / absent clone) **aborts the update and
+  writes nothing** so a mistake can't leave a stale ``hashes`` table
+  behind; ``--allow-missing-hashes`` is the explicit escape hatch.
+  ``--strict`` re-checks any populated hash, but the ``hashes`` tables
+  ship **empty** — file-content hashing is *declared but not yet
+  active*, with commit-SHA pinning the live integrity layer until a
+  maintainer runs ``--update`` from an LF checkout (Linux/CI; a CRLF
+  Windows checkout would pin hashes a fresh LF clone can't reproduce).
+  New ``--clone`` / ``--include-optional`` / ``--dry-run`` /
+  ``--allow-missing-hashes`` flags; ``tests/test_verify_external_data.py``
+  covers the rewriter, the required/optional SKIP-vs-FAIL policy, and
+  the ``--update`` fail-loud path.
 
 ## [1.8.1] — 2026-05-21
 
-External-review follow-up patch on top of 1.8.0. No public-API
-change; no numerical change; no behaviour change. Three governance
-+ reproducibility items addressed:
+Static-review follow-up patch on top of 1.8.0. No public-API
+change; no numerical change; no behaviour change. Three
+governance / reproducibility items addressed:
 
 ### Changed
 
@@ -27,7 +87,7 @@ change; no numerical change; no behaviour change. Three governance
   ``CONTRIBUTING.md`` no-tool-attribution rule existed but the
   Phase 4 round had quietly re-introduced named references through
   the per-finding follow-up commits — a governance self-
-  contradiction caught by the post-1.8.0 external review. All
+  contradiction caught by the post-1.8.0 static review. All
   references now use neutral provenance wording ("static review",
   "static-review pass") plus the PR number for audit trail.
 - **Populated the external-data manifest's per-clone SHA pins.**
@@ -55,7 +115,7 @@ change; no numerical change; no behaviour change. Three governance
 ## [1.8.0] — 2026-05-21
 
 Multi-phase architecture refactor + project-infrastructure round +
-external-review follow-up. No public-API change; one CLI default
+static-review follow-up. No public-API change; one CLI default
 change (``pybmodes windio --on-skip`` defaults to ``fail-on-data``
 instead of silently warning — see Phase 4 below); no numerical
 change. Four threads landed:
@@ -77,7 +137,7 @@ change. Four threads landed:
   (tower-specific platform-scalar parsers). Every public name
   is preserved; existing imports keep working through the
   ``__init__.py`` re-export layer.
-- **Phase 4** — external-review hardening: ``pybmodes batch
+- **Phase 4** — static-review hardening: ``pybmodes batch
   --patch`` gains the same dry-run / backup / output-dir safety
   contract that ``pybmodes patch`` has had since 1.0 (now with
   ``backup=True`` default for tree-wide mutation); ``run_windio``
@@ -258,8 +318,8 @@ change. Four threads landed:
   a planned mixin-based split was rejected by Plan-agent review
   as architecturally hollow.
 
-Phase 4 — external-review hardening
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Phase 4 — static-review hardening
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - **``run_batch`` safety contract** (Phase 4 PR D1, merged in #77).
   ``run_batch(..., patch=True)`` previously called ``patch_dat``
@@ -274,7 +334,7 @@ Phase 4 — external-review hardening
   ``run_patch`` keeps ``backup=False`` default), ``output_dir``
   (per-deck destination namespaces on the deck's *relative path
   under root* to avoid stem collisions between sibling sub-trees,
-  fix from PR #77 static-review pass). Addresses external-review
+  fix from PR #77 static-review pass). Addresses static-review
   finding P1-3.
 - **``run_windio`` ``on_skip`` policy** (Phase 4 PR D2, merged in
   #78). Three policies: ``"warn"`` (legacy permissive),
@@ -289,7 +349,7 @@ Phase 4 — external-review hardening
   on ``run_windio`` returning ``exit_code=0`` on blade-extraction
   failure now see ``exit_code=1`` by default. Pass
   ``--on-skip warn`` (or ``on_skip="warn"`` library-side) for the
-  pre-1.8.0 permissive default. Addresses external-review finding
+  pre-1.8.0 permissive default. Addresses static-review finding
   P1-2.
 - **Validation workflow** (Phase 4 PR D3, merged in #79). New
   ``.github/workflows/validation.yml`` (``workflow_dispatch`` +
@@ -303,7 +363,7 @@ Phase 4 — external-review hardening
   the CI-validated coverage explicitly (NREL r-test family +
   IEA-Task-37 RWTs) and calls out the BModes CertTest 03/04 gap
   (BModes is a NREL download, not GitHub, so those cases stay
-  maintainer-local enforcement). Addresses external-review
+  maintainer-local enforcement). Addresses static-review
   finding P1-1.
 
 ### Fixed

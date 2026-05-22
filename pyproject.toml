@@ -163,12 +163,61 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
+# Beyond the E/F/W/I baseline: pyupgrade (UP), bugbear (B),
+# comprehensions (C4), simplify (SIM), flake8-pie (PIE), and the
+# Ruff-native (RUF) checks. A few rules are deliberately silenced —
+# see ``ignore`` for the rationale.
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "PIE", "RUF"]
+ignore = [
+    # Ambiguous-unicode flags fire on legitimate engineering glyphs
+    # (×, ≤, ≥, °, μ, …) that appear throughout this structural-
+    # dynamics library's docstrings, comments, and strings — they are
+    # intentional notation, not homoglyph typos.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # zip(..., strict=...) demands a per-call length-equality decision;
+    # a blanket strict=False would mask real mismatches. Deferred to a
+    # focused pass rather than auto-applied here.
+    "B905",
+    # pytest.raises/warns(match=...) pattern tightening — deferred to a
+    # dedicated test-quality pass.
+    "RUF043",
+    # ``dict(key=val, …)`` is idiomatic and readable for the matplotlib
+    # prop dicts and keyword-style config records in this codebase;
+    # forcing ``{...}`` literals would not improve clarity.
+    "C408",
+    # ``if/else`` blocks are kept over one-line ternaries where the
+    # branches are non-trivial (Campbell label/MAC assembly) and read
+    # more clearly spelled out.
+    "SIM108",
+    # ``__all__`` lists are grouped by role (types → readers → writers
+    # → adapters → internal re-exports) with explanatory comments, not
+    # alphabetised — the grouping is the documentation.
+    "RUF022",
+    # Tuple-unpack names are kept even when locally unused because they
+    # document the shape of the returned record — deferred.
+    "RUF059",
+    # One broad ``pytest.raises(Exception)`` assertion — narrowing it
+    # needs per-test exception analysis; deferred to a test-quality pass.
+    "B017",
+]
 
 [tool.mypy]
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
+# Floor raised for ALL modules (verified clean across the package):
+# redundant casts, non-overlapping equality, implicit-Optional bans,
+# dead ``# type: ignore`` comments, and the ``--extra-checks`` bundle.
+# These don't require full type coverage (parsers stay loose on
+# untyped defs — see the per-module overrides) but they catch a real
+# class of latent bug without that coverage.
+warn_redundant_casts = true
+strict_equality = true
+no_implicit_optional = true
+warn_unused_ignores = true
+extra_checks = true
 
 # Per-module strict overrides. Modules listed here run under
 # stricter mypy checks: untyped function definitions, untyped
@@ -192,6 +241,29 @@ module = [
     "pybmodes.mac",
     "pybmodes.io.bmi",
     "pybmodes.options",
+    # 1.8.2 static-review ratchet — verified clean under the strict
+    # flags (`mypy --disallow-untyped-defs --disallow-incomplete-defs
+    # --warn-return-any`). Parsers and matplotlib helpers stay loose;
+    # everything below is pure-logic / typed-dataclass surface.
+    "pybmodes.report",
+    "pybmodes.io._serialize",
+    "pybmodes.io.wamit_reader",
+    "pybmodes.fem.assembly",
+    "pybmodes.fem.boundary",
+    "pybmodes.fem.element",
+    "pybmodes.fem.gauss",
+    "pybmodes.fem.nondim",
+    "pybmodes.fem.normalize",
+    "pybmodes.fem.platform_modes",
+    "pybmodes.mooring._catenary",
+    "pybmodes.mooring._rotation",
+    "pybmodes.mooring._moordyn_parser",
+    "pybmodes.campbell._mac",
+    "pybmodes.campbell._classify",
+    "pybmodes.campbell._models",
+    "pybmodes.campbell._plot",
+    "pybmodes.campbell._sweep",
+    "pybmodes.campbell.result",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

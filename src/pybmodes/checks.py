@@ -157,7 +157,7 @@ def check_model(
 # Section-property resolution
 # ---------------------------------------------------------------------------
 
-def _resolve_section_properties(model: _Model) -> "SectionProperties":
+def _resolve_section_properties(model: _Model) -> SectionProperties:
     """Return the model's section-properties record, reading it from
     disk if the model is BMI-only and ``_sp`` has not been set."""
     if model._sp is not None:
@@ -180,7 +180,7 @@ _SECTION_PROPERTY_FIELDS = (
 
 
 def _check_section_properties_finite(
-    sp: "SectionProperties", out: list[ModelWarning],
+    sp: SectionProperties, out: list[ModelWarning],
 ) -> None:
     """Flag any non-finite (NaN / ±Inf) entry in the numeric section-
     property fields. ERROR-severity because every downstream
@@ -215,7 +215,7 @@ def _check_section_properties_finite(
         ))
 
 
-def _check_span_monotonic(sp: "SectionProperties", out: list[ModelWarning]) -> None:
+def _check_span_monotonic(sp: SectionProperties, out: list[ModelWarning]) -> None:
     span = np.asarray(sp.span_loc, dtype=float)
     if span.size < 2:
         return
@@ -232,7 +232,7 @@ def _check_span_monotonic(sp: "SectionProperties", out: list[ModelWarning]) -> N
         ))
 
 
-def _check_mass_positive(sp: "SectionProperties", out: list[ModelWarning]) -> None:
+def _check_mass_positive(sp: SectionProperties, out: list[ModelWarning]) -> None:
     m = np.asarray(sp.mass_den, dtype=float)
     bad_idx = np.flatnonzero(m <= 0.0)
     if bad_idx.size:
@@ -247,7 +247,7 @@ def _check_mass_positive(sp: "SectionProperties", out: list[ModelWarning]) -> No
         ))
 
 
-def _check_stiffness_jumps(sp: "SectionProperties", out: list[ModelWarning]) -> None:
+def _check_stiffness_jumps(sp: SectionProperties, out: list[ModelWarning]) -> None:
     for attr, label in (("flp_stff", "EI_FA"), ("edge_stff", "EI_SS")):
         arr = np.asarray(getattr(sp, attr), dtype=float)
         if arr.size < 2:
@@ -276,7 +276,7 @@ def _check_stiffness_jumps(sp: "SectionProperties", out: list[ModelWarning]) -> 
             ))
 
 
-def _check_ei_ratio(sp: "SectionProperties", out: list[ModelWarning]) -> None:
+def _check_ei_ratio(sp: SectionProperties, out: list[ModelWarning]) -> None:
     fa = np.asarray(sp.flp_stff, dtype=float)
     ss = np.asarray(sp.edge_stff, dtype=float)
     mask = (fa > 0.0) & (ss > 0.0)
@@ -300,7 +300,7 @@ def _check_ei_ratio(sp: "SectionProperties", out: list[ModelWarning]) -> None:
 
 
 def _check_rna_vs_tower_mass(
-    bmi, sp: "SectionProperties", out: list[ModelWarning]
+    bmi, sp: SectionProperties, out: list[ModelWarning]
 ) -> None:
     if bmi.beam_type != 2:
         return

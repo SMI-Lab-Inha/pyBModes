@@ -40,11 +40,11 @@ from pybmodes.io.bmi import read_bmi
 from pybmodes.io.sec_props import SectionProperties
 from pybmodes.models._pipeline import run_fem
 from pybmodes.models._platform import (
-    _platform_inertia_matrix,  # noqa: F401  (re-export for back-compat)
-    _scan_platform_fields,  # noqa: F401  (re-export for back-compat)
+    _platform_inertia_matrix,
+    _scan_platform_fields,
 )
 from pybmodes.models._shared import (
-    _run_validation_and_warn,  # noqa: F401  (re-export for back-compat)
+    _run_validation_and_warn,
 )
 from pybmodes.models.result import ModalResult
 
@@ -68,7 +68,7 @@ class Tower:
     # at class scope so mypy sees the attribute on instances built
     # via ``cls.__new__(cls)`` (the from_elastodyn path bypasses
     # ``__init__``).
-    coeff_validation: "ValidationResult | None" = None
+    coeff_validation: ValidationResult | None = None
 
     def __init__(self, bmi_path: str | pathlib.Path) -> None:
         self._bmi = read_bmi(bmi_path)
@@ -79,7 +79,7 @@ class Tower:
             )
 
     @classmethod
-    def from_bmi(cls, bmi_path: str | pathlib.Path) -> "Tower":
+    def from_bmi(cls, bmi_path: str | pathlib.Path) -> Tower:
         """Build a tower model from a BModes-format ``.bmi`` deck.
 
         Equivalent to ``Tower(bmi_path)`` — exposed as an explicit
@@ -103,7 +103,7 @@ class Tower:
         main_dat_path: str | pathlib.Path,
         *,
         validate_coeffs: bool = False,
-    ) -> "Tower":
+    ) -> Tower:
         """Build a tower model from an OpenFAST ElastoDyn main ``.dat``.
 
         The main file is parsed plus the tower file referenced via
@@ -155,9 +155,9 @@ class Tower:
     @classmethod
     def from_geometry(
         cls,
-        station_grid: "np.ndarray | list[float]",
-        outer_diameter: "np.ndarray | list[float]",
-        wall_thickness: "np.ndarray | list[float]",
+        station_grid: np.ndarray | list[float],
+        outer_diameter: np.ndarray | list[float],
+        wall_thickness: np.ndarray | list[float],
         *,
         flexible_length: float,
         E: float = 2.0e11,
@@ -165,9 +165,9 @@ class Tower:
         nu: float = 0.3,
         outfitting_factor: float = 1.0,
         hub_conn: int = 1,
-        tip_mass: "TipMassProps | float | None" = None,
-        n_nodes: "int | None" = None,
-    ) -> "Tower":
+        tip_mass: TipMassProps | float | None = None,
+        n_nodes: int | None = None,
+    ) -> Tower:
         """Build a tower model from tubular **geometry** instead of
         pre-computed structural properties (issue #35).
 
@@ -306,9 +306,9 @@ class Tower:
         component: str = "tower",
         thickness_interp: str = "linear",
         hub_conn: int = 1,
-        tip_mass: "TipMassProps | float | None" = None,
-        n_nodes: "int | None" = None,
-    ) -> "Tower":
+        tip_mass: TipMassProps | float | None = None,
+        n_nodes: int | None = None,
+    ) -> Tower:
         """Build a tower (or monopile) model directly from a **WindIO**
         ontology ``.yaml`` (issue #35).
 
@@ -373,7 +373,7 @@ class Tower:
         main_dat_path: str | pathlib.Path,
         moordyn_dat_path: str | pathlib.Path,
         hydrodyn_dat_path: str | pathlib.Path | None = None,
-    ) -> "Tower":
+    ) -> Tower:
         """Build a free-free floating tower model with a populated
         :class:`~pybmodes.io.bmi.PlatformSupport` block.
 
@@ -551,11 +551,11 @@ class Tower:
         hydrodyn_dat: str | pathlib.Path | None = None,
         moordyn_dat: str | pathlib.Path | None = None,
         elastodyn_dat: str | pathlib.Path | None = None,
-        platform_support: "PlatformSupport | None" = None,
-        rna_tip: "TipMassProps | None" = None,
+        platform_support: PlatformSupport | None = None,
+        rna_tip: TipMassProps | None = None,
         rho: float = 1025.0,
         g: float = 9.80665,
-    ) -> "Tower":
+    ) -> Tower:
         """Coupled floating tower+platform model from a WindIO ``.yaml``
         (issue #35).
 
@@ -880,7 +880,7 @@ class Tower:
         cls,
         main_dat_path: str | pathlib.Path,
         subdyn_dat_path: str | pathlib.Path,
-    ) -> "Tower":
+    ) -> Tower:
         """Build a combined pile + tower cantilever from an ElastoDyn deck
         plus a SubDyn substructure file.
 

@@ -110,9 +110,7 @@ def _select_first_two(shapes, *, want_fa: bool) -> tuple[int, int]:
         p_fa, p_ss, _ = _participation(shape)
         is_fa = p_fa >= 0.6
         is_ss = p_ss >= 0.6
-        if want_fa and is_fa:
-            out.append(idx)
-        elif (not want_fa) and is_ss:
+        if (want_fa and is_fa) or ((not want_fa) and is_ss):
             out.append(idx)
         if len(out) == 2:
             return (out[0], out[1])

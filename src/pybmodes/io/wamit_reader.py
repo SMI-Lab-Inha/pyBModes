@@ -74,7 +74,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-__all__ = ["WamitData", "WamitReader", "HydroDynReader"]
+__all__ = ["HydroDynReader", "WamitData", "WamitReader"]
 
 
 def _parse_fortran_float(value: str) -> float:

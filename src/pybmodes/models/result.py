@@ -259,7 +259,7 @@ class ModalResult:
         np.savez_compressed(path, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def load(cls, path: str | pathlib.Path) -> "ModalResult":
+    def load(cls, path: str | pathlib.Path) -> ModalResult:
         """Read a result back from a ``.npz`` archive saved by
         :meth:`save`. The reconstructed instance is value-equal to the
         original modulo numpy dtype promotion."""
@@ -400,7 +400,7 @@ class ModalResult:
         )
 
     @classmethod
-    def from_json(cls, path: str | pathlib.Path) -> "ModalResult":
+    def from_json(cls, path: str | pathlib.Path) -> ModalResult:
         """Read a result back from a JSON file saved by
         :meth:`to_json`."""
         path = pathlib.Path(path)

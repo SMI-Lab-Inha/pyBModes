@@ -88,16 +88,16 @@ class _Section:
 # ---------------------------------------------------------------------------
 
 def generate_report(
-    result: "ModalResult",
+    result: ModalResult,
     output_path: str | pathlib.Path,
     *,
     format: ReportFormat = "md",
-    model: "Tower | RotatingBlade | None" = None,
-    campbell: "CampbellResult | None" = None,
-    validation: "ValidationResult | None" = None,
-    check_warnings: "list[ModelWarning] | None" = None,
-    tower_params: "TowerElastoDynParams | None" = None,
-    blade_params: "BladeElastoDynParams | None" = None,
+    model: Tower | RotatingBlade | None = None,
+    campbell: CampbellResult | None = None,
+    validation: ValidationResult | None = None,
+    check_warnings: list[ModelWarning] | None = None,
+    tower_params: TowerElastoDynParams | None = None,
+    blade_params: BladeElastoDynParams | None = None,
     elastodyn_compatible: bool | None = None,
     source_file: str | pathlib.Path | None = None,
 ) -> pathlib.Path:
@@ -166,13 +166,13 @@ def generate_report(
 
 def _build_sections(
     *,
-    result: "ModalResult",
-    model: "Tower | RotatingBlade | None",
-    campbell: "CampbellResult | None",
-    validation: "ValidationResult | None",
-    check_warnings: "list[ModelWarning] | None",
-    tower_params: "TowerElastoDynParams | None",
-    blade_params: "BladeElastoDynParams | None",
+    result: ModalResult,
+    model: Tower | RotatingBlade | None,
+    campbell: CampbellResult | None,
+    validation: ValidationResult | None,
+    check_warnings: list[ModelWarning] | None,
+    tower_params: TowerElastoDynParams | None,
+    blade_params: BladeElastoDynParams | None,
     elastodyn_compatible: bool | None,
 ) -> list[_Section]:
     sections: list[_Section] = []
@@ -194,7 +194,7 @@ def _build_sections(
 
 
 def _section_model_summary(
-    result: "ModalResult", model: "Tower | RotatingBlade | None",
+    result: ModalResult, model: Tower | RotatingBlade | None,
 ) -> _Section:
     meta = result.metadata or {}
     body: list[Any] = []
@@ -215,7 +215,7 @@ def _section_model_summary(
         ["pyBmodes version", str(meta.get("pybmodes_version", "—"))],
         ["Generated at (UTC)",
          meta.get("timestamp")
-         or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")],
+         or datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")],
         ["Git hash", str(meta.get("git_hash") or "—")],
     ])
     body.append({"kind": "table",
@@ -224,7 +224,7 @@ def _section_model_summary(
 
 
 def _section_assumptions(
-    model: "Tower | RotatingBlade | None",
+    model: Tower | RotatingBlade | None,
     elastodyn_compatible: bool | None,
 ) -> _Section:
     body: list[Any] = []
@@ -276,7 +276,7 @@ def _section_assumptions(
     return _Section("2. Assumptions", body)
 
 
-def _section_frequencies(result: "ModalResult") -> _Section:
+def _section_frequencies(result: ModalResult) -> _Section:
     body: list[Any] = []
     rows = []
     for i, f in enumerate(result.frequencies, start=1):
@@ -294,7 +294,7 @@ def _section_frequencies(result: "ModalResult") -> _Section:
     return _Section("3. Natural frequencies", body)
 
 
-def _section_mode_classification(result: "ModalResult") -> _Section:
+def _section_mode_classification(result: ModalResult) -> _Section:
     body: list[Any] = []
     if not result.shapes:
         body.append("No mode shapes available.")
@@ -363,8 +363,8 @@ def _section_mode_classification(result: "ModalResult") -> _Section:
 
 
 def _section_polynomial_coefficients(
-    tower_params: "TowerElastoDynParams | None",
-    blade_params: "BladeElastoDynParams | None",
+    tower_params: TowerElastoDynParams | None,
+    blade_params: BladeElastoDynParams | None,
 ) -> _Section:
     body: list[Any] = []
 
@@ -411,7 +411,7 @@ def _section_polynomial_coefficients(
     return _Section("5. Polynomial coefficients with fit residuals", body)
 
 
-def _section_validation(validation: "ValidationResult") -> _Section:
+def _section_validation(validation: ValidationResult) -> _Section:
     body: list[Any] = []
     body.append(f"**Overall verdict**: {validation.overall}")
     rows = []
@@ -434,7 +434,7 @@ def _section_validation(validation: "ValidationResult") -> _Section:
 
 
 def _section_check_warnings(
-    check_warnings: "list[ModelWarning]",
+    check_warnings: list[ModelWarning],
 ) -> _Section:
     body: list[Any] = []
     if not check_warnings:
@@ -452,7 +452,7 @@ def _section_check_warnings(
     return _Section("7. check_model warnings", body)
 
 
-def _section_campbell(campbell: "CampbellResult") -> _Section:
+def _section_campbell(campbell: CampbellResult) -> _Section:
     body: list[Any] = []
     body.append(
         f"Sweep over {campbell.omega_rpm.size} rotor speed(s) "
@@ -573,9 +573,9 @@ def _render_html_table(
 
 
 def _render_csv(
-    result: "ModalResult",
-    tower_params: "TowerElastoDynParams | None",
-    blade_params: "BladeElastoDynParams | None",
+    result: ModalResult,
+    tower_params: TowerElastoDynParams | None,
+    blade_params: BladeElastoDynParams | None,
 ) -> str:
     """CSV emission is intentionally narrower than markdown / HTML —
     we drop the narrative sections (assumptions, validation, warnings)

@@ -77,9 +77,9 @@ class BatchResult(WorkflowResult):
         ``TwFAM2Sh_ratio``, ``TwSSM2Sh_ratio``, ``n_fail``, ``n_warn``).
     """
 
-    root: "pathlib.Path | None" = None
-    out_dir: "pathlib.Path | None" = None
-    summary_path: "pathlib.Path | None" = None
+    root: pathlib.Path | None = None
+    out_dir: pathlib.Path | None = None
+    summary_path: pathlib.Path | None = None
     decks_found: int = 0
     decks_failed: int = 0
     summary_rows: list[dict[str, object]] = field(default_factory=list)
@@ -121,14 +121,14 @@ def find_elastodyn_main_dats(root: pathlib.Path) -> list[pathlib.Path]:
     return out
 
 
-def _ratio(name: str, result: "object") -> float:
+def _ratio(name: str, result: object) -> float:
     block = result.tower_results.get(name)  # type: ignore[attr-defined]
     return float(block.ratio) if block is not None else float("nan")
 
 
 def run_batch(
-    root: "str | pathlib.Path",
-    out_dir: "str | pathlib.Path",
+    root: str | pathlib.Path,
+    out_dir: str | pathlib.Path,
     *,
     kind: BatchKind = "elastodyn",
     validate: bool = False,
@@ -136,7 +136,7 @@ def run_batch(
     n_modes: int = 10,
     dry_run: bool = False,
     backup: bool = True,
-    output_dir: "str | pathlib.Path | None" = None,
+    output_dir: str | pathlib.Path | None = None,
 ) -> BatchResult:
     """Walk a directory tree of ElastoDyn decks, validate + optionally
     patch each one, and write a summary CSV.
@@ -298,7 +298,7 @@ def run_batch(
                 # land in distinct sub-trees instead of silently
                 # overwriting each other. Static-review follow-up on
                 # PR #77.
-                per_deck_out: "pathlib.Path | None" = None
+                per_deck_out: pathlib.Path | None = None
                 if output_root is not None:
                     try:
                         rel_parent = deck.relative_to(root_p).parent

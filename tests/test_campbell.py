@@ -522,7 +522,7 @@ def test_campbell_tower_too_few_modes_raises_diagnostic(
 
     requested = 4
 
-    def fake_run_fem(bmi, *, n_modes, sp):  # noqa: ARG001
+    def fake_run_fem(bmi, *, n_modes, sp):
         # Simulate the asymmetric-K / general-eig fallback returning
         # fewer modes than requested (NaN-dropped eigenvalues).
         return _StubModalResult(
@@ -688,8 +688,8 @@ def test_plot_campbell_structural_labels_spelled_out_with_hz() -> None:
     assert res.labels[0] == "1st flap" and res.labels[8] == "1st tower FA"
 
     def _col(sub):
-        return [to_rgb(t.get_color()) for t in ax.texts
-                if sub in t.get_text()][0]
+        return next(to_rgb(t.get_color()) for t in ax.texts
+                    if sub in t.get_text())
     assert np.allclose(_col("flapwise"), _C_BLADE, atol=1e-3)
     assert np.allclose(_col("Fore-Aft"), _C_TOWER, atol=1e-3)
     plt.close(fig)

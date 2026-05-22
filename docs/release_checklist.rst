@@ -38,18 +38,21 @@ list of what needs external data).
 2. Integration test suite (needs local OpenFAST + BModes decks)
 ---------------------------------------------------------------
 
-First, verify the local ``external/`` tree matches the pinned
-manifest:
+First, fetch (if needed) and verify the local ``external/`` tree
+against the pinned manifest:
 
 .. code-block:: bash
 
+   python scripts/verify_external_data.py --clone    # fetch missing required clones
    python scripts/verify_external_data.py --strict
 
-Expected: ``Summary: N PASS, 0 WARN, 0 SKIP, 0 FAIL``. A WARN
-means a SHA pin is ``TBD`` in the manifest — bump those before
-release. A FAIL means the local clone has drifted from the
-pinned SHA / file hash; ``git -C external/<clone> checkout
-<sha>`` to fix.
+Expected from ``--strict``: ``0 WARN, 0 FAIL`` with PASS on every
+*required* clone. ``SKIP`` is fine for the ``optional = true``
+entries (MoorPy / RAFT / BModes) when they're absent. A WARN means
+a SHA pin is ``TBD`` — bump those before release. A FAIL means a
+required clone is missing or has drifted from its pinned SHA / file
+hash; ``--clone`` fetches the missing ones, or
+``git -C external/<clone> checkout <sha>`` fixes a drift.
 
 Then run the integration suite:
 
@@ -193,6 +196,16 @@ The ``v`` prefix is the standard convention PyPI, GitHub Releases,
 and conda-forge all expect. Push the master branch *before* the
 tag so the tag refers to a commit that's on the remote.
 
+.. important::
+
+   **Run the Validation (external data) workflow on the release
+   commit and confirm it is green before pushing the tag.** The
+   publish workflow's ``validation-gate`` job refuses to publish
+   unless a successful ``validation.yml`` run exists for the exact
+   commit the tag points at. After ``git push origin master``,
+   dispatch it from the Actions tab (Validation (external data) →
+   Run workflow → ``master``), wait for green, *then* push the tag.
+
 The tag push fires the **PyPI publish workflow**
 (``.github/workflows/publish.yml``) — see step 10 below. Don't
 push the tag until you're ready for PyPI to receive the artefact.
@@ -208,7 +221,11 @@ Publishing. Watch the workflow on the Actions tab:
    fresh venvs. A failure here usually means a forgotten
    ``MANIFEST.in`` entry or a ``[project] version`` line that
    doesn't match the tag.
-2. ``publish`` — pulls the built artefacts and uploads to PyPI
+2. ``validation-gate`` — asserts a green *Validation (external
+   data)* run exists for this commit. If you skipped the dispatch
+   in step 9 this fails closed; run the validation workflow on the
+   commit, wait for green, and re-run this job (or re-tag).
+3. ``publish`` — pulls the built artefacts and uploads to PyPI
    via the OIDC handshake (no API token). The ``pypi``
    environment may have required-reviewer protection turned
    on; approve the deployment on the Actions UI if so.

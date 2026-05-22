@@ -164,10 +164,10 @@ DEFAULT_CHECK_OPTIONS = CheckOptions()
 
 
 __all__ = [
-    "SolverOptions",
-    "FitOptions",
-    "CheckOptions",
-    "DEFAULT_SOLVER_OPTIONS",
-    "DEFAULT_FIT_OPTIONS",
     "DEFAULT_CHECK_OPTIONS",
+    "DEFAULT_FIT_OPTIONS",
+    "DEFAULT_SOLVER_OPTIONS",
+    "CheckOptions",
+    "FitOptions",
+    "SolverOptions",
 ]

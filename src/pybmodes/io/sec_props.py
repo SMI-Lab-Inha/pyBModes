@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import pathlib
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -62,7 +61,7 @@ class SectionProperties:
     sc_offst:   np.ndarray   # shear-centre offset from reference axis (m)
     tc_offst:   np.ndarray   # tension-centre offset from reference axis (m)
 
-    source_file: Optional[pathlib.Path] = None
+    source_file: pathlib.Path | None = None
 
 
 _N_COLS = 13  # expected number of data columns per row

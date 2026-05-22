@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 _Model = tuple[BMIFile, SectionProperties | None]
 
 
-def _model_pair(obj: object) -> "tuple[str, _Model] | None":
+def _model_pair(obj: object) -> tuple[str, _Model] | None:
     """``(role, (_bmi, _sp))`` for an already-loaded ``RotatingBlade``
     / ``Tower`` (issue #51 — single point of load-in; also the only
     way to Campbell a ``from_windio`` / ``from_elastodyn`` model,
@@ -74,8 +74,8 @@ def _model_pair(obj: object) -> "tuple[str, _Model] | None":
 
 
 def _load_models(
-    input_path: "str | pathlib.Path | object",
-    tower_input: "str | pathlib.Path | object | None",
+    input_path: str | pathlib.Path | object,
+    tower_input: str | pathlib.Path | object | None,
 ) -> tuple[_Model | None, _Model | None]:
     """Resolve the input(s) to (blade, tower) model pairs.
 

@@ -2,8 +2,22 @@
 #
 # Fires when a tag matching ``v*.*.*`` is pushed (e.g. ``v1.7.0``).
 # Builds the sdist + wheel, runs the same smoke tests the release
-# workflow does, and — if all gates pass — publishes to PyPI via
-# Trusted Publishing.
+# workflow does, requires that the external-data validation workflow
+# already passed on this exact commit, and — only if all gates pass —
+# publishes to PyPI via Trusted Publishing.
+#
+# Release-integrity gate
+# ----------------------
+#
+# Publishing is blocked unless ``validation.yml`` ("Validation
+# (external data)") has a *successful* run recorded against the commit
+# being tagged. That workflow clones the manifest-pinned upstream
+# decks and runs ``pytest -m integration`` hard-fail, enforcing the
+# published 0.01 % tolerance claim. The ``validation-gate`` job below
+# queries the Actions API for that run; a tag with no green validation
+# run on its commit cannot reach PyPI. The required ordering is: run
+# "Validation (external data)" on the release commit, confirm it is
+# green, *then* push the ``vX.Y.Z`` tag (see the release checklist).
 #
 # Trusted Publishing setup (one-time, maintainer-side):
 #   1. Register the project name ``pybmodes`` on PyPI.
@@ -86,8 +100,46 @@ jobs:
           path: dist/
           retention-days: 7
 
+  validation-gate:
+    name: Require a passing validation run on this commit
+    runs-on: ubuntu-latest
+    permissions:
+      # ``actions: read`` is needed to query workflow-run history via
+      # the Actions API; ``contents: read`` for the implicit checkout
+      # context. No write scopes — this job only inspects.
+      contents: read
+      actions: read
+    steps:
+      - name: Assert validation.yml succeeded for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        # ``gh run list --commit`` filters runs by the head SHA they
+        # executed against. A maintainer runs "Validation (external
+        # data)" on the release commit *before* tagging; this asserts
+        # that green run exists for ``github.sha`` (the commit the tag
+        # points at). If it doesn't, publishing fails closed.
+        run: |
+          sha="${GITHUB_SHA}"
+          echo "Looking for a successful 'Validation (external data)' run on ${sha}…"
+          count=$(gh run list \
+            --workflow validation.yml \
+            --commit "${sha}" \
+            --status success \
+            --limit 50 \
+            --json databaseId \
+            --jq 'length')
+          echo "matching successful validation runs: ${count}"
+          if [ "${count}" -lt 1 ]; then
+            echo "::error::No successful validation.yml run found for commit ${sha}."
+            echo "::error::Run 'Validation (external data)' on this exact commit (Actions tab"
+            echo "::error::→ Run workflow), confirm it is green, then re-tag. Refusing to publish."
+            exit 1
+          fi
+          echo "Validation gate satisfied: ${count} successful run(s) on ${sha}."
+
   publish:
-    needs: build-and-smoke
+    needs: [build-and-smoke, validation-gate]
     runs-on: ubuntu-latest
     # Trusted Publishing requires an environment with the same name as
     # the publisher's environment field in the PyPI config.

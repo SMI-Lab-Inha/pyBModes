@@ -97,14 +97,14 @@ def _dup_anchor_loader(yaml):
     )
 
     class _DupAnchorSafeLoader(yaml.SafeLoader):
-        def compose_node(self, parent, index):  # noqa: D102 - PyYAML override
+        def compose_node(self, parent, index):
             if self.check_event(AliasEvent):
                 event = self.get_event()
                 anchor = event.anchor
                 if anchor not in self.anchors:
                     raise ComposerError(
                         None, None,
-                        "found undefined alias %r" % anchor,
+                        f"found undefined alias {anchor!r}",
                         event.start_mark,
                     )
                 return self.anchors[anchor]

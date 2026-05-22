@@ -148,10 +148,10 @@ class TestParseSynthetic:
         p = parsed.circ_props[0]
         assert isinstance(p, SubDynCircProp)
         assert p.prop_set_id == 1
-        assert p.E == pytest.approx(2.10e11)
-        assert p.G == pytest.approx(8.08e10)
+        assert pytest.approx(2.10e11) == p.E
+        assert pytest.approx(8.08e10) == p.G
         assert p.rho == pytest.approx(8500.0)
-        assert p.D == pytest.approx(6.0)
+        assert pytest.approx(6.0) == p.D
         assert p.t == pytest.approx(0.06)
 
 
@@ -185,19 +185,19 @@ class TestCircPropDerived:
     ) -> None:
         d_inner = prop.D - 2.0 * prop.t
         expected = math.pi / 64.0 * (prop.D ** 4 - d_inner ** 4)
-        assert prop.I == pytest.approx(expected)
+        assert pytest.approx(expected) == prop.I
 
     def test_bending_stiffness_is_E_times_I(self, prop: SubDynCircProp) -> None:
-        assert prop.EI == pytest.approx(prop.E * prop.I)
+        assert pytest.approx(prop.E * prop.I) == prop.EI
 
     def test_polar_moment_is_twice_bending(self, prop: SubDynCircProp) -> None:
-        assert prop.J == pytest.approx(2.0 * prop.I)
+        assert pytest.approx(2.0 * prop.I) == prop.J
 
     def test_torsional_stiffness_is_G_times_J(self, prop: SubDynCircProp) -> None:
-        assert prop.GJ == pytest.approx(prop.G * prop.J)
+        assert pytest.approx(prop.G * prop.J) == prop.GJ
 
     def test_axial_stiffness_is_E_times_area(self, prop: SubDynCircProp) -> None:
-        assert prop.EA == pytest.approx(prop.E * prop.area)
+        assert pytest.approx(prop.E * prop.area) == prop.EA
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +217,7 @@ def test_pile_axial_stations_returns_sorted_z_and_segment_props(
     assert len(seg_props) == 2
     for p in seg_props:
         assert p.prop_set_id == 1
-        assert p.D == pytest.approx(6.0)
+        assert pytest.approx(6.0) == p.D
         assert p.t == pytest.approx(0.06)
 
 

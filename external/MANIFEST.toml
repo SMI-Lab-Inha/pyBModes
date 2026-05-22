@@ -1,20 +1,32 @@
 # external/MANIFEST.toml — pinned reproducibility manifest for the
 # integration-test track.
 #
-# Each ``[clone.<name>]`` block declares an upstream repository, the
-# git SHA to check out, and a few well-known file paths whose SHA-256
-# hashes uniquely identify the deck content. A reproducible run of
-# ``pytest -m integration`` against the published 0.01 % tolerance
-# requires every clone here at the pinned SHA.
+# Each ``[clone.<name>]`` block declares:
 #
-# The pinned SHAs are intentionally **commit-level** — branches move,
-# tags can be retroactively reassigned, but a commit SHA is immutable.
+#   repo           upstream repository URL (or a non-git source note).
+#   sha            commit SHA to check out — immutable, unlike a branch
+#                  or tag.
+#   relative_path  where the integration tests resolve the clone.
+#   optional       true  → cross-comparison / non-redistributable extra;
+#                         a missing clone is SKIP-tolerated everywhere.
+#                  false/absent → required; a missing clone is a hard
+#                         FAIL under ``--strict`` (so a green validation
+#                         run can't hide an unchecked pinned entry).
+#   hash_files     files whose SHA-256 ``--update`` records into ``hashes``.
+#   hashes         SHA-256 pins that ``--strict`` re-checks; rewriting an
+#                  upstream file in place (same SHA) is then caught.
+#
+# A reproducible run of ``pytest -m integration`` against the published
+# 0.01 % tolerance requires every *required* clone here at its pinned SHA.
+#
 # Bumping a clone to a newer SHA is a deliberate maintainer action
 # documented in the corresponding CHANGELOG entry under *Changed*.
 #
-# To verify your local ``external/`` matches the manifest, run::
+# To clone / verify your local ``external/`` against this manifest::
 #
-#     python scripts/verify_external_data.py
+#     python scripts/verify_external_data.py --clone     # fetch required
+#     python scripts/verify_external_data.py --strict    # gate (hard-fail)
+#     python scripts/verify_external_data.py --update     # MAINTAINER: re-pin
 #
 # A clone whose remote SHA matches the pin but whose hashed files
 # disagree means the upstream repo has been rewritten in-place — flag
@@ -27,11 +39,24 @@ maintainer = "Jae Hoon Seo <jaehoon.seo@inha.ac.kr>"
 # 1.8.1 maintainer action — populated every ``sha = "TBD"`` from the
 # local clone HEADs at the 1.8.1 release-prep snapshot. Bumping a
 # pin is a deliberate maintainer action documented in the
-# corresponding CHANGELOG entry under *Changed*. File hashes (the
-# ``hashes`` tables) remain empty pending the
-# ``verify_external_data.py --update`` rewrite — populating those
-# is a separate maintainer action that requires walking each
-# clone's known-load-bearing files.
+# corresponding CHANGELOG entry under *Changed*.
+#
+# File-hash pins — STATUS: DECLARED BUT NOT YET ACTIVE. Every
+# required clone declares ``hash_files`` (the load-bearing decks the
+# integration tests resolve), but all ``hashes`` tables are still
+# empty. **Commit-SHA pinning is therefore the only integrity layer
+# currently enforced; file-content hashing is dormant.** A maintainer
+# activates it by running ``verify_external_data.py --update`` on a
+# machine that holds the clones: that computes each ``hash_files``
+# SHA-256 and writes it into the matching ``hashes`` table, after
+# which ``--strict`` re-checks them on every CI run.
+#
+# IMPORTANT: populate from an LF checkout (Linux/CI, or
+# ``core.autocrlf=false``). SHA-256 is byte-exact, so hashes recorded
+# from a CRLF Windows checkout would not reproduce on a fresh LF clone
+# in CI and would make ``--strict`` FAIL. Run ``--update`` where the
+# integration job runs (the validation workflow runner is the natural
+# home).
 
 # ---------------------------------------------------------------------------
 # OpenFAST regression-test suite (r-test)
@@ -43,6 +68,11 @@ repo = "https://github.com/OpenFAST/r-test.git"
 sha = "dd5feaaaa500ba7283140107806300d551cff0a7"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/r-test"
 fetch_at = "shallow"                     # ``git clone --depth=1`` is enough
+hash_files = [
+    "glue-codes/openfast/5MW_Land_DLL_WTurb/NRELOffshrBsline5MW_Onshore_ElastoDyn.dat",
+    "glue-codes/openfast/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat",
+    "glue-codes/openfast/5MW_Baseline/NRELOffshrBsline5MW_Blade.dat",
+]
 hashes = { }                             # populated by --update; see script docstring
 
 # ---------------------------------------------------------------------------
@@ -58,6 +88,10 @@ repo = "https://github.com/IEAWindTask37/IEA-3.4-130-RWT.git"
 sha = "824f8d65196f9f84ee66df5e58e3a48a70a8f0c5"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/IEA-3.4-130-RWT"
 fetch_at = "shallow"
+hash_files = [
+    "openfast/IEA-3.4-130-RWT_ElastoDyn.dat",
+    "openfast/IEA-3.4-130-RWT_ElastoDyn_tower.dat",
+]
 hashes = { }
 
 [clone.iea_10_198]
@@ -65,6 +99,10 @@ repo = "https://github.com/IEAWindTask37/IEA-10.0-198-RWT.git"
 sha = "350cf06f5db9cec12bcd73c2b174a5d9642958d8"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/IEA-10.0-198-RWT"
 fetch_at = "shallow"
+hash_files = [
+    "yaml/IEA-10-198-RWT.yaml",
+    "openfast/IEA-10.0-198-RWT_ElastoDyn_tower.dat",
+]
 hashes = { }
 
 [clone.iea_15_240]
@@ -73,6 +111,10 @@ sha = "86d51c8a1ee65be4f3686087a5c443c0b57e5cfb"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/IEA-15-240-RWT"
 fetch_at = "shallow"
 notes = "v1.1 tower redesign is the pinned target — Allen 2020 free-decay reference."
+hash_files = [
+    "WT_Ontology/IEA-15-240-RWT.yaml",
+    "OpenFAST/IEA-15-240-RWT-Monopile/IEA-15-240-RWT-Monopile_ElastoDyn.dat",
+]
 hashes = { }
 
 [clone.iea_22_280]
@@ -80,6 +122,10 @@ repo = "https://github.com/IEAWindTask37/IEA-22-280-RWT.git"
 sha = "57979ece000ec5cc394962b964805ddf20e387be"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/IEA-22-280-RWT"
 fetch_at = "shallow"
+hash_files = [
+    "windIO/IEA-22-280-RWT.yaml",
+    "OpenFAST/IEA-22-280-RWT-Monopile/IEA-22-280-RWT_ElastoDyn_tower.dat",
+]
 hashes = { }
 
 # ---------------------------------------------------------------------------
@@ -90,6 +136,10 @@ repo = "https://github.com/WISDEM/WISDEM.git"
 sha = "40a68818e7f225065150786daff8d33f7e05d850"  # pinned 1.8.1
 relative_path = "external/OpenFAST_files/WISDEM"
 fetch_at = "shallow"
+hash_files = [
+    "examples/05_tower_monopile/nrel5mw_tower.yaml",
+    "examples/02_reference_turbines/IEA-15-240-RWT.yaml",
+]
 hashes = { }
 
 # ---------------------------------------------------------------------------
@@ -103,7 +153,8 @@ repo = "TBD — clone from NREL BModes download (not GitHub)"
 sha = "v3.00.00"                         # BModes uses tag-only versioning
 relative_path = "external/BModes"
 fetch_at = "tagged-archive"
-notes = "BModes ships as a download (not a git repo). The release archive ``BModes_v3.00.00.zip`` from the NREL site contains the CertTest/ and docs/examples/ trees pyBmodes consumes."
+optional = true                          # not a git clone — NREL download; CI can't fetch it
+notes = "BModes ships as a download (not a git repo). The release archive ``BModes_v3.00.00.zip`` from the NREL site contains the CertTest/ and docs/examples/ trees pyBmodes consumes. CertTest 03/04 tests skip cleanly when absent."
 hashes = { }                             # populated by --update on a maintainer machine
 
 # ---------------------------------------------------------------------------
@@ -114,6 +165,7 @@ repo = "https://github.com/NREL/MoorPy.git"
 sha = "1fb29f8eca2618543b2df7056adfdfce0265737b"  # pinned 1.8.1
 relative_path = "external/MoorPy"
 fetch_at = "shallow"
+optional = true
 notes = "Optional — used for cross-comparison against pybmodes.mooring on OC3 Hywind."
 hashes = { }
 
@@ -122,5 +174,6 @@ repo = "https://github.com/WISDEM/RAFT.git"
 sha = "a1e6a0a95326edaca713e031d9d06a5fd057d8fa"  # pinned 1.8.1
 relative_path = "external/RAFT"
 fetch_at = "shallow"
+optional = true
 notes = "Optional — used for the WindIO floating screening-tier cross-check."
 hashes = { }

@@ -84,7 +84,7 @@ def test_material_plane_stress_isotropic() -> None:
                                "rho": 7800.0})
     assert p.E1 == p.E2 == 2.0e11
     assert p.nu12 == 0.3
-    assert p.G12 == pytest.approx(2.0e11 / (2.0 * 1.3))
+    assert pytest.approx(2.0e11 / (2.0 * 1.3)) == p.G12
     assert p.rho == 7800.0
     # Explicit G overrides the isotropic default.
     p2 = material_plane_stress({"name": "s", "E": 2.0e11, "nu": 0.3,
@@ -487,11 +487,11 @@ def test_reduce_isotropic_tube_matches_thin_ring_closed_form() -> None:
     EI = ply.E1 * np.pi * R**3 * t
     GJ = G * 2.0 * np.pi * R**3 * t
     m = ply.rho * (2.0 * np.pi * R) * t
-    assert res.EA == pytest.approx(EA, rel=5e-3)
+    assert pytest.approx(EA, rel=5e-3) == res.EA
     assert res.EI_flap == pytest.approx(EI, rel=1e-2)
     assert res.EI_edge == pytest.approx(EI, rel=1e-2)
     assert res.EI_flap == pytest.approx(res.EI_edge, rel=1e-3)  # symmetry
-    assert res.GJ == pytest.approx(GJ, rel=1e-2)
+    assert pytest.approx(GJ, rel=1e-2) == res.GJ
     assert res.mass == pytest.approx(m, rel=5e-3)
     assert res.x_tc == pytest.approx(0.0, abs=1e-6 * chord)
     assert res.x_cg == pytest.approx(0.0, abs=1e-6 * chord)
@@ -511,7 +511,7 @@ def test_reduce_isotropic_box_matches_thin_wall_closed_form() -> None:
                          n_perim=2000)
 
     P = 2.0 * (b + h)
-    assert res.EA == pytest.approx(E * P * t, rel=1e-2)
+    assert pytest.approx(E * P * t, rel=1e-2) == res.EA
     assert res.mass == pytest.approx(rho * P * t, rel=1e-2)
     # Flap = bending about the horizontal centroidal axis (Y deflection).
     EI_flap = E * t * (b * h**2 / 2.0 + h**3 / 6.0)
@@ -519,7 +519,7 @@ def test_reduce_isotropic_box_matches_thin_wall_closed_form() -> None:
     assert res.EI_flap == pytest.approx(EI_flap, rel=2e-2)
     assert res.EI_edge == pytest.approx(EI_edge, rel=2e-2)
     GJ = 2.0 * G * t * b**2 * h**2 / (b + h)
-    assert res.GJ == pytest.approx(GJ, rel=2e-2)
+    assert pytest.approx(GJ, rel=2e-2) == res.GJ
     assert res.x_tc == pytest.approx(res.x_cg, abs=1e-9)   # uniform wall
 
 
@@ -531,9 +531,9 @@ def test_reduce_thickness_scales_axial_and_mass_linearly() -> None:
     ply = _iso_ply()
     a = reduce_section(p, 1.0, 0.5, [LayerStation(ply, 0.01, 0.0, 0.0, 1.0)])
     b = reduce_section(p, 1.0, 0.5, [LayerStation(ply, 0.02, 0.0, 0.0, 1.0)])
-    assert b.EA == pytest.approx(2.0 * a.EA, rel=1e-9)
+    assert pytest.approx(2.0 * a.EA, rel=1e-9) == b.EA
     assert b.mass == pytest.approx(2.0 * a.mass, rel=1e-9)
-    assert b.GJ == pytest.approx(2.0 * a.GJ, rel=1e-9)
+    assert pytest.approx(2.0 * a.GJ, rel=1e-9) == b.GJ
 
 
 def test_reduce_two_layers_stack_through_wall() -> None:
@@ -553,8 +553,8 @@ def test_reduce_two_layers_stack_through_wall() -> None:
         LayerStation(p2, 0.02, 0.0, 0.0, 1.0),
     ])
     perim = np.pi * 1.0          # circle diameter 1 → perimeter πd
-    assert two.EA - one.EA == pytest.approx(
-        p2.E1 * 0.02 * perim, rel=3e-3)
+    assert pytest.approx(
+        p2.E1 * 0.02 * perim, rel=3e-3) == two.EA - one.EA
     assert two.mass > one.mass
 
 
@@ -585,8 +585,8 @@ def test_no_web_is_single_cell_regression() -> None:
                          [LayerStation(ply, t, 0.0, 0.0, 1.0)],
                          n_perim=600)
     assert res.n_cells == 1
-    assert res.GJ == pytest.approx(ply.G12 * 2.0 * np.pi * R**3 * t,
-                                   rel=1e-2)
+    assert pytest.approx(ply.G12 * 2.0 * np.pi * R**3 * t,
+                                   rel=1e-2) == res.GJ
 
 
 def test_symmetric_diametral_web_leaves_GJ_unchanged() -> None:
@@ -603,9 +603,9 @@ def test_symmetric_diametral_web_leaves_GJ_unchanged() -> None:
     base = reduce_section(p, chord, 0.5, shell, n_perim=600)
     withw = reduce_section(p, chord, 0.5, shell, [web], n_perim=600)
     assert withw.n_cells == 2 and base.n_cells == 1
-    assert withw.GJ == pytest.approx(base.GJ, rel=2e-2)
-    assert withw.GJ == pytest.approx(
-        ply.G12 * 2.0 * np.pi * R**3 * t, rel=2e-2)
+    assert pytest.approx(base.GJ, rel=2e-2) == withw.GJ
+    assert pytest.approx(
+        ply.G12 * 2.0 * np.pi * R**3 * t, rel=2e-2) == withw.GJ
 
 
 def test_web_adds_mass_and_axial_exactly() -> None:
@@ -623,8 +623,8 @@ def test_web_adds_mass_and_axial_exactly() -> None:
     L_web = 2.0 * R
     assert withw.mass - base.mass == pytest.approx(
         ply.rho * tw * L_web, rel=5e-3)
-    assert withw.EA - base.EA == pytest.approx(
-        ply.E1 * tw * L_web, rel=5e-3)
+    assert pytest.approx(
+        ply.E1 * tw * L_web, rel=5e-3) == withw.EA - base.EA
 
 
 def test_offcentre_web_changes_GJ_two_cells() -> None:

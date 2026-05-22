@@ -89,7 +89,7 @@ class RotatingBlade:
 
     # See Tower.coeff_validation for the rationale; populated only on
     # the from_elastodyn(..., validate_coeffs=True) path.
-    coeff_validation: "ValidationResult | None" = None
+    coeff_validation: ValidationResult | None = None
 
     def __init__(self, bmi_path: str | pathlib.Path) -> None:
         self._bmi = read_bmi(bmi_path)
@@ -106,7 +106,7 @@ class RotatingBlade:
         *,
         elastodyn_compatible: bool = True,
         validate_coeffs: bool = False,
-    ) -> "RotatingBlade":
+    ) -> RotatingBlade:
         """Build a blade model from an OpenFAST ElastoDyn main ``.dat``.
 
         The blade .dat is resolved relative to the main file via
@@ -187,7 +187,7 @@ class RotatingBlade:
         rot_rpm: float = 0.0,
         n_perim: int = 300,
         elastic: str = "auto",
-    ) -> "RotatingBlade":
+    ) -> RotatingBlade:
         """Build a blade model from a WindIO ontology ``.yaml`` (issue #35).
 
         ``elastic`` (issue #48) selects the beam-property source:

@@ -80,7 +80,7 @@ def _label_tower_modes(participation_row: np.ndarray) -> list[str]:
 
 def _label_tower_modes_with_overrides(
     participation: np.ndarray,
-    mode_labels: "list[str | None] | None",
+    mode_labels: list[str | None] | None,
 ) -> list[str]:
     """Tower-column labels, preferring the FEM's own classification.
 

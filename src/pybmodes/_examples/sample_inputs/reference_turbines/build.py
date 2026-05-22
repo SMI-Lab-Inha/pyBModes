@@ -1362,8 +1362,8 @@ def _build_one(spec: dict) -> tuple[bool, str]:
             moordyn_path,
             hydrodyn_path,
         )
-        bmi_floating = tower_assembled._bmi  # type: ignore[attr-defined]
-        sp_floating = tower_assembled._sp    # type: ignore[attr-defined]
+        bmi_floating = tower_assembled._bmi
+        sp_floating = tower_assembled._sp
         assert sp_floating is not None, "from_elastodyn_with_mooring must populate _sp"
         support_obj = bmi_floating.support
         assert isinstance(support_obj, PlatformSupport), (

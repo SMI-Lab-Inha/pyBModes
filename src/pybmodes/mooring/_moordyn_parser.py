@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import math
 import pathlib
-from typing import Optional
 
 
 def _looks_like_header_row(parts: list[str]) -> bool:
@@ -103,7 +102,7 @@ def _looks_like_integer(token: str) -> bool:
 
 def _parse_lines_row_v2(
     parts: list[str], points: dict,
-) -> Optional[tuple[int, int, float]]:
+) -> tuple[int, int, float] | None:
     """Try to parse a LINES row as MoorDyn v2 (``ID LineType AttachA
     AttachB UnstrLen ...``). Returns ``(attach_a, attach_b, unstr_len)``
     or ``None`` if the columns don't validate against ``points``.
@@ -125,7 +124,7 @@ def _parse_lines_row_v2(
 
 def _parse_lines_row_v1(
     parts: list[str], points: dict,
-) -> Optional[tuple[int, int, float]]:
+) -> tuple[int, int, float] | None:
     """Try to parse a LINES row as MoorDyn v1 (``ID LineType UnstrLen
     NumSegs NodeAnch NodeFair``). Returns ``(attach_a, attach_b,
     unstr_len)`` or ``None`` if the columns don't validate. Non-finite
@@ -210,13 +209,13 @@ def _split_sections(lines: list[str]) -> dict[str, list[str]]:
     Comment lines (``!``, ``#``) and blank lines are dropped.
     """
     sections: dict[str, list[str]] = {}
-    current: Optional[str] = None
+    current: str | None = None
     pending_header_skip = 0  # rows of header to inspect-and-maybe-skip
     for raw in lines:
         stripped = raw.strip()
         if not stripped:
             continue
-        if stripped.startswith("!") or stripped.startswith("#"):
+        if stripped.startswith(("!", "#")):
             continue
         if stripped.startswith("---"):
             # Section divider. Find a known keyword inside it.

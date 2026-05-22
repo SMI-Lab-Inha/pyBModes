@@ -37,7 +37,6 @@ Output convention for each mode (matching the .out file column order):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -65,7 +64,7 @@ def extract_mode_shapes(
     hub_rad: float,
     bl_len: float,
     hub_conn: int = 1,
-    active_dofs: Optional[np.ndarray] = None,
+    active_dofs: np.ndarray | None = None,
 ) -> list[NodeModeShape]:
     """Extract per-node mode shape data from eigenvectors.
 

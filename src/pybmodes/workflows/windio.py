@@ -96,9 +96,9 @@ class WindioDiscovery:
     """
 
     yaml: pathlib.Path
-    hydrodyn: "pathlib.Path | None" = None
-    moordyn: "pathlib.Path | None" = None
-    elastodyn: "pathlib.Path | None" = None
+    hydrodyn: pathlib.Path | None = None
+    moordyn: pathlib.Path | None = None
+    elastodyn: pathlib.Path | None = None
 
 
 @dataclass
@@ -134,22 +134,22 @@ class WindioResult(WorkflowResult):
         rendering raised).
     """
 
-    yaml: "pathlib.Path | None" = None
-    discovery: "WindioDiscovery | None" = None
+    yaml: pathlib.Path | None = None
+    discovery: WindioDiscovery | None = None
     is_floating: bool = False
-    model: "object | None" = None
-    modal: "ModalResult | None" = None
-    blade_params: "BladeElastoDynParams | None" = None
-    campbell: "CampbellResult | None" = None
-    report_path: "pathlib.Path | None" = None
-    campbell_png_path: "pathlib.Path | None" = None
-    campbell_csv_path: "pathlib.Path | None" = None
-    spectra_png_path: "pathlib.Path | None" = None
+    model: object | None = None
+    modal: ModalResult | None = None
+    blade_params: BladeElastoDynParams | None = None
+    campbell: CampbellResult | None = None
+    report_path: pathlib.Path | None = None
+    campbell_png_path: pathlib.Path | None = None
+    campbell_csv_path: pathlib.Path | None = None
+    spectra_png_path: pathlib.Path | None = None
     skipped: list[str] = field(default_factory=list)
 
 
 def discover_windio_inputs(
-    path: "str | pathlib.Path",
+    path: str | pathlib.Path,
 ) -> WindioDiscovery:
     """Resolve a WindIO ``.yaml`` plus any companion OpenFAST decks.
 
@@ -213,7 +213,7 @@ def discover_windio_inputs(
     def _find(
         pattern: str,
         exclude: tuple[str, ...] = (),
-    ) -> "pathlib.Path | None":
+    ) -> pathlib.Path | None:
         hits = [
             p for p in _rglob_safe(turbine_root, pattern)
             if not any(x in p.name.lower() for x in exclude)
@@ -237,16 +237,16 @@ def discover_windio_inputs(
 
 
 def run_windio(
-    input_path: "str | pathlib.Path",
+    input_path: str | pathlib.Path,
     *,
-    out_path: "str | pathlib.Path | None" = None,
+    out_path: str | pathlib.Path | None = None,
     format: WindIOFormat = "md",
     n_modes: int = 12,
-    water_depth: "float | None" = None,
+    water_depth: float | None = None,
     campbell: bool = False,
     max_rpm: float = 12.0,
     min_rpm: float = 0.0,
-    rated_rpm: "float | None" = None,
+    rated_rpm: float | None = None,
     n_steps: int = 16,
     n_blade_modes: int = 4,
     n_tower_modes: int = 4,
@@ -369,7 +369,7 @@ def run_windio(
             bl = RotatingBlade.from_windio(yaml_path)
             blade_modal = bl.run(n_modes=n_modes, check_model=False)
             blade_params = compute_blade_params(blade_modal)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             messages.append(
                 f"  blade skipped: {type(exc).__name__}: {exc}"
             )
@@ -397,8 +397,8 @@ def run_windio(
     modal = model.run(n_modes=n_modes, check_model=False)
 
     campbell_result = None
-    campbell_png: "pathlib.Path | None" = None
-    campbell_csv: "pathlib.Path | None" = None
+    campbell_png: pathlib.Path | None = None
+    campbell_csv: pathlib.Path | None = None
     if campbell and discovery.elastodyn is not None:
         from pybmodes.campbell import campbell_sweep
         messages.append(
@@ -433,7 +433,7 @@ def run_windio(
                 import matplotlib.pyplot as plt
                 plt.close(fig)
                 messages.append(f"  wrote {campbell_png}")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 messages.append(f"  campbell plot skipped: {exc}")
                 skipped.append("campbell_plot")
                 campbell_png = None
@@ -447,7 +447,7 @@ def run_windio(
         )
         skipped.append("campbell")
 
-    spectra_png: "pathlib.Path | None" = None
+    spectra_png: pathlib.Path | None = None
     if is_floating and campbell_result is not None and format != "csv":
         try:
             from pybmodes.plots import plot_environmental_spectra
@@ -455,7 +455,7 @@ def run_windio(
             lbls = [str(x).lower() for x in campbell_result.labels]
             f0 = np.asarray(campbell_result.frequencies)[0]
 
-            def _pick(*keys: str) -> "float | None":
+            def _pick(*keys: str) -> float | None:
                 for i, lb in enumerate(lbls):
                     if all(k in lb for k in keys):
                         return float(f0[i])
@@ -470,7 +470,7 @@ def run_windio(
             rpm_hi = float(max_rpm)
             if rated_rpm is not None:
                 rpm_design = (rpm_lo, float(rated_rpm))
-                rpm_constraint: "tuple[float, float] | None" = (
+                rpm_constraint: tuple[float, float] | None = (
                     rpm_lo, rpm_hi
                 )
                 title = (
@@ -502,7 +502,7 @@ def run_windio(
             import matplotlib.pyplot as plt
             plt.close(fig)
             messages.append(f"  wrote {spectra_png}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             messages.append(f"  spectra plot skipped: {exc}")
             skipped.append("spectra")
             spectra_png = None

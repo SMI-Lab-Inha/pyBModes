@@ -36,7 +36,6 @@ from __future__ import annotations
 import pathlib
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
@@ -123,7 +122,7 @@ class BModeOutput:
     title: str
     beam_type: str               # 'blade' or 'tower'
     modes: list[ModeShape]
-    source_file: Optional[pathlib.Path] = None
+    source_file: pathlib.Path | None = None
 
     def __len__(self) -> int:
         return len(self.modes)

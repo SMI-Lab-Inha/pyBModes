@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import math
 import pathlib
-from typing import Optional
 
 import numpy as np
 
@@ -91,8 +90,8 @@ _GJ_OVER_EI_TUBE = 1.0 / (1.0 + _POISSON)   # (G/E)·(J/I) = [1/2(1+ν)]·2
 # Forward references resolved lazily inside function bodies to avoid
 # import cycles with ``pybmodes.io.bmi`` and ``pybmodes.io.sec_props``.
 if False:  # pragma: no cover
-    from pybmodes.io.bmi import BMIFile, TipMassProps  # noqa: F401
-    from pybmodes.io.sec_props import SectionProperties  # noqa: F401
+    from pybmodes.io.bmi import BMIFile, TipMassProps
+    from pybmodes.io.sec_props import SectionProperties
 
 
 def _resolve_relative(main: ElastoDynMain, ref: str) -> pathlib.Path:
@@ -127,9 +126,9 @@ def _rotary_inertia_floor(
 
 def _stack_blade_section_props(
     blade: ElastoDynBlade,
-    rot_rpm: float,  # noqa: ARG001 — kept for parity with the tower variant
+    rot_rpm: float,
     chord_estimate: float = 4.0,
-) -> "SectionProperties":  # forward-ref — imported lazily to dodge cycles
+) -> SectionProperties:  # forward-ref — imported lazily to dodge cycles
     """Convert an ElastoDyn blade record to pyBmodes section properties.
 
     Rotary mass moments of inertia (``flp_iner``, ``edge_iner``) are
@@ -178,7 +177,7 @@ def _stack_tower_section_props(
     radius_estimate: float = 3.0,
     *,
     physical: bool = False,
-) -> "SectionProperties":
+) -> SectionProperties:
     """Convert an ElastoDyn tower record to pyBmodes section properties.
 
     ``physical=False`` (default) synthesises torsion / axial stiffness
@@ -267,8 +266,8 @@ def _build_bmi_skeleton(
     precone: float,
     n_elements: int,
     el_loc: np.ndarray,
-    tip_mass_props: "TipMassProps",
-) -> "BMIFile":
+    tip_mass_props: TipMassProps,
+) -> BMIFile:
     from pybmodes.io.bmi import BMIFile, ScalingFactors
 
     return BMIFile(
@@ -299,8 +298,8 @@ def _build_bmi_skeleton(
 
 def _tower_top_assembly_mass(
     main: ElastoDynMain,
-    blade: Optional[ElastoDynBlade],
-) -> "TipMassProps":
+    blade: ElastoDynBlade | None,
+) -> TipMassProps:
     """Lump the rotor-nacelle assembly (RNA) into a single ``TipMassProps``
     at the tower top via full rigid-body parallel-axis assembly.
 
@@ -464,10 +463,10 @@ def _tower_element_boundaries(ht_fract: np.ndarray) -> np.ndarray:
 def to_pybmodes_tower(
     main: ElastoDynMain,
     tower: ElastoDynTower,
-    blade: Optional[ElastoDynBlade] = None,
+    blade: ElastoDynBlade | None = None,
     *,
     physical_sec_props: bool = False,
-) -> tuple["BMIFile", "SectionProperties"]:
+) -> tuple[BMIFile, SectionProperties]:
     """Build pyBmodes ``BMIFile`` and ``SectionProperties`` for tower modal
     analysis from a parsed ElastoDyn bundle. ``blade`` is optional; when
     omitted, the rotor mass is approximated as ``HubMass`` only.
@@ -499,7 +498,7 @@ def to_pybmodes_tower(
 def to_pybmodes_blade(
     main: ElastoDynMain,
     blade: ElastoDynBlade,
-) -> tuple["BMIFile", "SectionProperties"]:
+) -> tuple[BMIFile, SectionProperties]:
     """Build pyBmodes ``BMIFile`` and ``SectionProperties`` for blade modal
     analysis at the operating ``RotSpeed`` from the main file."""
     from pybmodes.io.bmi import TipMassProps
