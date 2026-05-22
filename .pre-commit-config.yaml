@@ -27,12 +27,14 @@ repos:
         args: ["--maxkb=2000"]
       - id: mixed-line-ending
         args: ["--fix=lf"]
-        # Vendored BModes / OpenFAST data (under ``_examples/`` and
-        # ``external/``) ship in their upstream line-ending convention
-        # — Fortran-format ``.bmi`` / ``.dat`` / ``.out`` files are
-        # commonly CRLF and forcing LF risks breaking the reference
-        # parsers. The Windows-authored Sphinx ``make.bat`` also stays
-        # CRLF.
+        # The tracked decks under ``_examples/`` are already normalized
+        # to LF by ``.gitattributes`` (``*.bmi`` / ``*.dat`` / ``*.out``
+        # → ``eol=lf``), so this fixer is redundant on them and they are
+        # excluded to avoid a no-op churn pass. The gitignored upstream
+        # clones under ``external/`` keep their native upstream line
+        # endings, and the Windows-authored Sphinx ``make.bat`` stays
+        # CRLF. (Validation hashing is line-ending-normalized, so deck
+        # EOLs don't affect the integrity contract regardless.)
         exclude: ^(docs/make\.bat|src/pybmodes/_examples/|external/).*$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit

@@ -10,14 +10,17 @@
 #     bundled analytical references
 #   * mechanical validation-matrix audit
 #
-# Integration tests against upstream OpenFAST / BModes data are NOT
-# run here — that data isn't on the GitHub runner. The release
-# checklist (``docs/release_checklist.rst``) tells the maintainer
-# to run ``pytest -m integration`` locally before tagging.
-#
-# This workflow can also be wired into a future self-hosted runner
-# with ``external/`` mounted; the current single ``ubuntu-latest``
-# job covers what is reproducible on a clean cloud runner.
+# Integration tests against upstream external data are NOT run here —
+# that is the job of the dedicated ``validation.yml`` ("Validation
+# (external data)") workflow, which clones the manifest-pinned public
+# upstreams and runs ``pytest -m integration`` hard-fail behind a
+# ``verify_external_data.py --strict`` manifest check. Run that workflow
+# on the release commit (it also gates ``publish.yml``); this workflow
+# covers the packaging-readiness gates (lint / type / self-contained
+# tests / docs / sdist+wheel cross-install) reproducible on a clean
+# cloud runner without external data. The BModes CertTest cases, whose
+# data isn't publicly clonable, stay a maintainer-local pre-tag run per
+# ``docs/release_checklist.rst``.
 name: Release readiness
 
 on:

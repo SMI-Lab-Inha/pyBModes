@@ -12,7 +12,7 @@ pip install -e ".[dev,plots]"
 pytest
 ```
 
-The default `pytest` run uses only self-contained tests (synthetic decks + closed-form references). The `integration` marker gates tests that need upstream OpenFAST / BModes data; place those clones under `external/` (gitignored). See [installation](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/installation.md) for the full Windows + conda quickstart.
+The default `pytest` run uses only self-contained tests (synthetic decks + closed-form references). The `integration` marker gates tests that need upstream OpenFAST / BModes data; place those clones under `external/` (gitignored). See [installation](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/docs/installation.rst) for the full Windows + conda quickstart.
 
 ## Ground rules
 

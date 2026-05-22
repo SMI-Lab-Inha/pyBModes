@@ -267,7 +267,7 @@ at the top level:
 - ``04_pinned_free_cable/`` — pinned-free rotating cable vs.
   Bir 2009 Eq. 8 (the ``hub_conn = 4`` BC).
 
-Plus seven **reference-turbine samples** under
+Plus eleven **reference-turbine samples** under
 ``reference_turbines/``:
 
 - 01_nrel5mw_land, 02_nrel5mw_oc3monopile,

@@ -7,15 +7,40 @@ notebook execution, WindIO ingestion, this documentation site —
 is gated behind an extra so the default install footprint stays
 small.
 
-From PyPI
----------
+.. note::
+
+   **PyPI status: pre-release.** ``pybmodes`` is not yet published to
+   PyPI — that is tracked as a 1.x release-gate item. Until the first
+   release lands, install **from source** (below); the *From PyPI*
+   section applies once publishing is live.
+
+From source (editable)
+----------------------
+
+The supported path today, for users and contributors alike:
+
+.. code-block:: bash
+
+   git clone https://github.com/SMI-Lab-Inha/pyBModes.git
+   cd pyBModes
+   pip install -e ".[dev,plots]"
+
+``-e`` installs in editable mode — changes to ``src/pybmodes/*.py``
+take effect on the next import without re-installing. End users who
+don't need the test/lint extras can install the runtime core alone
+with ``pip install .``.
+
+From PyPI (after the first release)
+-----------------------------------
+
+Once ``pybmodes`` is published to PyPI, the standard install will be:
 
 .. code-block:: bash
 
    pip install pybmodes
 
-This pulls in the runtime dependencies (``numpy>=1.26``,
-``scipy>=1.11``) and exposes:
+That will pull in the runtime dependencies (``numpy>=1.26``,
+``scipy>=1.11``) and expose:
 
 - The Python package: ``import pybmodes``
 - The CLI: ``pybmodes`` on ``PATH`` (seven subcommands — see
@@ -31,20 +56,6 @@ To pin a specific release in a requirements file or a
    pybmodes ==1.7.0       # exact pin
    pybmodes ~=1.7         # latest 1.7.x, blocks 2.x
    pybmodes >=1.7,<2      # 1.7+ but never a major bump
-
-From source (editable)
-----------------------
-
-For contributors and anyone tracking ``master``:
-
-.. code-block:: bash
-
-   git clone https://github.com/SMI-Lab-Inha/pyBModes.git
-   cd pyBModes
-   pip install -e ".[dev,plots]"
-
-``-e`` installs in editable mode — changes to ``src/pybmodes/*.py``
-take effect on the next import without re-installing.
 
 Optional extras
 ---------------
@@ -78,8 +89,7 @@ Optional extras
        :file:`tests/test_notebooks.py`. Test-only — not imported
        by ``pybmodes`` itself.
    * - ``[docs]``
-     - ``sphinx<9``, ``furo``, ``myst-parser``, ``linkify-it-py``,
-       ``sphinx-copybutton``
+     - ``sphinx<9``, ``furo``, ``myst-parser``, ``sphinx-copybutton``
      - Build this documentation site locally.
 
 Combine extras with commas:

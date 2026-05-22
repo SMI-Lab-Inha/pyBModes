@@ -1,3 +1,14 @@
+# Line-ending policy (coherent with .pre-commit-config.yaml and the
+# validation hash design):
+#   * Tracked text is normalized to LF — deterministic and cross-
+#     platform. This includes the Fortran-format decks
+#     (.bmi/.dat/.out) bundled under src/pybmodes/_examples/, so the
+#     shipped samples are LF on every checkout.
+#   * The gitignored upstream clones under external/ are untracked, so
+#     these rules don't touch them — they keep their native upstream
+#     line endings.
+#   * Validation hashing is line-ending-normalized (CRLF -> LF), so
+#     deck EOLs don't affect the integrity contract either way.
 * text=auto
 *.py text eol=lf
 *.toml text eol=lf

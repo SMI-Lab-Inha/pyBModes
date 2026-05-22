@@ -412,12 +412,14 @@ def test_modal_result_modern_npz_load_is_silent(
     np.testing.assert_allclose(loaded.frequencies, result.frequencies)
 
 
-def test_modal_result_legacy_object_meta_warns_and_loads(
+def test_modal_result_legacy_object_meta_refused_then_opt_in(
     tmp_path: pathlib.Path,
 ) -> None:
-    """A pre-1.0 archive whose ``__meta__`` is a pickled object array
-    still loads, but only via an explicit ``UserWarning`` — pickle is
-    never enabled silently."""
+    """A pre-1.0 archive whose ``__meta__`` is a pickled object array is
+    **refused by default** (object-array unpickling can execute code). It
+    loads only when the caller explicitly opts in via
+    ``allow_legacy_pickle=True``, and even then only with a
+    ``UserWarning`` — pickle is never enabled silently."""
     result = _make_modal_result(n_modes=2)
     modern = tmp_path / "modern.npz"
     result.save(modern, source_file="legacy.bmi")
@@ -430,25 +432,34 @@ def test_modal_result_legacy_object_meta_warns_and_loads(
     ):
         _ = z["__meta__"]                   # confirms the forge worked
 
+    # Default: refuse, never reach for pickle.
+    with pytest.raises(ValueError, match="refusing to load a legacy"):
+        ModalResult.load(legacy)
+
+    # Explicit opt-in: warns and loads.
     with pytest.warns(UserWarning, match="legacy pre-1.0 .npz"):
-        loaded = ModalResult.load(legacy)
+        loaded = ModalResult.load(legacy, allow_legacy_pickle=True)
     assert loaded.metadata is not None
     assert loaded.metadata["source_file"] == "legacy.bmi"
     np.testing.assert_allclose(loaded.frequencies, result.frequencies)
 
 
-def test_campbell_legacy_object_meta_warns_and_loads(
+def test_campbell_legacy_object_meta_refused_then_opt_in(
     tmp_path: pathlib.Path,
 ) -> None:
-    """Same legacy-pickle fallback contract for ``CampbellResult``."""
+    """Same refuse-by-default + explicit opt-in contract for
+    ``CampbellResult``."""
     result = _make_campbell_result(n_steps=4, n_modes=4)
     modern = tmp_path / "c_modern.npz"
     result.save(modern)
     legacy = tmp_path / "c_legacy.npz"
     _forge_legacy_object_meta(modern, legacy)
 
+    with pytest.raises(ValueError, match="refusing to load a legacy"):
+        CampbellResult.load(legacy)
+
     with pytest.warns(UserWarning, match="legacy pre-1.0 .npz"):
-        loaded = CampbellResult.load(legacy)
+        loaded = CampbellResult.load(legacy, allow_legacy_pickle=True)
     assert loaded.labels == result.labels
     np.testing.assert_allclose(loaded.frequencies, result.frequencies)
 

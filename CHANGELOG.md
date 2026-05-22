@@ -8,9 +8,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Static-review follow-up on top of 1.8.1. No public-API change; no
-numerical change. Release-integrity, validation-coverage, and
-source-quality items:
+Static-review follow-up on top of 1.8.1. No numerical change; the only
+public-API change is one new opt-in keyword (``allow_legacy_pickle``).
+Security, release-integrity, validation-coverage, and source-quality
+items:
+
+### Security
+
+- **Legacy NPZ pickle loading is refused by default.**
+  ``ModalResult.load`` / ``CampbellResult.load`` open archives with
+  ``allow_pickle=False``; on encountering a legacy pre-1.0 ``__meta__``
+  stored as a pickled object array they now **raise** instead of
+  silently reaching for ``allow_pickle=True`` — object-array unpickling
+  can execute arbitrary code, and ``SECURITY.md`` puts NPZ
+  deserialisation in scope. Pass the new keyword-only
+  ``allow_legacy_pickle=True`` to opt in for a file you trust (it still
+  warns — never silent). Archives written by current pyBmodes are
+  pickle-free and unaffected.
 
 ### Changed
 
@@ -40,11 +54,13 @@ source-quality items:
   are deliberately deferred). Safe autofixes applied across the tree.
 - **Raised the global mypy floor and roughly tripled the strict-typed
   surface.** New package-wide flags ``warn_redundant_casts``,
-  ``strict_equality``, ``no_implicit_optional``, ``warn_unused_ignores``,
-  ``extra_checks``; the per-module strict-override list grew from 10 to
-  29 modules (every pure-logic / typed-dataclass module that passes
-  ``--disallow-untyped-defs --warn-return-any``; parsers and matplotlib
-  helpers stay loose).
+  ``strict_equality``, ``no_implicit_optional``, ``extra_checks``
+  (``warn_unused_ignores`` is enabled per-module only, not globally —
+  it is environment-fragile for loose modules that import opt-in,
+  stub-less third-party packages); the per-module strict-override list
+  grew from 10 to 29 modules (every pure-logic / typed-dataclass module
+  that passes ``--disallow-untyped-defs --warn-return-any``; parsers
+  and matplotlib helpers stay loose).
 - **Neutral-provenance scrub.** Replaced the remaining non-neutral
   provenance wording in ``validation.yml``, ``CHANGELOG.md``, and a
   test comment with the project's neutral vocabulary, per
@@ -72,6 +88,63 @@ source-quality items:
   flags; ``tests/test_verify_external_data.py`` covers the rewriter,
   the required/optional SKIP-vs-FAIL policy, the fail-loud path, the
   stale-clearing path, and EOL-normalized hashing.
+
+### Fixed
+
+- **Documentation consistency.** ``VALIDATION.md``'s closing section
+  no longer says integration coverage is "developer-local … not
+  CI-gated" — it now splits the **CI-gated public required set**
+  (r-test + IEA-3.4 / 10 / 15 / 22 + WISDEM, enforced by
+  ``validation.yml``) from the **maintainer-local** BModes archive and
+  optional cross-comparisons, matching the *Enforcement* section.
+  ``release.yml``'s header points maintainers at ``validation.yml`` as
+  the external-data gate instead of "run it locally". ``installation.rst``
+  leads with the source install and marks *From PyPI* as "after the
+  first release" (mirroring the README pre-release note), and drops
+  ``linkify-it-py`` from the ``[docs]`` extra table (not a declared
+  dependency; linkify is disabled in ``conf.py``). The mypy bullet
+  above no longer lists ``warn_unused_ignores`` as a global flag.
+  ``docs/release_checklist.rst``'s manifest note now states the public
+  required set is CI-gated (only BModes + optional clones stay
+  maintainer-local), matching ``VALIDATION.md``. The
+  ``_serialize`` ``_metadata_to_npz_value`` docstring now describes the
+  refuse-by-default pickle contract.
+- **Reference-turbine sample count corrected from "seven" to
+  "eleven".** The bundled ``reference_turbines/`` library ships 11
+  sub-cases — 6 fixed-base (NREL 5MW land + OC3 monopile, IEA-3.4 land,
+  IEA-10 / 15 / 22 monopiles) and 5 floating (NREL 5MW OC3 Hywind +
+  OC4 DeepCwind, IEA-15 UMaineSemi, IEA-22 Semi, UPSCALE-25). The "seven"
+  count was stale in ``data_sources.rst``, ``_examples/__init__.py``,
+  both ``sample_inputs`` READMEs, ``cli.py``, and
+  ``workflows/examples.py``.
+- **sdist now ships the reproducibility artefacts its docs reference.**
+  ``MANIFEST.in`` adds ``scripts/*.py`` and re-includes
+  ``external/MANIFEST.toml`` (the pinned-commit + content-hash
+  contract) after the ``prune external``, so an sdist consumer can
+  follow the validation workflow the shipped docs describe.
+- **Stale metadata / links.** ``CITATION.cff`` version bumped
+  ``1.7.0`` → ``1.8.1`` to match ``pyproject.toml``; the
+  ``CONTRIBUTING.md`` install link points at ``docs/installation.rst``
+  (was ``.md``); ``.gitattributes`` and ``.pre-commit-config.yaml`` now
+  state one coherent line-ending policy (tracked decks LF; gitignored
+  ``external/`` native; validation hashing normalized).
+- **Validation matrix matched to the pickle hardening.** The
+  ``VALIDATION.md`` NPZ row no longer claims a "warned
+  ``allow_pickle=True`` fallback"; it now states legacy object metadata
+  is refused by default and loads only via ``allow_legacy_pickle=True``.
+- **Walkthrough notebooks are release-ready.** Removed the "fill these
+  in" placeholder from the IEA-15 UMaineSemi notebook's *Key findings*
+  (the concrete findings were already written below it); added
+  ``tests/test_notebooks.py`` coverage for the third tracked notebook,
+  ``cases/iea15_volturnus_windio_walkthrough.ipynb`` (friendly-error +
+  integration paths, mirroring the UMaineSemi contract); and declared
+  all three notebooks **source-only** (committed without executed
+  outputs; CI executes them headlessly) with a note in each notebook
+  and a reconciled release-checklist notebook-smoke step.
+- **Citations are citation-grade.** Every reference in ``VALIDATION.md``
+  and ``docs/theory.rst`` now carries a DOI, a ``docs.nrel.gov`` PDF
+  link, or an OSTI.GOV record — and the textbooks (Blevins; Karnovsky &
+  Lebed) are explicitly marked "no DOI" rather than left bare.
 
 ## [1.8.1] — 2026-05-21
 
