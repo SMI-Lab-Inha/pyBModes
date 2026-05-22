@@ -53,10 +53,9 @@ Three modes
     place. Pass ``--allow-missing-hashes`` to downgrade that to a warning
     and write only the computable subset.
 
-    Run ``--update`` from an LF checkout (Linux/CI, or
-    ``core.autocrlf=false``): SHA-256 is byte-exact, so hashes captured on a
-    CRLF Windows checkout would not reproduce on a fresh LF clone and would
-    make a later ``--strict`` run FAIL.
+    Hashes are computed over line-ending-normalized content (CRLF -> LF),
+    so ``--update`` may be run on any platform: a Windows checkout and a
+    fresh Linux CI checkout of the same text deck yield the same hash.
 
 Exit codes: 0 if every entry is acceptable (PASS / WARN / SKIP), 1 if any
 entry FAILs. Designed as the release-checklist gate for the integration
@@ -121,11 +120,18 @@ def _run_git(*args: str) -> None:
 
 
 def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    """SHA-256 of *path* with line endings normalized to LF.
+
+    Hashing line-ending-normalized content (CRLF -> LF) makes the pin
+    reproducible across platforms: a Windows checkout (git ``autocrlf``)
+    and a fresh Linux CI checkout of the same text deck produce the same
+    hash, so ``--strict`` passes in both — the pin captures *content*,
+    not the incidental EOL of the checkout. ``hash_files`` entries are
+    text decks (.yaml / .dat); a binary file must not be declared as a
+    ``hash_files`` entry (normalization would corrupt its hash).
+    """
+    data = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def _is_git_source(repo: str) -> bool:

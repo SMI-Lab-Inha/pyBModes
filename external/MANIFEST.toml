@@ -12,9 +12,10 @@
 #                  false/absent → required; a missing clone is a hard
 #                         FAIL under ``--strict`` (so a green validation
 #                         run can't hide an unchecked pinned entry).
-#   hash_files     files whose SHA-256 ``--update`` records into ``hashes``.
-#   hashes         SHA-256 pins that ``--strict`` re-checks; rewriting an
-#                  upstream file in place (same SHA) is then caught.
+#   hash_files     files whose content hash ``--update`` records in ``hashes``.
+#   hashes         normalized-content (CRLF->LF) SHA-256 pins that
+#                  ``--strict`` re-checks; an upstream file rewritten in
+#                  place (same SHA) is then caught, cross-platform.
 #
 # A reproducible run of ``pytest -m integration`` against the published
 # 0.01 % tolerance requires every *required* clone here at its pinned SHA.
@@ -41,22 +42,21 @@ maintainer = "Jae Hoon Seo <jaehoon.seo@inha.ac.kr>"
 # pin is a deliberate maintainer action documented in the
 # corresponding CHANGELOG entry under *Changed*.
 #
-# File-hash pins — STATUS: DECLARED BUT NOT YET ACTIVE. Every
-# required clone declares ``hash_files`` (the load-bearing decks the
-# integration tests resolve), but all ``hashes`` tables are still
-# empty. **Commit-SHA pinning is therefore the only integrity layer
-# currently enforced; file-content hashing is dormant.** A maintainer
-# activates it by running ``verify_external_data.py --update`` on a
-# machine that holds the clones: that computes each ``hash_files``
-# SHA-256 and writes it into the matching ``hashes`` table, after
-# which ``--strict`` re-checks them on every CI run.
+# File-hash pins — STATUS: ACTIVE. Every required clone declares
+# ``hash_files`` (the load-bearing decks the integration tests
+# resolve) and ships populated ``hashes``. ``--strict`` re-checks them
+# on every run, so both layers are enforced: the commit-SHA pin proves
+# the clone is at the right commit, and the content hash catches an
+# upstream file rewritten in place.
 #
-# IMPORTANT: populate from an LF checkout (Linux/CI, or
-# ``core.autocrlf=false``). SHA-256 is byte-exact, so hashes recorded
-# from a CRLF Windows checkout would not reproduce on a fresh LF clone
-# in CI and would make ``--strict`` FAIL. Run ``--update`` where the
-# integration job runs (the validation workflow runner is the natural
-# home).
+# Hashes are computed over LINE-ENDING-NORMALIZED content (CRLF -> LF),
+# so they are reproducible across platforms: a Windows checkout (git
+# ``autocrlf``) and a fresh Linux CI checkout of the same text deck
+# yield the same hash — the pin captures content, not the incidental
+# EOL of the checkout. Regenerate after bumping a SHA with
+# ``verify_external_data.py --update`` (any platform; no LF checkout
+# required, thanks to normalization). ``hash_files`` entries must be
+# text decks (.yaml / .dat); a binary file must not be declared there.
 
 # ---------------------------------------------------------------------------
 # OpenFAST regression-test suite (r-test)
@@ -73,7 +73,7 @@ hash_files = [
     "glue-codes/openfast/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat",
     "glue-codes/openfast/5MW_Baseline/NRELOffshrBsline5MW_Blade.dat",
 ]
-hashes = { }                             # populated by --update; see script docstring
+hashes = { "glue-codes/openfast/5MW_Land_DLL_WTurb/NRELOffshrBsline5MW_Onshore_ElastoDyn.dat" = "ee42ad79712f9a3bbbef7841f34d4739fbded61d0bd406093e5d043b9960b7e1", "glue-codes/openfast/5MW_Baseline/NRELOffshrBsline5MW_Onshore_ElastoDyn_Tower.dat" = "86821e9795ee5dff15914a71919bacd33debe14b276211c120e5289b821666c3", "glue-codes/openfast/5MW_Baseline/NRELOffshrBsline5MW_Blade.dat" = "d5a487aee37bb23f4d95a7d6d7e40fb9916e42027b4ff16742737b1f1504420f" }
 
 # ---------------------------------------------------------------------------
 # IEA Wind Task 37 reference turbines
@@ -92,7 +92,7 @@ hash_files = [
     "openfast/IEA-3.4-130-RWT_ElastoDyn.dat",
     "openfast/IEA-3.4-130-RWT_ElastoDyn_tower.dat",
 ]
-hashes = { }
+hashes = { "openfast/IEA-3.4-130-RWT_ElastoDyn.dat" = "6b5a7d31ee19a237488b7f24514b4d877d73289f97bc6e4bdd201cb9bee7257e", "openfast/IEA-3.4-130-RWT_ElastoDyn_tower.dat" = "b48d148888580e774a2fe2369cdde3c9b71dcbb3a87eda2d0a430f9fe8d77bb3" }
 
 [clone.iea_10_198]
 repo = "https://github.com/IEAWindTask37/IEA-10.0-198-RWT.git"
@@ -103,7 +103,7 @@ hash_files = [
     "yaml/IEA-10-198-RWT.yaml",
     "openfast/IEA-10.0-198-RWT_ElastoDyn_tower.dat",
 ]
-hashes = { }
+hashes = { "yaml/IEA-10-198-RWT.yaml" = "298ffdcd700e558aa69bee2a78e15c6f43f4e0ff5253a619aa314ffa9bb3b7f5", "openfast/IEA-10.0-198-RWT_ElastoDyn_tower.dat" = "3b6954a750016f68dcc5fcccdc695cc1dd5feb6c7d482785e97f4f2275f9a01c" }
 
 [clone.iea_15_240]
 repo = "https://github.com/IEAWindTask37/IEA-15-240-RWT.git"
@@ -115,7 +115,7 @@ hash_files = [
     "WT_Ontology/IEA-15-240-RWT.yaml",
     "OpenFAST/IEA-15-240-RWT-Monopile/IEA-15-240-RWT-Monopile_ElastoDyn.dat",
 ]
-hashes = { }
+hashes = { "WT_Ontology/IEA-15-240-RWT.yaml" = "af51499e4d4b35293f9c6bca7701a9af6df0b3884c532891b1cc133efd420978", "OpenFAST/IEA-15-240-RWT-Monopile/IEA-15-240-RWT-Monopile_ElastoDyn.dat" = "be58f41b85580db71c66fc2de1eaafc768e0cb96b206d95c7a61aeaf3c48e934" }
 
 [clone.iea_22_280]
 repo = "https://github.com/IEAWindTask37/IEA-22-280-RWT.git"
@@ -126,7 +126,7 @@ hash_files = [
     "windIO/IEA-22-280-RWT.yaml",
     "OpenFAST/IEA-22-280-RWT-Monopile/IEA-22-280-RWT_ElastoDyn_tower.dat",
 ]
-hashes = { }
+hashes = { "windIO/IEA-22-280-RWT.yaml" = "c13b80b3394aafdc2f98a059e6dc2edbfdd061c1f22c9ff8aba385cd27ae88da", "OpenFAST/IEA-22-280-RWT-Monopile/IEA-22-280-RWT_ElastoDyn_tower.dat" = "bc9898b9cb0bbf8d2e6fba1ab5065ff9936044ebe78d844651e0a8169c2042bd" }
 
 # ---------------------------------------------------------------------------
 # WISDEM (for the WindIO ontology examples it ships)
@@ -140,7 +140,7 @@ hash_files = [
     "examples/05_tower_monopile/nrel5mw_tower.yaml",
     "examples/02_reference_turbines/IEA-15-240-RWT.yaml",
 ]
-hashes = { }
+hashes = { "examples/05_tower_monopile/nrel5mw_tower.yaml" = "981d2913b6859ddf370684a2758084c501db1d33a8857b83438dc5e425842a6f", "examples/02_reference_turbines/IEA-15-240-RWT.yaml" = "9ff187f373dacb9ede298f0679bcbacf2784ad8719d52216903d7e944542ab88" }
 
 # ---------------------------------------------------------------------------
 # BModes Fortran reference solver

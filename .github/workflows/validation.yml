@@ -37,13 +37,12 @@
 # anyone reproducing the published 0.01 % tolerance can re-run the
 # same step set against the same upstream commits.
 #
-# File-hash pins are DECLARED BUT NOT YET ACTIVE: every required
-# clone declares ``hash_files``, but the ``hashes`` tables are empty,
-# so commit-SHA pinning is currently the only integrity layer this
-# workflow enforces. A maintainer activates content hashing by
-# running ``verify_external_data.py --update`` from an LF checkout
-# (populates ``hashes`` from ``hash_files``); ``--strict`` enforces
-# them here once populated.
+# File-hash pins are ACTIVE: every required clone ships populated
+# ``hashes`` (computed over line-ending-normalized content, so they
+# reproduce identically across Windows dev and Linux CI). ``--strict``
+# below re-checks them on every run on top of commit-SHA pinning.
+# Regenerate after bumping a SHA with ``verify_external_data.py
+# --update`` (any platform).
 
 name: Validation (external data)
 

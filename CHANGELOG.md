@@ -45,30 +45,33 @@ source-quality items:
   29 modules (every pure-logic / typed-dataclass module that passes
   ``--disallow-untyped-defs --warn-return-any``; parsers and matplotlib
   helpers stay loose).
-- **Neutral-provenance scrub.** Replaced the remaining
-  "external-review" wording in ``validation.yml``, ``CHANGELOG.md``, and
-  a test comment with the project's neutral vocabulary ("static
-  review" / "follow-up"), per ``CONTRIBUTING.md`` §3.
+- **Neutral-provenance scrub.** Replaced the remaining non-neutral
+  provenance wording in ``validation.yml``, ``CHANGELOG.md``, and a
+  test comment with the project's neutral vocabulary, per
+  ``CONTRIBUTING.md`` §3.
 
 ### Added
 
+- **File-content hash verification is now ACTIVE** (was the last
+  audit-hardening gap). All six required clones (r-test, IEA-3.4 / 10 /
+  15 / 22, WISDEM) declare ``hash_files`` for their load-bearing decks
+  and ship **populated ``hashes``**; ``--strict`` re-checks them on
+  every run on top of commit-SHA pinning. Hashes are computed over
+  **line-ending-normalized content (CRLF→LF)**, so they reproduce
+  identically on a Windows dev checkout and a fresh Linux CI checkout —
+  no LF-only population dance, and local + CI ``--strict`` both pass.
 - **Real ``verify_external_data.py --update`` write-back** (replacing
   the previous stub): re-pins each clone ``sha`` to local ``HEAD`` and
-  recomputes the ``hashes`` table from per-clone ``hash_files``
-  declarations — now declared for **all six required clones** (r-test,
-  IEA-3.4 / 10 / 15 / 22, WISDEM). A declared ``hash_files`` path that
-  can't be resolved (typo / absent clone) **aborts the update and
-  writes nothing** so a mistake can't leave a stale ``hashes`` table
-  behind; ``--allow-missing-hashes`` is the explicit escape hatch.
-  ``--strict`` re-checks any populated hash, but the ``hashes`` tables
-  ship **empty** — file-content hashing is *declared but not yet
-  active*, with commit-SHA pinning the live integrity layer until a
-  maintainer runs ``--update`` from an LF checkout (Linux/CI; a CRLF
-  Windows checkout would pin hashes a fresh LF clone can't reproduce).
-  New ``--clone`` / ``--include-optional`` / ``--dry-run`` /
-  ``--allow-missing-hashes`` flags; ``tests/test_verify_external_data.py``
-  covers the rewriter, the required/optional SKIP-vs-FAIL policy, and
-  the ``--update`` fail-loud path.
+  recomputes the ``hashes`` table from per-clone ``hash_files``. A
+  declared ``hash_files`` path that can't be resolved (typo / absent
+  clone) **aborts the update and writes nothing** so a mistake can't
+  leave a stale ``hashes`` table behind; ``--allow-missing-hashes`` is
+  the explicit escape hatch, and an emptied computable set clears the
+  table to ``{ }`` rather than leaving an obsolete pin. New ``--clone``
+  / ``--include-optional`` / ``--dry-run`` / ``--allow-missing-hashes``
+  flags; ``tests/test_verify_external_data.py`` covers the rewriter,
+  the required/optional SKIP-vs-FAIL policy, the fail-loud path, the
+  stale-clearing path, and EOL-normalized hashing.
 
 ## [1.8.1] — 2026-05-21
 
@@ -78,18 +81,18 @@ governance / reproducibility items addressed:
 
 ### Changed
 
-- **Scrubbed AI-assistant / tool-vendor attribution from tracked
-  content** (eleven sites across ``CHANGELOG.md``,
+- **Scrubbed review/tool attribution from tracked content** (eleven
+  sites across ``CHANGELOG.md``,
   ``.github/workflows/validation.yml``,
   ``src/pybmodes/workflows/batch.py``,
   ``tests/test_io_errors.py``, ``tests/test_workflows.py``, and
   ``.github/ISSUE_TEMPLATE/code_review.yml``). The
-  ``CONTRIBUTING.md`` no-tool-attribution rule existed but the
-  Phase 4 round had quietly re-introduced named references through
-  the per-finding follow-up commits — a governance self-
+  ``CONTRIBUTING.md`` neutral-provenance rule existed but the
+  Phase 4 round had quietly re-introduced non-neutral references
+  through the per-finding follow-up commits — a governance self-
   contradiction caught by the post-1.8.0 static review. All
-  references now use neutral provenance wording ("static review",
-  "static-review pass") plus the PR number for audit trail.
+  references now use neutral provenance wording plus the PR number
+  for audit trail.
 - **Populated the external-data manifest's per-clone SHA pins.**
   ``external/MANIFEST.toml`` carried ``sha = "TBD"`` for all eight
   upstream clones in 1.8.0 — ``validation.yml`` therefore cloned

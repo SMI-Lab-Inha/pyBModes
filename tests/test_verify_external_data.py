@@ -57,6 +57,27 @@ hashes = { "x.txt" = "deadbeef" }
 
 
 # ---------------------------------------------------------------------------
+# _sha256 — line-ending-normalized so pins reproduce cross-platform
+# ---------------------------------------------------------------------------
+def test_sha256_is_line_ending_normalized(tmp_path):
+    lf = tmp_path / "lf.dat"
+    crlf = tmp_path / "crlf.dat"
+    lf.write_bytes(b"alpha\nbeta\ngamma\n")
+    crlf.write_bytes(b"alpha\r\nbeta\r\ngamma\r\n")
+    # A CRLF (Windows) checkout and an LF (Linux CI) checkout of the same
+    # content must hash identically, so --strict passes in both.
+    assert ved._sha256(lf) == ved._sha256(crlf)
+
+
+def test_sha256_still_detects_content_change(tmp_path):
+    a = tmp_path / "a.dat"
+    b = tmp_path / "b.dat"
+    a.write_bytes(b"alpha\nbeta\n")
+    b.write_bytes(b"alpha\nDELTA\n")
+    assert ved._sha256(a) != ved._sha256(b)
+
+
+# ---------------------------------------------------------------------------
 # _render_inline_hashes
 # ---------------------------------------------------------------------------
 def test_render_inline_hashes_empty():
