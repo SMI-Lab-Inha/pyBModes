@@ -97,12 +97,12 @@ governance / reproducibility items addressed:
   ``external/MANIFEST.toml`` carried ``sha = "TBD"`` for all eight
   upstream clones in 1.8.0 — ``validation.yml`` therefore cloned
   upstream HEAD with ``--depth=1``, making the workflow
-  reproducible-as-process but not byte-reproducible. Every clone
-  now has a real commit SHA (read from the maintainer's local
-  ``external/`` clones at the 1.8.1 release-prep snapshot), and
+  reproducible-as-process but not pinned to exact upstream commits.
+  Every clone now has a real commit SHA (read from the maintainer's
+  local ``external/`` clones at the 1.8.1 release-prep snapshot), and
   ``validation.yml`` checks out each pinned SHA explicitly after
-  the clone. The workflow is now byte-reproducible from the tagged
-  commit. File-hash pins (the manifest's ``hashes`` tables) remain
+  the clone. The workflow is now reproducible from the tagged commit,
+  pinned to immutable upstream commits. File-hash pins (the manifest's ``hashes`` tables) remain
   empty pending the ``verify_external_data.py --update`` rewrite —
   that's a follow-up maintainer action separate from this patch.
 - **Tightened the validation-workflow coverage claim** in

@@ -33,9 +33,10 @@
 # and the manifest can't drift apart (no hand-kept clone list). The
 # subsequent ``--strict`` verify hard-fails if any required clone is
 # missing or off its pin, and re-checks every populated ``hashes``
-# entry. The workflow is byte-reproducible from the tagged commit —
-# anyone reproducing the published 0.01 % tolerance can re-run the
-# same step set against the same upstream commits.
+# entry. The workflow is reproducible from the tagged commit (pinned
+# to immutable upstream commits) — anyone reproducing the published
+# 0.01 % tolerance can re-run the same step set against the same
+# upstream commits.
 #
 # File-hash pins are ACTIVE: every required clone ships populated
 # ``hashes`` (computed over line-ending-normalized content, so they

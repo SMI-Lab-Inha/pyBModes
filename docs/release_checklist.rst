@@ -72,14 +72,15 @@ failure mode is a hard fail.
 .. note::
 
    The pinned manifest is the published reproducibility
-   contract for the validation matrix's external-data tracks.
-   Anyone with the manifest can verify the published 0.01 %
-   tolerance against the BModes Fortran reference solver
-   byte-for-byte; without it, the integration track is
-   lab-local. Treat the manifest pins as part of the API
-   contract — bumping a pin is a deliberate maintainer action
-   documented in the corresponding ``CHANGELOG.md`` entry
-   under *Changed*.
+   contract for the validation matrix's external-data tracks:
+   manifest-pinned commit SHAs plus line-ending-normalized
+   SHA-256 hashes for the text validation decks. Anyone with
+   the manifest can reproduce the published 0.01 % tolerance
+   against the BModes Fortran reference solver; without it, the
+   integration track is lab-local. Treat the manifest pins as
+   part of the API contract — bumping a pin is a deliberate
+   maintainer action documented in the corresponding
+   ``CHANGELOG.md`` entry under *Changed*.
 
 3. Linting + type checking
 --------------------------
