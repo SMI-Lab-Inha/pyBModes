@@ -308,6 +308,182 @@ def test_windio_thickness_interp_differs_on_taper(tmp_path: pathlib.Path) -> Non
     assert abs(lin.wall_thickness[1] - pc.wall_thickness[1]) > 0.01
 
 
+# ---------------------------------------------------------------------------
+# 3b. Monopile + tower splice (issue #92): Tower.from_windio_with_monopile
+# ---------------------------------------------------------------------------
+
+# Two distinct-material segments meeting at the transition piece z = 10 m:
+# a uniform 9 m monopile (z -30 -> 10) below a tapered tower (z 10 -> 110).
+# Different E per segment proves the splice keeps each component's own
+# material rather than reducing both with one.
+_MIN_WINDIO_MONOPILE = textwrap.dedent("""\
+    components:
+      monopile:
+        outer_shape:
+          outer_diameter:
+            grid: [0.0, 1.0]
+            values: [9.0, 9.0]
+        structure:
+          outfitting_factor: 1.0
+          layers:
+            - name: monopile_wall
+              material: steel_mp
+              thickness:
+                grid: [0.0, 1.0]
+                values: [0.08, 0.08]
+        reference_axis:
+          z:
+            grid: [0.0, 1.0]
+            values: [-30.0, 10.0]
+      tower:
+        outer_shape:
+          outer_diameter:
+            grid: [0.0, 0.5, 1.0]
+            values: [9.0, 7.5, 6.0]
+        structure:
+          outfitting_factor: 1.1
+          layers:
+            - name: tower_wall
+              material: steel_tw
+              thickness:
+                grid: [0.0, 1.0]
+                values: [0.05, 0.02]
+        reference_axis:
+          z:
+            grid: [0.0, 1.0]
+            values: [10.0, 110.0]
+    materials:
+      - name: steel_mp
+        E: 2.0e11
+        rho: 7850.0
+        nu: 0.3
+      - name: steel_tw
+        E: 2.1e11
+        rho: 7800.0
+        nu: 0.3
+    """)
+
+
+def _write_monopile_yaml(tmp_path: pathlib.Path) -> pathlib.Path:
+    p = tmp_path / "monopile_tower.yaml"
+    p.write_text(_MIN_WINDIO_MONOPILE, encoding="utf-8")
+    return p
+
+
+def test_monopile_tower_splice_geometry(tmp_path: pathlib.Path) -> None:
+    """The splice spans mudline -> tower top, with the transition placed
+    at the shared elevation and each segment keeping its own material."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_monopile_tower, read_windio_tubular
+
+    p = _write_monopile_yaml(tmp_path)
+    mt = read_windio_monopile_tower(p)
+
+    assert mt.z_base == pytest.approx(-30.0)
+    assert mt.z_transition == pytest.approx(10.0)
+    assert mt.z_top == pytest.approx(110.0)
+    assert mt.combined_length == pytest.approx(140.0)            # 110 - (-30)
+    assert mt.transition_frac == pytest.approx(40.0 / 140.0)     # 40 m of pile
+
+    # span_loc strictly increasing; a clean FE node sits at the transition.
+    sl = mt.section_props.span_loc
+    assert np.all(np.diff(sl) > 0.0)
+    assert np.all(np.diff(mt.el_loc) > 0.0)
+    assert np.min(np.abs(mt.el_loc - mt.transition_frac)) < 1e-9
+
+    # Endpoints reduce to the standalone monopile / tower sections — i.e.
+    # the bottom carries the monopile's (E, wall) and the top the tower's.
+    g_mp = read_windio_tubular(p, component="monopile")
+    g_tw = read_windio_tubular(p, component="tower")
+    sp_mp = tubular_section_props(
+        g_mp.station_grid, g_mp.outer_diameter, g_mp.wall_thickness,
+        E=g_mp.E, rho=g_mp.rho, nu=g_mp.nu,
+        outfitting_factor=g_mp.outfitting_factor,
+    )
+    sp_tw = tubular_section_props(
+        g_tw.station_grid, g_tw.outer_diameter, g_tw.wall_thickness,
+        E=g_tw.E, rho=g_tw.rho, nu=g_tw.nu,
+        outfitting_factor=g_tw.outfitting_factor,
+    )
+    assert mt.section_props.mass_den[0] == pytest.approx(sp_mp.mass_den[0])
+    assert mt.section_props.flp_stff[0] == pytest.approx(sp_mp.flp_stff[0])
+    assert mt.section_props.mass_den[-1] == pytest.approx(sp_tw.mass_den[-1])
+    assert mt.section_props.flp_stff[-1] == pytest.approx(sp_tw.flp_stff[-1])
+    # Monopile base is far heavier / stiffer than the tower top.
+    assert mt.section_props.mass_den[0] > 5.0 * mt.section_props.mass_den[-1]
+
+
+def test_monopile_tower_non_contiguous_raises(tmp_path: pathlib.Path) -> None:
+    """A gap between the monopile top and tower base can't be spliced."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_monopile_tower
+
+    # Tower base bumped to z = 12 (2 m gap above the monopile top at 10).
+    bad = _MIN_WINDIO_MONOPILE.replace(
+        "values: [10.0, 110.0]", "values: [12.0, 110.0]"
+    )
+    p = tmp_path / "gap.yaml"
+    p.write_text(bad, encoding="utf-8")
+    with pytest.raises(ValueError, match="common transition piece"):
+        read_windio_monopile_tower(p)
+
+
+def test_from_windio_with_monopile_solves_and_is_softer(
+    tmp_path: pathlib.Path,
+) -> None:
+    """End-to-end: the combined cantilever solves to a physical spectrum,
+    is clamped at the mudline, and is softer than the tower-only model
+    clamped at the transition piece (the pile adds a long flexible base)."""
+    pytest.importorskip("yaml")
+    p = _write_monopile_yaml(tmp_path)
+
+    t = Tower.from_windio_with_monopile(p, tip_mass=5.0e5)
+    assert t._bmi.hub_conn == 1
+    assert t._bmi.radius == pytest.approx(140.0)
+    f = t.run(n_modes=6, check_model=False).frequencies
+    assert np.all(np.isfinite(f)) and np.all(f > 0.0)
+    assert np.all(np.diff(f) >= -1e-9)
+    # Axisymmetric tube -> degenerate FA/SS first pair.
+    assert f[0] == pytest.approx(f[1], rel=1e-6)
+
+    f_tower = Tower.from_windio(
+        p, component="tower", tip_mass=5.0e5
+    ).run(n_modes=4, check_model=False).frequencies
+    assert f[0] < f_tower[0]
+
+
+def test_from_windio_with_monopile_tip_mass_and_n_nodes(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A bare-float tip mass matches the explicit TipMassProps, and the
+    per-segment n_nodes refinement re-grids each segment."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.bmi import TipMassProps
+    from pybmodes.io.windio import read_windio_monopile_tower
+
+    p = _write_monopile_yaml(tmp_path)
+
+    fa = Tower.from_windio_with_monopile(p, tip_mass=4.2e5).run(
+        n_modes=6, check_model=False
+    ).frequencies
+    fb = Tower.from_windio_with_monopile(
+        p,
+        tip_mass=TipMassProps(
+            mass=4.2e5, cm_offset=0.0, cm_axial=0.0,
+            ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
+        ),
+    ).run(n_modes=6, check_model=False).frequencies
+    np.testing.assert_allclose(fa, fb, rtol=1e-12)
+
+    # n_nodes refines each segment to that many stations (2 segments).
+    mt = read_windio_monopile_tower(p, n_nodes=25)
+    assert mt.section_props.n_secs == 50
+    f = Tower.from_windio_with_monopile(p, n_nodes=25, tip_mass=4.2e5).run(
+        n_modes=6, check_model=False
+    ).frequencies
+    assert np.all(np.isfinite(f)) and np.all(f > 0.0)
+
+
 def test_from_windio_friendly_error_without_pyyaml(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -555,6 +731,41 @@ def test_from_windio_modal_smoke() -> None:
         ).frequencies
         assert np.all(np.isfinite(f)) and np.all(f > 0.0)
         assert np.all(np.diff(f) >= -1e-9)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not _IEA15_YAML.is_file(),
+    reason="IEA-15 WindIO yaml not present",
+)
+def test_from_windio_with_monopile_iea15() -> None:
+    """The IEA-15 monopile + tower splice (z -75 -> +15 -> +144.386)
+    builds one fixed-bottom cantilever and solves to a physical spectrum
+    that is softer than the tower alone clamped at the transition piece."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.bmi import TipMassProps
+    from pybmodes.io.windio import read_windio_monopile_tower
+
+    mt = read_windio_monopile_tower(_IEA15_YAML)
+    assert mt.z_base == pytest.approx(-75.0)
+    assert mt.z_transition == pytest.approx(15.0)
+    assert mt.z_top == pytest.approx(144.386)
+    assert mt.combined_length == pytest.approx(219.386)
+
+    rna = TipMassProps(
+        mass=1.017e6, cm_offset=0.0, cm_axial=0.0,
+        ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
+    )
+    t = Tower.from_windio_with_monopile(_IEA15_YAML, tip_mass=rna, n_nodes=40)
+    assert t._bmi.hub_conn == 1
+    f = t.run(n_modes=6, check_model=False).frequencies
+    assert np.all(np.isfinite(f)) and np.all(f > 0.0)
+    assert np.all(np.diff(f) >= -1e-9)
+
+    f_tower = Tower.from_windio(
+        _IEA15_YAML, component="tower", tip_mass=rna, n_nodes=40
+    ).run(n_modes=4, check_model=False).frequencies
+    assert f[0] < f_tower[0]
 
 
 # Full upstream corpus: every RWT ontology .yaml we ship-test against,

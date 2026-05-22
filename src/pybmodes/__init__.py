@@ -82,6 +82,10 @@ minor releases.
     #       hub_conn, tip_mass, n_nodes)
     #     tip_mass: TipMassProps | float (RNA mass kg); n_nodes:
     #     refine the FE mesh onto N even stations (issue #35)
+    #   Tower.from_windio_with_monopile(yaml_path, *,
+    #       component_tower, component_monopile, thickness_interp,
+    #       tip_mass, n_nodes)  # splice monopile + tower into one
+    #       fixed-bottom cantilever clamped at the mudline (issue #92)
     #   Tower.from_windio_floating(yaml_path, *, water_depth,
     #                              hydrodyn_dat, moordyn_dat,
     #                              elastodyn_dat)  # coupled FOWT

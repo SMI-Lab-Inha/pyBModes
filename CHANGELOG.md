@@ -8,6 +8,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`Tower.from_windio_with_monopile(yaml, …)` — WindIO monopile + tower
+  splice (#92).** `from_windio` reduces a *single* tube; there was no WindIO
+  path that joined a monopile and tower into one fixed-bottom system. The new
+  classmethod reduces the `monopile` and `tower` components separately (each
+  keeps its own wall schedule and steel grade) and splices them bottom-to-top
+  at the transition piece — the elevation where the monopile top meets the
+  tower base, taken from each component's `reference_axis.z` — into a single
+  cantilever clamped at the mudline (`hub_conn = 1`), with the RNA lumped at
+  the tower top via `tip_mass`. It is the WindIO analog of
+  `Tower.from_elastodyn_with_subdyn` (the ElastoDyn + SubDyn splice).
+  Supports the same `tip_mass` (TipMassProps or bare-float kg) and per-segment
+  `n_nodes` mesh refinement as `from_windio`; raises `ValueError` if the two
+  segments do not meet at a common transition-piece elevation. Backed by
+  `pybmodes.io.windio.read_windio_monopile_tower` (with `WindIOMonopileTower`)
+  and validated end-to-end on the IEA-15-240-RWT monopile ontology.
+
+  This is the **rigid fixed-base** path: the pile is clamped at the mudline
+  with no soil flexibility, matching `from_elastodyn_with_subdyn` and the
+  bundled monopile samples — so the estimate is conservative (softer) for a
+  pile whose embedded length would otherwise be laterally supported by soil.
+  Distributed soil springs (a Winkler `distr_k` / `hub_conn = 3` foundation,
+  e.g. the NREL closed-form soil-stiffness model) and Morison hydrodynamics
+  are out of scope here and tracked as a separate follow-up.
+
+- **`pybmodes.io.windio.WindIOTubular` now carries the absolute base/top
+  elevations** (`z_base`, `z_top`) parsed from `reference_axis.z`, in addition
+  to the existing normalised grid and `flexible_length`. Additive, defaulted
+  fields; existing callers are unaffected.
+
 ## [1.10.1] — 2026-05-23
 
 A labelling-only bug-fix release: the floating-platform rigid-body mode
