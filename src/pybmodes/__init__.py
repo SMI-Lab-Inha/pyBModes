@@ -178,7 +178,7 @@ from pybmodes.options import CheckOptions, FitOptions, SolverOptions
 try:
     __version__ = version("pybmodes")
 except PackageNotFoundError:
-    __version__ = "1.8.1-dev"
+    __version__ = "1.9.0-dev"
 
 __all__ = [
     "CheckOptions",
