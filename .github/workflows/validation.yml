@@ -61,6 +61,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # Pin BLAS/LAPACK to a single thread so the dense eigensolver
+    # returns a *reproducible* eigenvector basis for near-degenerate
+    # eigenpairs (notably the 2nd tower fore-aft / side-side pair).
+    # Multi-threaded OpenBLAS can hand back a different orthonormal
+    # basis of a degenerate eigenspace run-to-run; the ElastoDyn
+    # polynomial fit for that block is basis-sensitive, which made the
+    # ``test_validate.py`` patch round-trip ratio flake to ~2x on Linux
+    # CI (it passes deterministically single-threaded and on Windows).
+    # Single-threaded BLAS makes the integration suite deterministic.
+    # Follow-up: make the degenerate-pair canonicalisation in
+    # ``pybmodes.elastodyn`` basis-invariant so multi-threaded users get
+    # identical coefficients too — this only hardens the CI gate.
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+
     steps:
       - uses: actions/checkout@v4
 
