@@ -209,14 +209,20 @@ strict = false
 ignore_missing_imports = true
 # Floor raised for ALL modules (verified clean across the package):
 # redundant casts, non-overlapping equality, implicit-Optional bans,
-# dead ``# type: ignore`` comments, and the ``--extra-checks`` bundle.
-# These don't require full type coverage (parsers stay loose on
-# untyped defs — see the per-module overrides) but they catch a real
-# class of latent bug without that coverage.
+# and the ``--extra-checks`` bundle. These don't require full type
+# coverage (parsers stay loose on untyped defs — see the per-module
+# overrides) but they catch a real class of latent bug without it.
+#
+# ``warn_unused_ignores`` is deliberately NOT global: it is
+# environment-fragile for loose modules that import opt-in,
+# stub-less third-party packages (e.g. ``import yaml  # type:
+# ignore[import-untyped]`` in io/windio.py), where the ignore is
+# "used" under one mypy/stub combination and "unused" under another.
+# It is enabled per-module below for the strict, fully-typed surface,
+# where the set of needed ignores is deterministic across environments.
 warn_redundant_casts = true
 strict_equality = true
 no_implicit_optional = true
-warn_unused_ignores = true
 extra_checks = true
 
 # Per-module strict overrides. Modules listed here run under

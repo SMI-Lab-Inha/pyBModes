@@ -140,9 +140,41 @@ _GHOST = {
 
 def test_collect_updates_reports_missing_hash_files():
     sha_updates, hash_updates, missing = ved._collect_updates({"ghost": dict(_GHOST)})
-    assert hash_updates == {}
+    # A clone that DECLARES hash_files is recorded even when nothing was
+    # computable, so its table is rewritten (to ``{ }``) rather than left
+    # stale — see test_update_clears_stale_hashes_when_all_missing.
+    assert hash_updates == {"ghost": {}}
     assert ("ghost", "a.yaml") in missing
     assert ("ghost", "deep/b.dat") in missing
+
+
+def test_collect_updates_leaves_clones_without_hash_files_untouched():
+    # No declared hash_files → the clone must not appear in hash_updates,
+    # so its existing ``hashes`` table is left alone.
+    _, hash_updates, missing = ved._collect_updates(
+        {"plain": {"relative_path": "external/__nope__"}}
+    )
+    assert hash_updates == {}
+    assert missing == []
+
+
+def test_update_clears_stale_hashes_when_all_missing():
+    # Regression (Codex P2): --update must not leave a stale hashes pin
+    # behind when a declared clone has no computable files. The table is
+    # rewritten to ``{ }``, dropping the obsolete entry.
+    sample = (
+        '[clone.ghost]\n'
+        'relative_path = "external/__nope__"\n'
+        'hash_files = ["a.yaml"]\n'
+        'hashes = { "old.dat" = "deadbeef" }\n'
+    )
+    sha_updates, hash_updates, _ = ved._collect_updates(
+        {"ghost": {"relative_path": "external/__nope__", "hash_files": ["a.yaml"]}}
+    )
+    assert hash_updates == {"ghost": {}}
+    out = ved._rewrite_manifest_text(sample, sha_updates, hash_updates)
+    assert "hashes = { }" in out
+    assert "deadbeef" not in out
 
 
 def test_update_fails_loud_on_missing_hash_files(tmp_path, monkeypatch):

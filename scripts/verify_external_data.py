@@ -356,14 +356,21 @@ def _collect_updates(
                 sha_updates[name] = _git(clone_dir, "rev-parse", "HEAD")
             except subprocess.CalledProcessError:
                 print(f"{_YEL}WARN{_END}  {name}: could not read HEAD; sha left as-is.")
+        declared = spec.get("hash_files", [])
         computed: dict[str, str] = {}
-        for rel in spec.get("hash_files", []):
+        for rel in declared:
             target = clone_dir / rel
             if target.is_file():
                 computed[rel] = _sha256(target)
             else:
                 missing.append((name, rel))
-        if computed:
+        # Record every clone that DECLARES hash_files — even when the
+        # computable set is empty — so its ``hashes`` table is rewritten
+        # to reflect exactly what was hashable. Omitting an empty result
+        # would leave a stale ``hashes`` pin in place (the "write the
+        # computable subset" contract must also clear an emptied set).
+        # Clones with no hash_files are left untouched.
+        if declared:
             hash_updates[name] = computed
     return sha_updates, hash_updates, missing
 
