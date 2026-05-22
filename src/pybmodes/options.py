@@ -144,6 +144,15 @@ class CheckOptions:
     fit_cond_fail : float, default 1e6
         Polynomial-fit design-matrix condition above which check_model
         emits a FAIL. Mirrors :class:`FitOptions.fit_cond_fail`.
+    platform_cm_offset_gyradius_factor : float, default 1.0
+        The horizontal platform CM offset (``cm_pform_x`` / ``cm_pform_y``
+        on a ``PlatformSupport``) is flagged when its magnitude exceeds
+        this factor times the platform's yaw radius of gyration
+        ``√(I_yaw / m)``. ``cm_pform_x`` / ``cm_pform_y`` are the CM
+        offset *from the tower axis*; a value comparable to the
+        platform's own size is almost always a coordinate-origin error
+        leaking into the field, which injects spurious surge/sway↔yaw
+        coupling and mislabels the rigid-body modes (issue #95).
     """
 
     stiffness_jump_factor: float = 5.0
@@ -152,6 +161,7 @@ class CheckOptions:
     support_asymmetry_rtol: float = 1.0e-6
     fit_cond_warn: float = 1.0e4
     fit_cond_fail: float = 1.0e6
+    platform_cm_offset_gyradius_factor: float = 1.0
 
 
 # Module-level default instances. Internal call sites that don't (yet)

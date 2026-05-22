@@ -291,6 +291,72 @@ class TestCheckModel:
         assert hits[0].severity in ("WARN", "ERROR")
         assert "polynomial-fit design matrix" in hits[0].message
 
+    # --- platform CM offset (issue #95) ---------------------------------
+    def _build_cm_offset_tower(self, cm_x: float, cm_y: float = 0.0) -> Tower:
+        """A hub_conn=2 PlatformSupport tower with a full 6×6 inertia and
+        a configurable horizontal CM offset. Yaw radius of gyration is
+        √(I_yaw/m) = √(2.0e10 / 1.8e7) ≈ 33.3 m."""
+        n = 5
+        span = np.linspace(0.0, 1.0, n)
+        sp = SectionProperties(
+            title="t", n_secs=n,
+            span_loc=span, str_tw=np.zeros(n), tw_iner=np.zeros(n),
+            mass_den=np.full(n, 100.0),
+            flp_iner=np.full(n, 10.0), edge_iner=np.full(n, 10.0),
+            flp_stff=np.full(n, 1.0e9), edge_stff=np.full(n, 1.0e9),
+            tor_stff=np.full(n, 1.0e8), axial_stff=np.full(n, 1.0e10),
+            cg_offst=np.zeros(n), sc_offst=np.zeros(n), tc_offst=np.zeros(n),
+        )
+        m = 1.8e7
+        i6 = np.zeros((6, 6))
+        i6[0, 0] = i6[1, 1] = i6[2, 2] = m
+        i6[3, 3] = i6[4, 4] = 1.3e10
+        i6[5, 5] = 2.0e10                       # I_yaw → r_g ≈ 33.3 m
+        platform = PlatformSupport(
+            draft=10.0, cm_pform=0.0, mass_pform=m, i_matrix=i6, ref_msl=0.0,
+            hydro_M=np.eye(6) * 1.0e6, hydro_K=np.eye(6) * 1.0e7,
+            mooring_K=np.diag([1.0e6] * 6),
+            distr_m_z=np.array([]), distr_m=np.array([]),
+            distr_k_z=np.array([]), distr_k=np.array([]), wires=None,
+            cm_pform_x=cm_x, cm_pform_y=cm_y,
+        )
+        bmi = BMIFile(
+            title="t", echo=False, beam_type=2, rot_rpm=0.0, rpm_mult=1.0,
+            radius=90.0, hub_rad=0.0, precone=0.0, bl_thp=0.0, hub_conn=2,
+            n_modes_print=20, tab_delim=True, mid_node_tw=False,
+            tip_mass=TipMassProps(
+                mass=100_000.0, cm_offset=0.0, cm_axial=0.0,
+                ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
+            ),
+            id_mat=1, sec_props_file="", scaling=ScalingFactors(),
+            n_elements=10, el_loc=np.linspace(0.0, 1.0, 11),
+            tow_support=1, support=platform, source_file=None,
+        )
+        tower = Tower.__new__(Tower)
+        tower._bmi = bmi
+        tower._sp = sp
+        return tower
+
+    def test_large_horizontal_cm_offset_warns(self) -> None:
+        """A horizontal CM offset exceeding the platform's yaw radius of
+        gyration (the issue #95 input error) flags WARN."""
+        tower = self._build_cm_offset_tower(cm_x=-39.0)   # > r_g ≈ 33.3 m
+        hits = _filter(check_model(tower), "cm_pform_x")
+        assert len(hits) == 1 and hits[0].severity == "WARN"
+        assert "radius of gyration" in hits[0].message
+        assert "tower axis" in hits[0].message.lower()
+
+    def test_small_horizontal_cm_offset_is_silent(self) -> None:
+        """A modest CM offset (well under the gyration radius) is a
+        legitimate asymmetric floater and must not warn."""
+        tower = self._build_cm_offset_tower(cm_x=-4.0)     # < r_g ≈ 33.3 m
+        assert _filter(check_model(tower), "cm_pform_x") == []
+
+    def test_zero_cm_offset_is_silent(self) -> None:
+        """The axisymmetric / symmetric default (offset 0) never warns."""
+        tower = self._build_cm_offset_tower(cm_x=0.0, cm_y=0.0)
+        assert _filter(check_model(tower), "cm_pform_x") == []
+
 
 # ---------------------------------------------------------------------------
 # Auto-run integration on Tower.run / RotatingBlade.run

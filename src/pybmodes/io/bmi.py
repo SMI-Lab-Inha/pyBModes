@@ -93,14 +93,21 @@ class PlatformSupport:
     distr_k_z: np.ndarray
     distr_k: np.ndarray
     wires: TensionWireSupport | None = None
-    # Horizontal offset of the platform centre of mass from the tower
-    # axis, in the tower-base frame (x = downwind / surge-aligned,
-    # y = lateral / sway-aligned), metres. Non-zero only for an
-    # asymmetric floating substructure; both default to 0.0 so every
-    # existing deck / sample (axisymmetric spars, symmetric semis) is
-    # byte-identical. Consumed by ``pybmodes.fem.nondim.nondim_platform``
-    # as the horizontal components of the CM → tower-base rigid arm
-    # (the vertical component stays ``cm_pform``). Added 1.2.0.
+    # Horizontal offset of the platform centre of mass from the TOWER
+    # AXIS, in the tower-base frame (x = downwind / surge-aligned,
+    # y = lateral / sway-aligned), metres. This is a *local* offset of
+    # the CM relative to the tower centreline — NOT a position in any
+    # global / OpenFAST / WAMIT coordinate frame. For a standard floater
+    # the tower sits on the platform centroid, so these are ≈ 0 (every
+    # axisymmetric spar / symmetric semi: exactly 0). A value comparable
+    # to the platform's own size (its yaw radius of gyration) is almost
+    # always a coordinate-origin offset leaking in; it injects spurious
+    # surge/sway↔yaw coupling and mislabels the rigid-body modes — the
+    # ``check_model`` platform-CM-offset gate warns on it (issue #95).
+    # Both default to 0.0 so every existing deck / sample is byte-
+    # identical. Consumed by ``pybmodes.fem.nondim.nondim_platform`` as
+    # the horizontal components of the CM → tower-base rigid arm (the
+    # vertical component stays ``cm_pform``). Added 1.2.0.
     cm_pform_x: float = 0.0
     cm_pform_y: float = 0.0
 
