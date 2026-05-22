@@ -223,10 +223,9 @@ def _normalize_columns_l2(eigvecs: np.ndarray) -> None:
     fits) assume L2-normalised columns. Both the dense and sparse
     paths route through this helper so the convention is uniform.
     """
-    for j in range(eigvecs.shape[1]):
-        norm = float(np.sqrt(np.sum(eigvecs[:, j] ** 2)))
-        if norm > 0.0:
-            eigvecs[:, j] /= norm
+    norms = np.linalg.norm(eigvecs, axis=0)
+    nonzero = norms > 0.0
+    eigvecs[:, nonzero] /= norms[nonzero]
 
 
 def eigvals_to_hz(eigvals: np.ndarray, romg: float) -> np.ndarray:

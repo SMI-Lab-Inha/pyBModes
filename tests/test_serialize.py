@@ -535,6 +535,36 @@ def test_modal_result_from_json_validates_corrupt_payload(
         ModalResult.from_json(jp)
 
 
+def test_modal_result_from_json_refuses_future_schema(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A higher schema_version is refused, not parsed under the v1 layout
+    (serialisation contract: older loaders refuse a newer file)."""
+    result = _make_modal_result(n_modes=3)
+    jp = tmp_path / "r.json"
+    result.to_json(jp)
+    payload = json.loads(jp.read_text(encoding="utf-8"))
+    payload["schema_version"] = "2"
+    jp.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"schema_version"):
+        ModalResult.from_json(jp)
+
+
+def test_modal_result_from_json_accepts_missing_schema(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A payload without a schema_version key is treated as the original
+    "1" (lenient for any pre-field files), not refused."""
+    result = _make_modal_result(n_modes=3)
+    jp = tmp_path / "r.json"
+    result.to_json(jp)
+    payload = json.loads(jp.read_text(encoding="utf-8"))
+    del payload["schema_version"]
+    jp.write_text(json.dumps(payload), encoding="utf-8")
+    loaded = ModalResult.from_json(jp)
+    np.testing.assert_allclose(loaded.frequencies, result.frequencies)
+
+
 def test_campbell_load_validates_corrupt_npz(
     tmp_path: pathlib.Path,
 ) -> None:

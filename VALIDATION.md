@@ -52,8 +52,11 @@ maintainer action (flip ``optional``) documented under *Changed* in
 the CHANGELOG.
 
 The two BModes CertTest cases (Test03, Test04) depend on
-``external/BModes``, a [NREL BModes download](https://www.nrel.gov/wind/nwtc/bmodes.html)
-that is not on GitHub and not redistributable in CI. Those tests
+``external/BModes``, the [BModes v3.00 distribution](https://www.nrel.gov/wind/nwtc/bmodes.html)
+— Fortran source + CertTest decks, also on GitHub at
+[old-NWTC/BModes](https://github.com/old-NWTC/BModes), but
+government-funded reference data pyBmodes does not bundle or
+auto-fetch in CI. Those tests
 skip cleanly when the data is absent (module-level
 ``pytestmark = pytest.mark.integration`` plus per-file
 ``.is_file()`` guards) and **stay a maintainer-local enforcement**
@@ -96,16 +99,17 @@ metrics:
 | IEA-3.4 modes 1-2 — degenerate-pair resolver fires no warning | IEA Wind Task 37 RWT deck | classifier verdict | no `RuntimeWarning` | clean | [`tests/test_classifier.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_classifier.py) | yes |
 
 **Citations** (full author / year forms used in the table above).
-NREL reports link to the canonical ``docs.nrel.gov`` PDF or the
-OSTI.GOV record; journal / conference papers link by DOI; textbooks
-have no DOI and are cited by title + publisher:
+NREL reports link to the canonical ``docs.nrel.gov`` PDF; journal /
+conference papers link by DOI; textbooks have no DOI and are cited
+by title + publisher:
 
 - Blevins (1979). *Formulas for Natural Frequency and Mode Shape*. Krieger Publishing. (Textbook; no DOI.)
 - Karnovsky & Lebed (2001). *Formulas for Structural Dynamics*. McGraw-Hill. (Textbook; no DOI.)
 - Wright, Smith, Thresher & Wang (1982). *Vibration Modes of Centrifugally Stiffened Beams*. *Journal of Applied Mechanics* 49(1), 197–202. DOI [10.1115/1.3161966](https://doi.org/10.1115/1.3161966).
-- Bir (2009). *Blades and Towers Modal Analysis Code (BModes): Verification of Blade Modal Analysis Capability*. AIAA 2009-1035. [OSTI 982266](https://www.osti.gov/biblio/982266).
-- Bir (2010). *Verification of BModes: Rotary Beam and Tower Modal Analysis Code*. NREL/CP-500-47953. [OSTI 975394](https://www.osti.gov/biblio/975394).
-- Jonkman (2007). *Dynamics Modeling and Loads Analysis of an Offshore Floating Wind Turbine* (Appendix B, catenary mooring). NREL/TP-500-41958. [OSTI 921803](https://www.osti.gov/biblio/921803).
+- Bir (2005). *User's Guide to BModes (Software for Computing Rotating Beam-Coupled Modes)*. NREL/TP-500-39133. [PDF](https://docs.nrel.gov/docs/fy06osti/39133.pdf).
+- Bir (2009). *Blades and Towers Modal Analysis Code (BModes): Verification of Blade Modal Analysis Capability*. AIAA 2009-1035. DOI [10.2514/6.2009-1035](https://doi.org/10.2514/6.2009-1035).
+- Bir (2010). *Verification of BModes: Rotary Beam and Tower Modal Analysis Code*. NREL/CP-500-47953. [PDF](https://docs.nrel.gov/docs/fy10osti/47953.pdf).
+- Jonkman (2007). *Dynamics Modeling and Loads Analysis of an Offshore Floating Wind Turbine* (Appendix B, catenary mooring). NREL/TP-500-41958. [PDF](https://docs.nrel.gov/docs/fy08osti/41958.pdf).
 - Jonkman, Butterfield, Musial & Scott (2009). *Definition of a 5-MW Reference Wind Turbine for Offshore System Development*. NREL/TP-500-38060. [PDF](https://docs.nrel.gov/docs/fy09osti/38060.pdf).
 - Jonkman & Musial (2010). *Offshore Code Comparison Collaboration (OC3) for IEA Wind Task 23*. NREL/TP-5000-48191. [PDF](https://docs.nrel.gov/docs/fy11osti/48191.pdf).
 - Jonkman (2010). *Definition of the Floating System for Phase IV of OC3*. NREL/TP-500-47535. [PDF](https://docs.nrel.gov/docs/fy10osti/47535.pdf).
@@ -309,10 +313,15 @@ publicly clonable:**
   integration cases carry re-runnable CI evidence, not just a maintainer
   claim.
 - **BModes CertTest + optional cross-comparisons — maintainer-local.**
-  The BModes data is a NREL download (not on GitHub, not redistributable),
-  and MoorPy / RAFT are `optional = true` cross-comparison clones; those
-  rows stay maintainer-local until/unless mirrored somewhere CI can
-  fetch. Their tests skip cleanly when the data is absent.
+  The BModes Fortran solver and its CertTest decks are on GitHub
+  ([old-NWTC/BModes](https://github.com/old-NWTC/BModes)), but they are
+  government-funded reference data pyBmodes does not bundle or auto-fetch
+  in CI; the CS_Monopile / OC3Hywind rows additionally compare against
+  `.out` files from the patched BModes_JJ binary (distributed only via the
+  author's personal drive, not an official release). MoorPy / RAFT are
+  `optional = true` cross-comparison clones; those rows stay
+  maintainer-local until/unless mirrored somewhere CI can fetch. Their
+  tests skip cleanly when the data is absent.
 - **Per-PR `ci.yml`** runs the self-contained suite and *tolerates* exit
   code 5 ("no tests collected") on its integration step, because the
   default PR runner has no upstream decks — the hard-fail enforcement

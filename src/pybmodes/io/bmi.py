@@ -603,19 +603,13 @@ def _read_platform_common_tail(
     return ref_msl, hydro_M, hydro_K, mooring_K, z_distr_m, distr_m, z_distr_k, distr_k
 
 
-def _read_platform_inertia_legacy(r: _LineReader, mass_pform: float) -> np.ndarray:
-    """Read the legacy offshore inertia block into a 6x6 structural mass matrix."""
-    i_mat = np.zeros((6, 6))
-    for i in range(3):
-        i_mat[i, i] = mass_pform
+def _read_platform_inertia(r: _LineReader, mass_pform: float) -> np.ndarray:
+    """Read an offshore platform inertia block into a 6x6 structural mass matrix.
 
-    r.read_com()
-    i_mat[3:6, 3:6] = _read_square_matrix(r, 3)
-    return i_mat
-
-
-def _read_platform_inertia_extended(r: _LineReader, mass_pform: float) -> np.ndarray:
-    """Read the extended-platform 3x3 inertia block into a 6x6 structural mass matrix."""
+    The legacy and extended-platform ``tow_support`` dialects encode this
+    block identically — translational ``mass_pform`` on the diagonal plus a
+    3x3 rotational-inertia sub-block — so both share this reader.
+    """
     i_mat = np.zeros((6, 6))
     for i in range(3):
         i_mat[i, i] = mass_pform
@@ -662,7 +656,7 @@ def _parse_platform_legacy(r: _LineReader) -> PlatformSupport:
     cm_pform, cm_pform_x, cm_pform_y = _read_cm_pform_line(r)
     mass_pform = _parse_float(r.read_var())
 
-    i_mat = _read_platform_inertia_legacy(r, mass_pform)
+    i_mat = _read_platform_inertia(r, mass_pform)
     (
         ref_msl,
         hydro_M,
@@ -698,7 +692,7 @@ def _parse_platform_extended(r: _LineReader) -> PlatformSupport:
     cm_pform, cm_pform_x, cm_pform_y = _read_cm_pform_line(r)
     mass_pform = _parse_float(r.read_var())
 
-    i_mat = _read_platform_inertia_extended(r, mass_pform)
+    i_mat = _read_platform_inertia(r, mass_pform)
     (
         ref_msl,
         hydro_M,

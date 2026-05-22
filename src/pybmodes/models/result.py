@@ -417,6 +417,18 @@ class ModalResult:
         path = pathlib.Path(path)
         payload = json.loads(path.read_text(encoding="utf-8"))
 
+        # Refuse a future-schema file rather than silently parsing it
+        # under the v1 layout (serialisation contract: bump the string
+        # on layout changes; older loaders refuse a higher version). A
+        # missing key is treated as the original "1" for pre-field files.
+        schema = payload.get("schema_version", "1")
+        if schema != "1":
+            raise ValueError(
+                f"{path}: unsupported ModalResult JSON schema_version "
+                f"{schema!r}; this build of pybmodes reads schema '1'. "
+                f"Upgrade pybmodes to read newer result files."
+            )
+
         shapes = [
             NodeModeShape(
                 mode_number=int(s["mode_number"]),

@@ -145,16 +145,27 @@ hashes = { "examples/05_tower_monopile/nrel5mw_tower.yaml" = "981d2913b6859ddf37
 # ---------------------------------------------------------------------------
 # BModes Fortran reference solver
 # ---------------------------------------------------------------------------
-# Not redistributable; clone locally from the NREL download. The
-# CertTest reference outputs (Test03 / Test04) anchor the 82.4 m
-# tower + tension-wire validation cases.
+# Government-funded reference data: on GitHub, but not bundled or
+# auto-fetched in CI. The CertTest reference outputs (Test03 / Test04)
+# anchor the 82.4 m tower + tension-wire validation cases.
 [clone.bmodes]
-repo = "TBD — clone from NREL BModes download (not GitHub)"
+repo = "https://github.com/old-NWTC/BModes.git"
 sha = "v3.00.00"                         # BModes uses tag-only versioning
 relative_path = "external/BModes"
-fetch_at = "tagged-archive"
-optional = true                          # not a git clone — NREL download; CI can't fetch it
-notes = "BModes ships as a download (not a git repo). The release archive ``BModes_v3.00.00.zip`` from the NREL site contains the CertTest/ and docs/examples/ trees pyBmodes consumes. CertTest 03/04 tests skip cleanly when absent."
+fetch_at = "tagged-archive"              # verifier hash-checks only; maintainer fetches manually
+optional = true                          # kept maintainer-local: government-funded data we don't auto-clone in CI
+notes = "BModes source + CertTest/ + docs/examples/ trees are on GitHub at old-NWTC/BModes (and in the NREL release archive ``BModes_v3.00.00.zip``); pyBmodes consumes the CertTest/ and docs/examples/ trees. Kept ``optional`` because it is government-funded reference data we do not bundle/auto-clone in CI. The CS_Monopile / OC3Hywind rows additionally compare against ``.out`` files from the patched BModes_JJ binary, distributed only via the author's personal drive (not an official release). CertTest 03/04 tests skip cleanly when absent."
+# Content pins for the Test03 / Test04 decks this entry anchors. A
+# tagged-archive entry has no git HEAD to verify, so under --strict the
+# verifier WARNs until these are populated: run
+# ``verify_external_data.py --update`` on a maintainer machine that has
+# the BModes tree to pin the EOL-normalized hashes (text decks).
+hash_files = [
+    "CertTest/Test03_tower.bmi",
+    "CertTest/Test03_tower.out",
+    "CertTest/Test04_wires_supported_tower.bmi",
+    "CertTest/Test04_wires_supported_tower.out",
+]
 hashes = { }                             # populated by --update on a maintainer machine
 
 # ---------------------------------------------------------------------------

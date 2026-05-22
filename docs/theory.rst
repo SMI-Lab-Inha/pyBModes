@@ -243,18 +243,20 @@ dense above 100 elements.
 Pre-solve sanity checks
 -----------------------
 
-:func:`pybmodes.checks.check_model` runs **eight cheap,
+:func:`pybmodes.checks.check_model` runs **nine cheap,
 deterministic gates** before a solve:
 
-1. Span monotonicity (no out-of-order nodes)
-2. Mass non-negativity at every node
-3. Stiffness-jump detection (> 5× between adjacent stations)
-4. FA / SS bending-ratio sanity (inside ``[0.1, 10]``)
-5. RNA mass vs tower mass ratio (warn when RNA > tower)
-6. Support-matrix singularity (for free-free without
+1. Section properties all finite (no NaN / ±Inf) — runs first so
+   the per-field checks below need not be NaN-aware
+2. Span monotonicity (no out-of-order nodes)
+3. Mass non-negativity at every node
+4. Stiffness-jump detection (> 5× between adjacent stations)
+5. FA / SS bending-ratio sanity (inside ``[0.1, 10]``)
+6. RNA mass vs tower mass ratio (warn when RNA > tower)
+7. Support-matrix singularity (for free-free without
    ``PlatformSupport``)
-7. ``n_modes`` exceeding the DOF cap
-8. Polynomial-fit design-matrix condition number > 1e4 (WARN)
+8. ``n_modes`` exceeding the DOF cap
+9. Polynomial-fit design-matrix condition number > 1e4 (WARN)
    / > 1e6 (FAIL)
 
 Auto-runs in ``.run()`` (suppress with ``check_model=False``);
@@ -306,8 +308,8 @@ Citable references
 ------------------
 
 The reference set ``pybmodes`` validates against (NREL reports link to
-the canonical ``docs.nrel.gov`` PDF or the OSTI.GOV record; papers by
-DOI; textbooks have no DOI):
+the canonical ``docs.nrel.gov`` PDF; papers by DOI; textbooks have no
+DOI):
 
 - **NREL 5MW Reference Turbine** — Jonkman, Butterfield, Musial,
   Scott (2009), *Definition of a 5-MW Reference Wind Turbine
@@ -330,13 +332,16 @@ DOI; textbooks have no DOI):
   UMaine VolturnUS-S platform of Allen et al. (2020),
   NREL/TP-5000-76773
   (`PDF <https://docs.nrel.gov/docs/fy20osti/76773.pdf>`__).
-- **BModes** — Bir (2010), NREL/CP-500-47953
-  (`OSTI 975394 <https://www.osti.gov/biblio/975394>`__).
+- **BModes** — Bir (2005), *User's Guide to BModes*,
+  NREL/TP-500-39133
+  (`PDF <https://docs.nrel.gov/docs/fy06osti/39133.pdf>`__);
+  verification in Bir (2010), NREL/CP-500-47953
+  (`PDF <https://docs.nrel.gov/docs/fy10osti/47953.pdf>`__).
 - **Rotating-blade closed forms** — Wright (1982),
   *J. Appl. Mech.* 49(1), 197–202
   (DOI `10.1115/1.3161966 <https://doi.org/10.1115/1.3161966>`__);
   Bir (2009), AIAA 2009-1035
-  (`OSTI 982266 <https://www.osti.gov/biblio/982266>`__);
+  (DOI `10.2514/6.2009-1035 <https://doi.org/10.2514/6.2009-1035>`__);
   Bir (2010) Table 5 (tip-mass rotating blade); Bir 2009 Eq. 8
   (rotating cable, analytical Legendre solution).
 - **Beam tip-mass formulas** — Blevins (1979 / 2016); Karnovsky &
@@ -344,7 +349,7 @@ DOI; textbooks have no DOI):
 - **Catenary mooring** — Jonkman (2007), *Dynamics Modeling and
   Loads Analysis of an Offshore Floating Wind Turbine*,
   NREL/TP-500-41958, Appendix B
-  (`OSTI 921803 <https://www.osti.gov/biblio/921803>`__).
+  (`PDF <https://docs.nrel.gov/docs/fy08osti/41958.pdf>`__).
 - **WAMIT** — Lee & Newman (1991/2006), *WAMIT User Manual*.
 - **Cable structures** — Irvine (1981), *Cable Structures*,
   MIT Press, §2.4.
