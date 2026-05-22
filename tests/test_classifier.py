@@ -196,7 +196,7 @@ def test_nearly_degenerate_pair(tmp_path):
         abs(modal.shapes[1].freq_hz - modal.shapes[0].freq_hz)
         / modal.shapes[0].freq_hz
     )
-    assert _DEGENERATE_FREQ_RTOL < gap, (
+    assert gap > _DEGENERATE_FREQ_RTOL, (
         f"frequency gap {gap:.2e} should be > threshold {_DEGENERATE_FREQ_RTOL}; "
         f"either tighten the EI ratio or relax the threshold"
     )

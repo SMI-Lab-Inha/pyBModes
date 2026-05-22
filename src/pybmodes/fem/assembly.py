@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -43,12 +43,12 @@ def assemble(
     omega2: float,
     sec_loc: np.ndarray,
     str_tw: np.ndarray,
-    tip_mass: Optional[TipMassND] = None,
-    wire_k_nd: Optional[np.ndarray] = None,
-    wire_node_attach: Optional[list] = None,
+    tip_mass: TipMassND | None = None,
+    wire_k_nd: np.ndarray | None = None,
+    wire_node_attach: list | None = None,
     hub_conn: int = 1,
-    platform_nd: Optional[PlatformND] = None,
-    elm_distr_k: Optional[np.ndarray] = None,
+    platform_nd: PlatformND | None = None,
+    elm_distr_k: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Assemble global stiffness gk and mass gm matrices.
 

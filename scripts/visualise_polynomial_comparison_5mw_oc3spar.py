@@ -123,9 +123,7 @@ def _select_first_two_above_freq(
         if shape.freq_hz < min_freq_hz:
             continue
         p_fa, p_ss, _ = _participation(shape)
-        if want_fa and p_fa >= 0.6:
-            out.append(idx)
-        elif (not want_fa) and p_ss >= 0.6:
+        if (want_fa and p_fa >= 0.6) or ((not want_fa) and p_ss >= 0.6):
             out.append(idx)
         if len(out) == 2:
             return (out[0], out[1])

@@ -37,7 +37,8 @@ plot.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Sequence, cast
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -180,15 +181,15 @@ def plot_environmental_spectra(
     tower_fa_hz: float | None = None,
     tower_ss_hz: float | None = None,
     rpm_design: tuple[float, float] | None = None,
-    rpm_constraint: "tuple[float, float] | bool | None" = None,
+    rpm_constraint: tuple[float, float] | bool | None = None,
     harmonics: Sequence[int] = (1, 3),
     wind: dict | None = None,
     wave: dict | None = None,
     freq_max: float = 0.6,
     n_points: int = 2000,
-    ax: "Axes | None" = None,
+    ax: Axes | None = None,
     title: str | None = None,
-) -> "Figure":
+) -> Figure:
     """Draw the environmental-loading frequency-placement diagram.
 
     Parameters

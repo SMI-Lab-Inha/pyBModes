@@ -28,7 +28,6 @@ from __future__ import annotations
 import math
 import pathlib
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
@@ -40,7 +39,7 @@ class ElastoDynMain:
     # File-level metadata
     header: str
     title: str
-    source_file: Optional[pathlib.Path] = None
+    source_file: pathlib.Path | None = None
 
     # Geometry / configuration
     num_bl: int = 3
@@ -94,7 +93,7 @@ class ElastoDynMain:
             math.radians(self.shft_tilt)
         )
 
-    def compute_rot_mass(self, blade: "ElastoDynBlade") -> float:
+    def compute_rot_mass(self, blade: ElastoDynBlade) -> float:
         """Total rotor mass = hub + N · AdjBlMs · ∫ BMassDen ds along
         the blade.
 
@@ -124,7 +123,7 @@ class ElastoDynTower:
 
     header: str
     title: str
-    source_file: Optional[pathlib.Path] = None
+    source_file: pathlib.Path | None = None
 
     n_tw_inp_st: int = 0
     twr_fa_dmp: list[float] = field(default_factory=lambda: [0.0, 0.0])
@@ -180,7 +179,7 @@ class ElastoDynBlade:
 
     header: str
     title: str
-    source_file: Optional[pathlib.Path] = None
+    source_file: pathlib.Path | None = None
 
     n_bl_inp_st: int = 0
     bld_fl_dmp: list[float] = field(default_factory=lambda: [0.0, 0.0])
@@ -192,7 +191,7 @@ class ElastoDynBlade:
 
     # Distributed properties — mandatory columns plus any extras present.
     bl_fract: np.ndarray = field(default_factory=lambda: np.empty(0))
-    pitch_axis: Optional[np.ndarray] = None  # present in 6-col format
+    pitch_axis: np.ndarray | None = None  # present in 6-col format
     strc_twst: np.ndarray = field(default_factory=lambda: np.empty(0))
     b_mass_den: np.ndarray = field(default_factory=lambda: np.empty(0))
     flp_stff: np.ndarray = field(default_factory=lambda: np.empty(0))

@@ -29,7 +29,6 @@ position-driven one would need a per-version dispatch table.
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 # Capture: <values...>  <label>  [- comment]
 # label = identifier with optional (n) suffix (e.g. "BldFile(1)") or a digit
@@ -70,7 +69,7 @@ def _is_section_divider(line: str) -> bool:
     """``True`` if ``line`` looks like a section divider in an
     ElastoDyn file — three or more leading ``-`` or ``=``."""
     s = line.strip()
-    return s.startswith("---") or s.startswith("===")
+    return s.startswith(("---", "==="))
 
 
 def _is_file_header(line: str) -> bool:
@@ -100,7 +99,7 @@ def _parse_float(tok: str) -> float:
     return value
 
 
-def _split_label_index(label: str) -> tuple[str, Optional[int]]:
+def _split_label_index(label: str) -> tuple[str, int | None]:
     """Strip an array index from ``label``, returning ``(canon, idx)``.
 
     Two indexed-label forms are recognised:
@@ -128,7 +127,7 @@ def _canon_label(label: str) -> str:
     return _split_label_index(label)[0]
 
 
-def _split_value_label(line: str) -> Optional[tuple[str, str]]:
+def _split_value_label(line: str) -> tuple[str, str] | None:
     """Split a data line into ``(value-string, label)``; ``None`` if no
     label was matched."""
     if not line.strip() or _is_section_divider(line):

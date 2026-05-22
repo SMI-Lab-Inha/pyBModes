@@ -73,7 +73,7 @@ def _apply_style(ax, xlabel: str, ylabel: str, title: str | None = None) -> None
     ax.spines[["top", "right"]].set_visible(False)
 
 
-def _mode_colors(n: int, override: "list | str | None" = None):
+def _mode_colors(n: int, override: list | str | None = None):
     """Pick *n* visually distinct line colours.
 
     ``override`` lets the caller take full control: a colormap name
@@ -160,7 +160,7 @@ def plot_mode_shapes(
     figsize: tuple[float, float] | None = None,
     *,
     normalize: str = "mode",
-    colors: "list | str | None" = None,
+    colors: list | str | None = None,
 ) -> Figure:
     """Plot normalised mode shape displacements vs normalised span.
 
@@ -462,7 +462,7 @@ def bir_mode_shape_plot(
     coupling_overlay: list[ModeSpec] | None = None,
     figsize: tuple[float, float] = (5.5, 6.5),
     xlim: tuple[float, float] | None = None,
-    colors: "list | str | None" = None,
+    colors: list | str | None = None,
 ) -> Figure:
     """Plot mode shapes in the Bir 2010 figure convention.
 
@@ -599,7 +599,7 @@ def bir_mode_shape_subplot(
     x_label: str = "Modal displacement",
     annotations: dict[str, float] | None = None,
     figsize: tuple[float, float] | None = None,
-    colors: "list | str | None" = None,
+    colors: list | str | None = None,
 ) -> Figure:
     """Multi-panel Bir-convention plot (matches Bir Fig 8 layout).
 

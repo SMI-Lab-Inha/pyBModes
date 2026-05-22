@@ -47,7 +47,7 @@ def _fmt_ratio(ratio: float) -> str:
     return f"{ratio:>5.2f}"
 
 
-def _format_block_row(block: "CoeffBlockResult") -> str:
+def _format_block_row(block: CoeffBlockResult) -> str:
     """One per-block line for the printed report."""
     flag = ""
     if block.verdict == "FAIL":
@@ -63,7 +63,7 @@ def _format_block_row(block: "CoeffBlockResult") -> str:
     )
 
 
-def _render_validation_report(result: "ValidationResult") -> list[str]:
+def _render_validation_report(result: ValidationResult) -> list[str]:
     """Render a :class:`ValidationResult` as the line-by-line CLI
     report. Returned as a list of lines (no trailing newlines);
     the workflow caller / CLI joins with ``\\n`` and prints."""
@@ -110,10 +110,10 @@ class ValidateResult(WorkflowResult):
         path; reserved for future strict-mode failures).
     """
 
-    validation: "ValidationResult | None" = None
+    validation: ValidationResult | None = None
 
 
-def run_validate(dat_path: "str | pathlib.Path") -> ValidateResult:
+def run_validate(dat_path: str | pathlib.Path) -> ValidateResult:
     """Validate the coefficient blocks in an ElastoDyn ``.dat`` deck.
 
     Library entry point for the :command:`pybmodes validate`

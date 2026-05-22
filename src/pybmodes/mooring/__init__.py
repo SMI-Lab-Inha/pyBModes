@@ -101,4 +101,4 @@ from __future__ import annotations
 from .system import MooringSystem
 from .types import Line, LineType, Point
 
-__all__ = ["LineType", "Point", "Line", "MooringSystem"]
+__all__ = ["Line", "LineType", "MooringSystem", "Point"]

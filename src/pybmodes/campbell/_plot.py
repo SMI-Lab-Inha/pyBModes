@@ -36,13 +36,13 @@ def plot_campbell(
     result: CampbellResult,
     excitation_orders: list[int] | None = None,
     rated_rpm: float | None = None,
-    ax: "matplotlib.axes.Axes | None" = None,
-    platform_modes: "list[tuple[str, float]] | None" = None,
+    ax: matplotlib.axes.Axes | None = None,
+    platform_modes: list[tuple[str, float]] | None = None,
     log_freq: bool = False,
     *,
-    operating_rpm: "tuple[float, float] | None" = None,
+    operating_rpm: tuple[float, float] | None = None,
     freq_max: float | None = None,
-) -> "matplotlib.figure.Figure":
+) -> matplotlib.figure.Figure:
     """Render a Campbell diagram from a :class:`CampbellResult`.
 
     Engineering-report style (issue #54): structural modes are
@@ -323,7 +323,7 @@ def plot_campbell(
     # rotor-speed dependent) or ``None`` for the constant
     # tower/platform lines. ``f0`` is the parked / constant frequency
     # used only to order the labels and assign the x comb.
-    structural: list[tuple[str, float, tuple, "np.ndarray | None"]] = []
+    structural: list[tuple[str, float, tuple, np.ndarray | None]] = []
     for k in range(n_blade):
         structural.append((_pretty(result.labels[k]),
                            float(result.frequencies[0, k]), C_BLADE,

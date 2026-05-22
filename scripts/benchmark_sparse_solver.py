@@ -183,13 +183,12 @@ def main() -> int:
     print()
     bad: list[str] = []
     for n_el, ngd, dense_t, sparse_t in rows:
-        if n_el > 100:
-            if sparse_t > 1.10 * dense_t:
-                bad.append(
-                    f"  n_elements={n_el} (ngd={ngd}): sparse "
-                    f"{sparse_t * 1e3:.2f} ms > 1.10 × dense "
-                    f"{dense_t * 1e3:.2f} ms"
-                )
+        if n_el > 100 and sparse_t > 1.10 * dense_t:
+            bad.append(
+                f"  n_elements={n_el} (ngd={ngd}): sparse "
+                f"{sparse_t * 1e3:.2f} ms > 1.10 × dense "
+                f"{dense_t * 1e3:.2f} ms"
+            )
     if bad:
         print("FAIL: sparse path slower than dense above n_elements > 100:")
         for line in bad:

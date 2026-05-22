@@ -263,7 +263,7 @@ def _rewrite_main_dat_paths(
     Matches both the legacy ``BldFile(1)`` form and the IEA-RWT
     ``BldFile1`` bare-digit form via the same regex.
     """
-    with open(main_path, "r", encoding="utf-8", newline="") as f:
+    with open(main_path, encoding="utf-8", newline="") as f:
         text = f.read()
 
     # Regex captures any quoted path followed by whitespace and the

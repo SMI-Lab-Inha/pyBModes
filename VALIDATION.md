@@ -21,23 +21,35 @@ record that the workflow's coverage holds at the tagged commit.
 The workflow validates the cases in the *Needs external data*
 column whose upstream is clonable from a public GitHub repository
 **at a manifest-pinned SHA** (every clone in
-``external/MANIFEST.toml`` got a real commit SHA in 1.8.1). Three
-upstreams are actively cloned by ``validation.yml``:
+``external/MANIFEST.toml`` got a real commit SHA in 1.8.1).
+Cloning is manifest-driven — ``verify_external_data.py --clone``
+fetches every entry not marked ``optional = true``, so the workflow
+and the manifest can't drift. The **required** upstreams actively
+cloned and checked by ``validation.yml`` are:
 
 - [`OpenFAST/r-test`](https://github.com/OpenFAST/r-test) — the
   NREL 5MW land + monopile + OC3 Hywind regression decks.
 - [`IEAWindTask37/IEA-3.4-130-RWT`](https://github.com/IEAWindTask37/IEA-3.4-130-RWT)
   — IEA-3.4 reference turbine.
+- [`IEAWindTask37/IEA-10.0-198-RWT`](https://github.com/IEAWindTask37/IEA-10.0-198-RWT)
+  — IEA-10 reference turbine.
 - [`IEAWindTask37/IEA-15-240-RWT`](https://github.com/IEAWindTask37/IEA-15-240-RWT)
   — IEA-15 (v1.1 tower; Allen 2020 free-decay reference).
+- [`IEAWindTask37/IEA-22-280-RWT`](https://github.com/IEAWindTask37/IEA-22-280-RWT)
+  — IEA-22 reference turbine.
+- [`WISDEM/WISDEM`](https://github.com/WISDEM/WISDEM) — the WindIO
+  ontology examples used by the geometry-corpus rows.
 
-The remaining manifest clones — IEA-10 (``iea_10_198``), IEA-22
-(``iea_22_280``), WISDEM, MoorPy, RAFT — are pinned in the manifest
-for reproducibility but the integration suite does not currently
-exercise them; they're cross-reference / future-validation
-artefacts that stay maintainer-local until a corresponding test
-lands. Adding a new turbine to the CI-enforced set is a deliberate
-maintainer action documented under *Changed* in the CHANGELOG.
+``verify_external_data.py --strict`` then hard-fails if any of these
+required clones is missing or off its pin, so the verifier report
+can't look green while a pinned, non-optional entry went unchecked.
+The only entries left out of CI are the ones marked
+``optional = true`` — MoorPy and RAFT (cross-comparison references)
+and the BModes archive (not a public clone) — which stay
+maintainer-local until a corresponding test lands. Adding a turbine
+to, or removing one from, the required set is a deliberate
+maintainer action (flip ``optional``) documented under *Changed* in
+the CHANGELOG.
 
 The two BModes CertTest cases (Test03, Test04) depend on
 ``external/BModes``, a [NREL BModes download](https://www.nrel.gov/wind/nwtc/bmodes.html)

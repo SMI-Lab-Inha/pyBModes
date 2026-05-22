@@ -117,4 +117,4 @@ DOF_NAMES: tuple[str, str, str, str, str, str] = (
 
 DOF_INDEX: dict[str, int] = {name: i for i, name in enumerate(DOF_NAMES)}
 
-__all__ = ["DOF_NAMES", "DOF_INDEX"]
+__all__ = ["DOF_INDEX", "DOF_NAMES"]

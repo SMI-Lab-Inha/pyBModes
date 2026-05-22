@@ -5,7 +5,7 @@
 # runners don't carry the upstream OpenFAST / BModes data, so the
 # default per-PR build doesn't enforce the published 0.01 % tolerance
 # claim from VALIDATION.md. This workflow closes the gap noted in the
-# external-review finding P1-1 (Phase 4 PR D3): it clones the upstream
+# static-review finding P1-1 (Phase 4 PR D3): it clones the upstream
 # repositories on the fly, runs the integration suite WITHOUT exit-5
 # tolerance, and uploads a verifier-report artifact so the published
 # validation claim is enforced by reproducible CI rather than
@@ -27,13 +27,23 @@
 # Reproducibility note
 # --------------------
 #
-# Each clone below checks out the SHA pinned in
-# ``external/MANIFEST.toml`` (1.8.1 maintainer action; bumped from
-# ``TBD`` in 1.8.0). The workflow is byte-reproducible from the
-# tagged commit — anyone reproducing the published 0.01 % tolerance
-# can re-run the same step set against the same upstream commits.
-# File-hash pins (the ``hashes`` tables in the manifest) remain
-# empty pending the ``verify_external_data.py --update`` rewrite.
+# Cloning is manifest-driven: ``verify_external_data.py --clone``
+# fetches every *required* (non-optional) entry in
+# ``external/MANIFEST.toml`` at its pinned commit SHA, so the workflow
+# and the manifest can't drift apart (no hand-kept clone list). The
+# subsequent ``--strict`` verify hard-fails if any required clone is
+# missing or off its pin, and re-checks every populated ``hashes``
+# entry. The workflow is reproducible from the tagged commit (pinned
+# to immutable upstream commits) — anyone reproducing the published
+# 0.01 % tolerance can re-run the same step set against the same
+# upstream commits.
+#
+# File-hash pins are ACTIVE: every required clone ships populated
+# ``hashes`` (computed over line-ending-normalized content, so they
+# reproduce identically across Windows dev and Linux CI). ``--strict``
+# below re-checks them on every run on top of commit-SHA pinning.
+# Regenerate after bumping a SHA with ``verify_external_data.py
+# --update`` (any platform).
 
 name: Validation (external data)
 
@@ -67,57 +77,33 @@ jobs:
       # Clone upstream external data into the expected layout, pinned
       # to the SHAs in ``external/MANIFEST.toml``.
       #
-      # Each clone path matches ``relative_path`` in the manifest so
-      # the integration test suite resolves the decks at the same
-      # paths it does locally. We fetch the full git history (no
-      # ``--depth=1``) so the explicit-SHA ``git checkout`` step
-      # can resolve commits older than the shallow tip. Workflow run
-      # time is dominated by the integration suite itself, not the
-      # clones, so the extra fetch is cheap.
-      #
-      # BModes (CertTest 03 / 04 reference data) is NOT on GitHub; the
-      # tests that depend on it skip cleanly when the data is absent
-      # (``pytestmark = pytest.mark.integration`` at module level plus
-      # per-file ``.is_file()`` guards). Those skips don't fail the
-      # workflow because they're skip — not error — in pytest's exit
-      # code.
+      # This is manifest-driven (no hardcoded URL/SHA list): the
+      # verifier reads each required ``[clone.*]`` entry and shallow-
+      # fetches its pinned commit into ``relative_path`` — the same
+      # path the integration suite resolves it at. Adding or re-pinning
+      # an upstream deck is now a manifest-only edit; the workflow
+      # follows automatically. The set fetched here is every required
+      # entry: OpenFAST r-test + IEA-3.4 / IEA-10 / IEA-15 / IEA-22 +
+      # WISDEM. Optional cross-comparison references (MoorPy, RAFT) and
+      # the non-redistributable BModes archive are skipped (marked
+      # ``optional = true``); the CertTest 03/04 tests that need BModes
+      # skip cleanly in pytest and so don't fail the workflow.
       # ---------------------------------------------------------------
 
-      - name: Clone OpenFAST r-test at manifest-pinned SHA
-        # 1.8.1 manifest pin (NREL 5MW land / monopile / OC3 spar
-        # regression decks). Full 40-char SHA matches what
-        # ``scripts/verify_external_data.py`` compares ``git rev-parse
-        # HEAD`` against — abbreviated SHAs in the manifest would
-        # silently FAIL the verifier (static review on PR #81).
-        run: |
-          git clone https://github.com/OpenFAST/r-test.git \
-            external/OpenFAST_files/r-test
-          git -C external/OpenFAST_files/r-test \
-            checkout dd5feaaaa500ba7283140107806300d551cff0a7
-
-      - name: Clone IEA-3.4-130-RWT at manifest-pinned SHA
-        run: |
-          git clone https://github.com/IEAWindTask37/IEA-3.4-130-RWT.git \
-            external/OpenFAST_files/IEA-3.4-130-RWT
-          git -C external/OpenFAST_files/IEA-3.4-130-RWT \
-            checkout 824f8d65196f9f84ee66df5e58e3a48a70a8f0c5
-
-      - name: Clone IEA-15-240-RWT at manifest-pinned SHA
-        # 1.8.1 manifest pin (v1.1 tower redesign — Allen 2020
-        # free-decay reference).
-        run: |
-          git clone https://github.com/IEAWindTask37/IEA-15-240-RWT.git \
-            external/OpenFAST_files/IEA-15-240-RWT
-          git -C external/OpenFAST_files/IEA-15-240-RWT \
-            checkout 86d51c8a1ee65be4f3686087a5c443c0b57e5cfb
+      - name: Clone required external decks at manifest-pinned SHAs
+        run: python scripts/verify_external_data.py --clone
 
       # ---------------------------------------------------------------
       # Run the verifier + integration suite.
       #
-      # The verifier surfaces clone status (PASS / WARN / FAIL per
-      # manifest entry) into the uploaded artifact. WARN means the
-      # manifest SHA pin is still ``TBD`` (every entry as of 1.8.0);
-      # FAIL means a clone drifted from a pinned SHA — release blocker.
+      # The verifier surfaces clone status (PASS / WARN / FAIL / SKIP
+      # per manifest entry) into the uploaded artifact. Under
+      # ``--strict`` a missing *required* clone is a FAIL — not a
+      # silent SKIP — so the artifact can't look acceptable while a
+      # pinned, non-optional entry went unchecked. SKIP is reserved
+      # for the entries marked ``optional = true`` (MoorPy, RAFT, the
+      # BModes archive). FAIL also fires if a clone drifted from its
+      # pinned SHA — release blocker.
       #
       # The integration suite runs WITHOUT the per-PR exit-5 tolerance:
       # since the upstream data was just cloned, ``pytest`` must
@@ -126,17 +112,13 @@ jobs:
       # ---------------------------------------------------------------
 
       - name: Generate verifier report
-        # The verifier script exits 0 on PASS + WARN and 1 on FAIL
-        # (see ``scripts/verify_external_data.py`` lines 246-248).
-        # As of 1.8.1 every clone SHA is populated in the manifest,
-        # so a healthy run produces PASS on every entry except
-        # ``bmodes`` (which stays WARN because BModes is a NREL
-        # download, not a GitHub clone — see the *Enforcement*
-        # paragraph in VALIDATION.md). FAIL means a clone drifted
-        # from its populated pinned SHA — release blocker. We use
-        # the verifier's natural exit-code semantics with no
-        # ``continue-on-error: true`` (PR #79 static-review pass
-        # caught the original swallowing-of-FAILs).
+        # The verifier exits 0 on PASS + WARN + SKIP and 1 on FAIL.
+        # After the manifest-driven ``--clone`` step a healthy run is
+        # PASS on every required entry (r-test + IEA-3.4/10/15/22 +
+        # WISDEM) and SKIP on the optional ones (MoorPy / RAFT /
+        # BModes). A required clone that's missing or off its pin
+        # FAILs the step. No ``continue-on-error: true`` (PR #79
+        # static-review pass caught the original swallowing-of-FAILs).
         #
         # ``set -o pipefail`` ensures the verifier's exit code is
         # preserved through the ``tee`` pipe; without it ``tee``

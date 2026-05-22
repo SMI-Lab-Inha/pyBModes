@@ -28,7 +28,6 @@ Field-set discrepancies vs. the user-specified spec are documented in
 from __future__ import annotations
 
 import pathlib
-from typing import Optional
 
 import numpy as np
 
@@ -59,7 +58,7 @@ def read_elastodyn_main(path: str | pathlib.Path) -> ElastoDynMain:
 
 
 def _parse_main(
-    lines: list[str], source_file: Optional[pathlib.Path] = None
+    lines: list[str], source_file: pathlib.Path | None = None
 ) -> ElastoDynMain:
     obj = ElastoDynMain(header="", title="", source_file=source_file)
 
@@ -251,7 +250,7 @@ def read_elastodyn_tower(path: str | pathlib.Path) -> ElastoDynTower:
 
 
 def _parse_tower(
-    lines: list[str], source_file: Optional[pathlib.Path] = None
+    lines: list[str], source_file: pathlib.Path | None = None
 ) -> ElastoDynTower:
     obj = ElastoDynTower(header="", title="", source_file=source_file)
 
@@ -429,7 +428,7 @@ _BLADE_DISTR_COL_MAP = {
 
 
 def _parse_blade(
-    lines: list[str], source_file: Optional[pathlib.Path] = None
+    lines: list[str], source_file: pathlib.Path | None = None
 ) -> ElastoDynBlade:
     obj = ElastoDynBlade(header="", title="", source_file=source_file)
 

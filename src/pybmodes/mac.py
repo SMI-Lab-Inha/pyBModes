@@ -162,8 +162,8 @@ class ModeComparison:
 
 
 def compare_modes(
-    result_A: "ModalResult",
-    result_B: "ModalResult",
+    result_A: ModalResult,
+    result_B: ModalResult,
     *,
     label_A: str = "baseline",
     label_B: str = "modified",
@@ -223,11 +223,11 @@ def compare_modes(
 
 def plot_mac(
     comparison: ModeComparison,
-    ax: "Axes | None" = None,
+    ax: Axes | None = None,
     *,
     annotate: bool = True,
     cmap: str = "viridis",
-) -> "Figure":
+) -> Figure:
     """Render the MAC matrix as an annotated heatmap.
 
     Hungarian-paired cells get a red outline; other cells are plain.

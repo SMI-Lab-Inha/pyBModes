@@ -86,7 +86,7 @@ class Profile:
     @classmethod
     def from_windio_coords(
         cls, x, y, *, n_chord: int = 200
-    ) -> "Profile":
+    ) -> Profile:
         """Build from a WindIO airfoil ``coordinates.{x, y}`` (TE→TE,
         chord-normalised, closed loop)."""
         xc, yc = _normalised(x, y)
@@ -156,7 +156,7 @@ class Profile:
 
     # ---- spanwise blend --------------------------------------------------
 
-    def blend(self, other: "Profile", weight: float) -> "Profile":
+    def blend(self, other: Profile, weight: float) -> Profile:
         """Linear blend toward ``other`` (``weight`` 0→self, 1→other),
         on this profile's shared chord grid (the spanwise airfoil
         interpolation)."""

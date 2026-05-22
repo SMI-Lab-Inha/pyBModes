@@ -181,8 +181,8 @@ except PackageNotFoundError:
     __version__ = "1.8.1-dev"
 
 __all__ = [
-    "__version__",
     "CheckOptions",
     "FitOptions",
     "SolverOptions",
+    "__version__",
 ]

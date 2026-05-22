@@ -208,7 +208,7 @@ class CampbellResult:
         )
 
     @classmethod
-    def load(cls, path: str | pathlib.Path) -> "CampbellResult":
+    def load(cls, path: str | pathlib.Path) -> CampbellResult:
         """Read a sweep result back from a ``.npz`` archive saved by
         :meth:`save`."""
         from pybmodes.io._serialize import _read_npz_meta

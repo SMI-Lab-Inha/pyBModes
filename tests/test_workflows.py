@@ -889,7 +889,7 @@ def test_windio_on_skip_fail_on_data_fails_when_blade_extraction_fails(
     # the symbol looked up inside the windio workflow module.
     from pybmodes.models import RotatingBlade
 
-    def _stub_from_windio(*args, **kwargs):  # noqa: ARG001
+    def _stub_from_windio(*args, **kwargs):
         raise RuntimeError("synthetic blade-reduction failure")
 
     monkeypatch.setattr(

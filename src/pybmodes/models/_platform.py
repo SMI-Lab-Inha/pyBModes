@@ -104,7 +104,7 @@ def _scan_platform_fields(dat_path: pathlib.Path) -> dict[str, float]:
     return fields
 
 
-def _platform_inertia_matrix(ptfm: dict[str, float]) -> "np.ndarray":
+def _platform_inertia_matrix(ptfm: dict[str, float]) -> np.ndarray:
     """Assemble the platform 6×6 inertia matrix AT THE CM in
     **OpenFAST DOF order** ``[surge, sway, heave, roll, pitch, yaw]``
     from the ``Ptfm*`` scalars produced by :func:`_scan_platform_fields`.

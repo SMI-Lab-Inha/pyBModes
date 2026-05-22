@@ -50,7 +50,6 @@ import math
 import pathlib
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
@@ -137,7 +136,7 @@ class SubDynFile:
 
     header: str = ""
     title: str = ""
-    source_file: Optional[pathlib.Path] = None
+    source_file: pathlib.Path | None = None
     joints: list[SubDynJoint] = field(default_factory=list)
     members: list[SubDynMember] = field(default_factory=list)
     circ_props: list[SubDynCircProp] = field(default_factory=list)
@@ -208,7 +207,7 @@ def _read_count(lines: list[str], i: int) -> tuple[int, int]:
     return i + 1, _parse_int(line.split()[0])
 
 
-def _parse(lines: list[str], source_file: Optional[pathlib.Path] = None) -> SubDynFile:
+def _parse(lines: list[str], source_file: pathlib.Path | None = None) -> SubDynFile:
     obj = SubDynFile(source_file=source_file)
     if lines:
         obj.header = lines[0].rstrip()
@@ -603,10 +602,10 @@ def to_pybmodes_pile_tower(
 
 
 __all__ = [
-    "SubDynJoint",
-    "SubDynMember",
     "SubDynCircProp",
     "SubDynFile",
+    "SubDynJoint",
+    "SubDynMember",
     "read_subdyn",
     "to_pybmodes_pile_tower",
 ]

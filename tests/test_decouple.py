@@ -34,9 +34,9 @@ def _diag_K(EA, EIf, EIe, GJ, shear=1.0e9):
 def test_already_decoupled_passes_through() -> None:
     K = _diag_K(2.0e9, 3.0e8, 5.0e8, 1.0e8)
     d = decouple_stiffness(K)
-    assert d.EA == pytest.approx(2.0e9)
+    assert pytest.approx(2.0e9) == d.EA
     assert {round(d.EI_flap), round(d.EI_edge)} == {300000000, 500000000}
-    assert d.GJ == pytest.approx(1.0e8, rel=1e-6)
+    assert pytest.approx(1.0e8, rel=1e-6) == d.GJ
     assert d.x_tc == pytest.approx(0.0, abs=1e-9)
     assert d.y_tc == pytest.approx(0.0, abs=1e-9)
 
@@ -53,7 +53,7 @@ def test_recovers_known_tension_centre_offset() -> None:
     assert abs(K[_AX, _B1]) > 0.0 and abs(K[_AX, _B2]) > 0.0
 
     dec = decouple_stiffness(K)
-    assert dec.EA == pytest.approx(EA, rel=1e-9)
+    assert pytest.approx(EA, rel=1e-9) == dec.EA
     # Re-expressing about a reference displaced by (d1,d2) ⇒ the
     # decoupling translation is −(d1,d2) (documented sign convention).
     assert dec.x_tc == pytest.approx(-d1, rel=1e-6)
@@ -100,7 +100,7 @@ def test_shear_centre_and_GJ() -> None:
     s1, s2 = 0.15, 0.05
     K = _offset_transform(s1, s2).T @ K0 @ _offset_transform(s1, s2)
     dec = decouple_stiffness(K)
-    assert dec.GJ == pytest.approx(GJ, rel=1e-6)
+    assert pytest.approx(GJ, rel=1e-6) == dec.GJ
     assert dec.x_sc == pytest.approx(-s1, rel=1e-5)
     assert dec.y_sc == pytest.approx(-s2, rel=1e-5)
 

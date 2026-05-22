@@ -60,7 +60,6 @@ is a subclass so the catch still triggers::
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(eq=False)
@@ -94,10 +93,10 @@ class ParseError(ValueError):
     """
 
     message: str
-    file: Optional[str] = None
-    line: Optional[int] = None
-    column: Optional[int] = None
-    context: Optional[str] = None
+    file: str | None = None
+    line: int | None = None
+    column: int | None = None
+    context: str | None = None
 
     def __post_init__(self) -> None:
         # Cooperate with ValueError's positional-argument convention:
@@ -181,11 +180,11 @@ class WindIOParseError(ParseError):
 
 
 __all__ = [
-    "ParseError",
     "BMIParseError",
     "ElastoDynParseError",
+    "MoorDynParseError",
+    "ParseError",
     "SubDynParseError",
     "WAMITParseError",
-    "MoorDynParseError",
     "WindIOParseError",
 ]

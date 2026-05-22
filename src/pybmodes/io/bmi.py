@@ -30,7 +30,6 @@ import math
 import pathlib
 import warnings
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -93,7 +92,7 @@ class PlatformSupport:
     distr_m: np.ndarray
     distr_k_z: np.ndarray
     distr_k: np.ndarray
-    wires: Optional[TensionWireSupport] = None
+    wires: TensionWireSupport | None = None
     # Horizontal offset of the platform centre of mass from the tower
     # axis, in the tower-base frame (x = downwind / surge-aligned,
     # y = lateral / sway-aligned), metres. Non-zero only for an
@@ -130,8 +129,8 @@ class BMIFile:
     n_elements: int
     el_loc: np.ndarray
     tow_support: int = 0
-    support: Optional[TensionWireSupport | PlatformSupport] = None
-    source_file: Optional[pathlib.Path] = None
+    support: TensionWireSupport | PlatformSupport | None = None
+    source_file: pathlib.Path | None = None
 
     def resolve_sec_props_path(self) -> pathlib.Path:
         """Return absolute path to the section properties file."""

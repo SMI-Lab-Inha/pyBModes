@@ -39,16 +39,16 @@ from .mode_shapes import (
 from .style import MATLAB_LINES, PALETTE, apply_style
 
 __all__ = [
-    "plot_mode_shapes",
-    "plot_fit_quality",
-    "blade_fit_pairs",
-    "tower_fit_pairs",
-    "bir_mode_shape_plot",
-    "bir_mode_shape_subplot",
-    "plot_environmental_spectra",
-    "kaimal_spectrum",
-    "jonswap_spectrum",
-    "apply_style",
     "MATLAB_LINES",
     "PALETTE",
+    "apply_style",
+    "bir_mode_shape_plot",
+    "bir_mode_shape_subplot",
+    "blade_fit_pairs",
+    "jonswap_spectrum",
+    "kaimal_spectrum",
+    "plot_environmental_spectra",
+    "plot_fit_quality",
+    "plot_mode_shapes",
+    "tower_fit_pairs",
 ]

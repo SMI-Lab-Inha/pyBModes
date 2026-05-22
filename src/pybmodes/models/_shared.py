@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 def _run_validation_and_warn(
     main_dat_path: pathlib.Path,
-) -> "ValidationResult":
+) -> ValidationResult:
     """Validate coefficient blocks in an ElastoDyn deck and warn on issues.
 
     Helper shared by ``Tower.from_elastodyn`` and

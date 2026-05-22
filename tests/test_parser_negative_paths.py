@@ -45,7 +45,7 @@ import pytest
 #
 # ``read_bmi`` parses a structured deck with explicit count-then-array
 # sections (n_elements / el_loc, n_attachments / wire arrays, matrix
-# rows). The reviewer caught that ``read_ary(n)`` silently truncated
+# rows). Static review caught that ``read_ary(n)`` silently truncated
 # to whatever tokens were present; pass-5 raised on truncation.
 
 class TestBMIParserNegativePaths:

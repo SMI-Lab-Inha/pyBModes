@@ -81,13 +81,13 @@ class ExamplesResult(WorkflowResult):
         ``messages`` / a ``WARN:`` prefix.
     """
 
-    dest: "pathlib.Path | None" = None
+    dest: pathlib.Path | None = None
     copied: list[pathlib.Path] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
 
 
 def run_examples_copy(
-    dest: "str | pathlib.Path",
+    dest: str | pathlib.Path,
     *,
     kind: Kind = "all",
     force: bool = False,

@@ -100,7 +100,7 @@ def test_catenary_horizontal_line() -> None:
     r_a = np.array([0.0, 0.0, 0.0])
     r_b = np.array([600.0, 0.0, 0.0])
     H, V_F, _ = line.solve_static(r_a, r_b)
-    assert V_F == pytest.approx(W * L / 2, rel=1e-6)
+    assert pytest.approx(W * L / 2, rel=1e-6) == V_F
 
 
 def test_catenary_solver_satisfies_residual() -> None:
@@ -781,7 +781,7 @@ class TestMoorDynHeaderVariants:
         lt = ms.line_types["chain"]
         assert lt.diam == pytest.approx(0.10)
         assert lt.mass_per_length_air == pytest.approx(50.0)
-        assert lt.EA == pytest.approx(1.0e9)
+        assert pytest.approx(1.0e9) == lt.EA
 
     def test_two_row_header_still_parses(self, tmp_path: pathlib.Path) -> None:
         """The standard MoorDyn convention (column names + units) is

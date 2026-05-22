@@ -41,7 +41,7 @@ import pathlib
 import shutil
 import tempfile
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from pybmodes.workflows._base import WorkflowResult
 
@@ -89,14 +89,14 @@ class PatchResult(WorkflowResult):
         patch, useful for summary print-outs.
     """
 
-    main_dat: "pathlib.Path | None" = None
-    tower_dat: "pathlib.Path | None" = None
-    blade_dat: "pathlib.Path | None" = None
-    tower_params: "TowerElastoDynParams | None" = None
-    blade_params: "BladeElastoDynParams | None" = None
-    validation: "ValidationResult | None" = None
-    tower_patched_text: "str | None" = None
-    blade_patched_text: "str | None" = None
+    main_dat: pathlib.Path | None = None
+    tower_dat: pathlib.Path | None = None
+    blade_dat: pathlib.Path | None = None
+    tower_params: TowerElastoDynParams | None = None
+    blade_params: BladeElastoDynParams | None = None
+    validation: ValidationResult | None = None
+    tower_patched_text: str | None = None
+    blade_patched_text: str | None = None
     wrote: list[pathlib.Path] = field(default_factory=list)
     n_tower_changed: int = 0
     n_blade_changed: int = 0
@@ -104,7 +104,7 @@ class PatchResult(WorkflowResult):
 
 def _patched_text(
     source: pathlib.Path,
-    params: Union["BladeElastoDynParams", "TowerElastoDynParams"],
+    params: BladeElastoDynParams | TowerElastoDynParams,
 ) -> str:
     """Apply ``patch_dat`` to a temp copy and return the resulting text.
 
@@ -143,7 +143,7 @@ def _count_changed_lines(original: pathlib.Path, new_text: str) -> int:
 def _format_diff_block(
     name: str,
     file_label: str,
-    block: "object",
+    block: object,
 ) -> list[str]:
     """Render one coefficient block in the PR-ready ``--diff`` format.
 
@@ -178,11 +178,11 @@ def _format_diff_block(
 
 
 def run_patch(
-    dat_path: "str | pathlib.Path",
+    dat_path: str | pathlib.Path,
     *,
     n_modes: int = 10,
     backup: bool = False,
-    output_dir: "str | pathlib.Path | None" = None,
+    output_dir: str | pathlib.Path | None = None,
     dry_run: bool = False,
     diff: bool = False,
 ) -> PatchResult:

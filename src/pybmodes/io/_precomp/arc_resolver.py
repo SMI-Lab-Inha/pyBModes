@@ -270,9 +270,7 @@ def resolve_blade_structure(
         start = end = None
         rs = re_ = None
 
-        if ks == "value":
-            start = _resolve_handle(sd, anchors_by_name, nd_span, what=what)
-        elif ks == "anchor":
+        if ks == "value" or ks == "anchor":
             start = _resolve_handle(sd, anchors_by_name, nd_span, what=what)
         elif ks == "te":
             start = zeros.copy()
@@ -287,9 +285,7 @@ def resolve_blade_structure(
                 f"anchor, fixed, nor width-derived: keys {_side_kind(sd)[1]}"
             )
 
-        if ke == "value":
-            end = _resolve_handle(ed, anchors_by_name, nd_span, what=what)
-        elif ke == "anchor":
+        if ke == "value" or ke == "anchor":
             end = _resolve_handle(ed, anchors_by_name, nd_span, what=what)
         elif ke == "te":
             end = ones.copy()

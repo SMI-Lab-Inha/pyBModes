@@ -50,23 +50,23 @@ class CampbellWorkflowResult(WorkflowResult):
         Per-rev excitation orders overlaid on the diagram.
     """
 
-    sweep: "_CampbellSweepResult | None" = None
-    png_path: "pathlib.Path | None" = None
-    csv_path: "pathlib.Path | None" = None
+    sweep: _CampbellSweepResult | None = None
+    png_path: pathlib.Path | None = None
+    csv_path: pathlib.Path | None = None
     orders: list[int] = field(default_factory=list)
 
 
 def run_campbell(
-    input_path: "str | pathlib.Path",
+    input_path: str | pathlib.Path,
     *,
     max_rpm: float,
     n_steps: int = 16,
-    orders: "str | list[int]" = "1,2,3,6,9",
+    orders: str | list[int] = "1,2,3,6,9",
     n_blade_modes: int = 4,
     n_tower_modes: int = 4,
-    tower_input: "str | pathlib.Path | None" = None,
-    rated_rpm: "float | None" = None,
-    out_path: "str | pathlib.Path | None" = None,
+    tower_input: str | pathlib.Path | None = None,
+    rated_rpm: float | None = None,
+    out_path: str | pathlib.Path | None = None,
 ) -> CampbellWorkflowResult:
     """Run a rotor-speed sweep and write the Campbell diagram + CSV.
 

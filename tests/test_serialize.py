@@ -424,9 +424,11 @@ def test_modal_result_legacy_object_meta_warns_and_loads(
     legacy = tmp_path / "legacy.npz"
     _forge_legacy_object_meta(modern, legacy)
 
-    with pytest.raises(ValueError, match="Object arrays cannot be loaded"):
-        with np.load(legacy, allow_pickle=False) as z:
-            _ = z["__meta__"]               # confirms the forge worked
+    with (
+        pytest.raises(ValueError, match="Object arrays cannot be loaded"),
+        np.load(legacy, allow_pickle=False) as z,
+    ):
+        _ = z["__meta__"]                   # confirms the forge worked
 
     with pytest.warns(UserWarning, match="legacy pre-1.0 .npz"):
         loaded = ModalResult.load(legacy)

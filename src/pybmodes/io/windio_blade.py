@@ -80,14 +80,14 @@ class WindIOBlade:
     #: ``span_grid``; ``None`` when the file carries only the layup.
     #: Keys: ``mass_den``/``flp_iner``/``edge_iner``/``flp_stff``/
     #: ``edge_stff``/``tor_stff``/``axial_stff``/``cg_offst``.
-    elastic: "dict | None" = None
+    elastic: dict | None = None
     #: Non-``None`` when a published block *was* present but could not
     #: be parsed (schema drift / malformed). ``elastic`` is then
     #: ``None`` too, but this distinguishes "absent" (silent PreComp
     #: fallback is correct) from "present-but-broken" (``"auto"``
     #: warns; ``"file"`` raises) — so a typo can't hide behind a
     #: plausible lower-fidelity result.
-    elastic_parse_error: "str | None" = None
+    elastic_parse_error: str | None = None
 
 
 def _blade_shape_and_structure(comp: dict, component: str):
@@ -147,8 +147,8 @@ def _twist_to_degrees(twist_raw: np.ndarray) -> np.ndarray:
 
 
 def _read_blade_elastic(
-    holders: "tuple[dict, ...]", span: np.ndarray
-) -> "tuple[dict | None, str | None]":
+    holders: tuple[dict, ...], span: np.ndarray
+) -> tuple[dict | None, str | None]:
     """Parse the WindIO blade *published* distributed beam properties
     onto ``span``.
 

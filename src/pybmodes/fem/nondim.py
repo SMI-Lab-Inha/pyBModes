@@ -159,8 +159,8 @@ def nondim_section_props(sp: Any, nd: NondimParams, id_form: int = 1,
 @dataclass
 class PlatformND:
     """Non-dimensionalized offshore platform support, referred to the tower base."""
-    stiffness: 'np.ndarray'   # (6,6) combined (hydro_K + mooring_K), non-dim, at tower base
-    mass: 'np.ndarray'        # (6,6) combined (i_matrix + hydro_M), non-dim, at tower base
+    stiffness: np.ndarray   # (6,6) combined (hydro_K + mooring_K), non-dim, at tower base
+    mass: np.ndarray        # (6,6) combined (i_matrix + hydro_M), non-dim, at tower base
 
 
 def _rigid_arm_T(p_base: float, rx: float = 0.0, ry: float = 0.0) -> np.ndarray:
@@ -208,7 +208,7 @@ def _rigid_arm_T(p_base: float, rx: float = 0.0, ry: float = 0.0) -> np.ndarray:
     return G @ P
 
 
-def nondim_platform(plat: Any, nd: 'NondimParams') -> 'PlatformND':
+def nondim_platform(plat: Any, nd: NondimParams) -> PlatformND:
     """Non-dimensionalise platform 6×6 matrices and transform to tower-base FEM DOFs.
 
     Implements the rigid-arm transformation that maps the platform's 6 rigid-body
