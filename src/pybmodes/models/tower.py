@@ -781,8 +781,12 @@ class Tower:
         # --- inertia / RNA / draft framing: full ElastoDyn (incl.
         #     trim ballast + lumped RNA + the validated draft
         #     convention) when present; else WindIO struct+fixed
-        #     inertia, bare tower top (no RNA), yaml geometry framing.
-        rna_tip = TipMassProps(
+        #     inertia, yaml geometry framing, and the caller-supplied
+        #     ``rna_tip`` for the tower-top lump (issue #83 — the
+        #     screening path must honour the passed ``rna_tip`` rather
+        #     than hardcode a zero tower top). A discovered ElastoDyn
+        #     deck below overrides it with the deck-derived RNA.
+        rna_tip = rna_tip if rna_tip is not None else TipMassProps(
             mass=0.0, cm_offset=0.0, cm_axial=0.0,
             ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
         )
