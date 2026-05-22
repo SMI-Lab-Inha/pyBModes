@@ -8,6 +8,56 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.10.1] — 2026-05-23
+
+A labelling-only bug-fix release: the floating-platform rigid-body mode
+classifier (`ModalResult.mode_labels`) mislabelled asymmetric platforms.
+Frequencies and mode shapes are unchanged on every deck.
+
+### Fixed
+
+- **Asymmetric-platform rigid-body mode labels (`ModalResult.mode_labels`).**
+  The floating-platform rigid-mode classifier
+  (`pybmodes.fem.platform_modes.classify_platform_modes`) named each of the
+  six lowest modes by a *greedy* per-mode argmax over mass-weighted
+  base-node modal kinetic energy, dropping any DOF name already taken by an
+  earlier mode. On an asymmetric platform (horizontal CM offset or
+  off-diagonal mooring/hydro coupling) a genuine surge mode carrying a small
+  parasitic high-inertia rotation reads, mass-weighted, as yaw-dominated —
+  so it stole `yaw`, the true yaw mode then hit the "already used" branch
+  and was left `None`, and the mislabel cascaded onto the neighbouring modes
+  (reported as "surge classified as yaw, sway as surge, third mode
+  unclassified"). The labels are now assigned by a **global Hungarian
+  optimal matching** (`scipy.optimize.linear_sum_assignment`, already used
+  in `pybmodes.mac`) over the 6 rigid candidates × 6 platform DOFs, so the
+  mode that best expresses each DOF wins that label and no DOF is ever named
+  twice. The conservative dominance threshold (0.6) still gates each
+  assignment, so a genuinely coupled / rotated pair whose energy splits
+  across DOFs stays `None` rather than mislabelled. (#93)
+
+- **Deterministic rigid-body labels for symmetric platforms (degenerate
+  pairs).** On a (bi)symmetric platform surge≈sway and roll≈pitch share an
+  eigenvalue, so the eigensolver may return any rotation of that 2-D
+  eigenspace — a basis that depends on BLAS thread ordering (the same
+  non-determinism hazard fixed for the FA/SS *tower* pair in 1.10.0). A
+  45°-mixed degenerate pair reads 50 / 50 across two DOFs and would fall
+  below the dominance threshold, so the modes could be silently left
+  `None`. `classify_platform_modes` now takes the modal `frequencies` and
+  rotates each frequency-degenerate rigid pair back onto its platform axes
+  before labelling (the rigid-body analog of `_rotate_degenerate_pairs` in
+  `pybmodes.elastodyn.params`), accepting the rotation only when it cleanly
+  separates the pair into two distinct dominant DOFs. The result no longer
+  depends on the arbitrary eigensolver basis. Asymmetric platforms break the
+  degeneracy, so this step is a no-op there.
+
+Both changes are confined to mode **labelling**; frequencies and mode
+shapes are byte-for-byte unchanged, and symmetric decks (OC3 Hywind, IEA-15
+UMaineSemi, …) — whose rigid modes are ~98 % single-DOF — keep their
+existing labels. The new `frequencies` argument on
+`classify_platform_modes` is optional and keyword-only-friendly (defaults to
+`None`, which skips the degeneracy resolution), so the change is
+backward-compatible.
+
 ## [1.10.0] — 2026-05-22
 
 Static-review follow-up on top of 1.9.0: a deterministic fix for the

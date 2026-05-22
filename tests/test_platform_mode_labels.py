@@ -102,6 +102,103 @@ def test_classifier_single_dof_unit(dof_local: int, expected: str) -> None:
     assert all(lbl is None for lbl in labels[1:])
 
 
+def _base_eigvecs(
+    nselt: int, mode_dofs: dict[int, dict[int, float]], n_modes: int
+) -> np.ndarray:
+    """Compact free-free eigenvectors whose base node carries the given
+    FEM-DOF amplitudes per mode. ``mode_dofs[m]`` maps a local FEM base
+    DOF (0=axial … 5=phi) to its amplitude in mode ``m``."""
+    ndt = NESH * nselt + 6
+    base0 = NESH * nselt
+    ev = np.zeros((ndt, n_modes))
+    for m, dofs in mode_dofs.items():
+        for d, amp in dofs.items():
+            ev[base0 + d, m] = amp
+    return ev
+
+
+def test_classifier_global_assignment_recovers_true_owner() -> None:
+    """Issue #93: on an asymmetric platform the greedy "argmax per mode,
+    drop later duplicates" rule mislabelled the rigid-body modes.
+
+    Reproduces the exact mechanism: mode 0 is a genuine surge mode that,
+    through surge↔yaw coupling, carries a small parasitic yaw rotation.
+    The yaw inertia is ~25× the surge mass, so that tiny rotation's
+    *mass-weighted energy* (80 %) outweighs the surge translation
+    (20 %) — its argmax is yaw. Mode 2 is the genuine yaw mode (100 %).
+
+    Greedy gave mode 0 = "yaw" (stealing the label) and then starved the
+    true yaw mode 2 to None — i.e. "surge mode classified as yaw, third
+    mode unclassified". Global assignment hands yaw to its true owner
+    (mode 2, 100 % > mode 0's 80 %); mode 0's best remaining DOF is
+    surge at 20 %, below the dominance threshold, so it is honestly left
+    None rather than mislabelled.
+    """
+    nselt = 4
+    n_modes = 8
+    # FEM base DOFs: 0=axial(heave) 1=v_disp(surge) 2=v_slope(pitch)
+    # 3=w_disp(sway) 4=w_slope(roll) 5=phi(yaw).
+    mode_dofs = {
+        0: {1: 1.0, 5: 0.4},   # surge + parasitic yaw (mass-inflated)
+        1: {3: 1.0},           # sway
+        2: {5: 1.0},           # yaw  (true owner)
+        3: {4: 1.0},           # roll
+        4: {2: 1.0},           # pitch
+        5: {0: 1.0},           # heave
+    }
+    ev = _base_eigvecs(nselt, mode_dofs, n_modes)
+    active = active_dof_indices(nselt, hub_conn=2)
+    # Diagonal mass metric with a large yaw (phi) inertia: a 0.4-rad
+    # parasitic yaw on mode 0 then carries 0.4·25·0.4 = 4 of energy vs
+    # the surge translation's 1, i.e. 80 % yaw / 20 % surge.
+    Mp = np.diag([1.0, 1.0, 1.0, 1.0, 1.0, 25.0])
+    labels = classify_platform_modes(ev, active, nselt, Mp)
+
+    assert labels[2] == "yaw"            # true owner wins (was None)
+    assert labels[0] is None             # coupled mode (was mislabelled "yaw")
+    assert labels.count("yaw") == 1      # never named twice
+    # The cleanly single-DOF rigid modes are still each named once.
+    assert labels[1] == "sway"
+    assert labels[3] == "roll"
+    assert labels[4] == "pitch"
+    assert labels[5] == "heave"
+    named = [lbl for lbl in labels if lbl is not None]
+    assert len(named) == len(set(named))  # no DOF named twice anywhere
+
+
+def test_classifier_resolves_degenerate_pair_basis() -> None:
+    """Issue #93 (robustness): a symmetric platform's surge≈sway pair is
+    degenerate, so the eigensolver may return any rotation of that 2-D
+    eigenspace. Fed a 45°-mixed basis — mode 0 = (surge+sway)/√2,
+    mode 1 = (surge−sway)/√2, both at the same frequency — each mode
+    reads 50 % surge / 50 % sway and the dominance threshold would leave
+    both ``None``. Passing the (equal) frequencies lets the classifier
+    rotate the degenerate pair back onto its axes and name them.
+    """
+    nselt = 4
+    n_modes = 8
+    inv = 1.0 / np.sqrt(2.0)
+    # FEM base DOFs: 1 = v_disp (surge), 3 = w_disp (sway).
+    mode_dofs = {
+        0: {1: inv, 3: inv},    # (surge + sway)/√2
+        1: {1: inv, 3: -inv},   # (surge − sway)/√2
+    }
+    ev = _base_eigvecs(nselt, mode_dofs, n_modes)
+    active = active_dof_indices(nselt, hub_conn=2)
+    Mp = np.eye(6)
+
+    # Without frequencies the degeneracy can't be detected: the mixed
+    # basis stays 50/50 and neither mode clears the dominance threshold.
+    no_freq = classify_platform_modes(ev, active, nselt, Mp)
+    assert no_freq[0] is None and no_freq[1] is None
+
+    # With the (equal) frequencies the pair is rotated onto its axes and
+    # cleanly named — order within the degenerate pair is immaterial.
+    freqs = np.array([0.01, 0.01, 0.05, 0.06, 0.07, 0.08, 0.5, 0.6])
+    labels = classify_platform_modes(ev, active, nselt, Mp, frequencies=freqs)
+    assert {labels[0], labels[1]} == {"surge", "sway"}
+
+
 def test_mode_labels_roundtrip_npz_json(tmp_path) -> None:
     """mode_labels (with None entries) round-trips through both
     serialisers."""

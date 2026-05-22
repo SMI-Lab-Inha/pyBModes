@@ -23,15 +23,40 @@ eigenvector, weighted by the platform 6×6 inertia (which supplies the
 mass / moment-of-inertia metric that makes a translation amplitude
 comparable to a rotation amplitude).
 
-The classifier is deliberately *conservative*: it names a mode only
-when one platform DOF clearly dominates the base-node modal kinetic
-energy. A flexible tower mode, or a strongly coupled / eigensolver-
-rotated near-degenerate pair (surge≈sway, roll≈pitch), is left
-``None`` rather than mislabelled — consistent with the project's
-"only name what's unambiguous" stance. Empirically every genuine
-rigid-body mode on the validated floating decks (OC3 Hywind, the
-IEA-15 / IEA-22 / OC4 / UPSCALE samples) is overwhelmingly single-DOF
-and is named; the first flexible bending pair and above stay ``None``.
+The DOF labels are assigned *globally*: the six rigid-body candidates
+and the six platform DOFs are matched by a Hungarian optimal
+assignment over the per-DOF modal-kinetic-energy fractions, so the
+mode that best expresses each DOF wins that label. The earlier greedy
+"argmax per mode, drop later duplicates" rule mislabelled asymmetric
+platforms — an early mode whose mass-weighted energy was inflated by a
+parasitic high-inertia DOF (a small coupled yaw rotation reads as huge
+energy) would steal that DOF's label, starve the true owner into
+``None``, and cascade onto the remaining modes (issue #93). The global
+assignment removes that order/greed sensitivity; on symmetric decks,
+where every rigid-body mode is ~98 % single-DOF, it reduces to the
+same per-DOF matching as before.
+
+Before the assignment, frequency-degenerate rigid pairs are rotated
+onto axis-aligned directions. On a (bi)symmetric platform surge≈sway
+and roll≈pitch share an eigenvalue, so the eigensolver may return any
+rotation of that 2-D eigenspace — a non-deterministic basis (BLAS
+thread-order dependent) that would otherwise leave a 45°-mixed pair
+below the dominance threshold and unnamed. Rotating each degenerate
+pair onto its platform axes (the rigid-body analog of the FA/SS
+resolver in ``pybmodes.elastodyn.params``) makes the labelling
+deterministic. Asymmetric platforms break the degeneracy, so this step
+is a no-op there and the global assignment carries the work.
+
+The classifier stays deliberately *conservative*: after assignment a
+mode is named only when its assigned platform DOF clearly dominates
+the base-node modal kinetic energy (``_DOMINANCE_THRESHOLD``). A
+flexible tower mode, or a genuinely strongly-coupled pair whose energy
+splits across DOFs, is left ``None`` rather than mislabelled —
+consistent with the project's "only name what's unambiguous" stance.
+Empirically every genuine rigid-body mode on the validated floating
+decks (OC3 Hywind, the IEA-15 / IEA-22 / OC4 / UPSCALE samples) is
+overwhelmingly single-DOF and is named; the first flexible bending
+pair and above stay ``None``.
 """
 
 from __future__ import annotations
@@ -69,12 +94,94 @@ _DOMINANCE_THRESHOLD = 0.6
 # the base and would otherwise be mis-named.
 _N_RIGID = 6
 
+# Two rigid-body modes whose relative frequency gap is below this are
+# treated as a degenerate pair: on a (bi)symmetric platform surge≈sway
+# and roll≈pitch share an eigenvalue, so the eigensolver returns an
+# arbitrary rotation of that 2-D eigenspace (non-deterministic across
+# BLAS thread orderings — the same hazard commit-fixed for the FA/SS
+# tower pair). Matches ``_DEGENERATE_FREQ_RTOL`` in
+# ``pybmodes.elastodyn.params``.
+_DEGENERATE_FREQ_RTOL = 1e-4
+
+
+def _platform_dof_energy(b: np.ndarray, Mp: np.ndarray) -> np.ndarray:
+    """Per-platform-DOF modal kinetic energy of a base 6-vector ``b``
+    (FEM order), reordered to platform DOF order. Not normalised.
+
+    The platform mass matrix is the metric that puts a translation
+    amplitude and a rotation amplitude on a comparable footing
+    (``b_i·(M_p b)_i``).
+    """
+    e = np.abs(b * (Mp @ b))
+    return np.asarray(e[_FEM_TO_PLATFORM], dtype=float)
+
+
+def _align_degenerate_rigid_pairs(
+    base: np.ndarray, freqs: np.ndarray, Mp: np.ndarray
+) -> np.ndarray:
+    """Rotate near-degenerate rigid-body base-motion pairs onto axis-
+    aligned directions.
+
+    ``base`` is ``(6, n_rigid)`` of tower-base 6-vectors (FEM order),
+    ``freqs`` the matching frequencies. Walks consecutive pairs; when a
+    pair is frequency-degenerate (``_DEGENERATE_FREQ_RTOL``) it rotates
+    the 2-D eigenspace — any in-plane rotation is an equally valid
+    eigenpair — to put the pair's dominant platform DOF entirely in the
+    first slot and the orthogonal partner in the second. The closed-form
+    angle ``θ = ½·arctan2(2ab, a²−b²)`` (``a``, ``b`` the two modes'
+    components in the target FEM DOF) maximises that DOF's content in
+    the first slot, identical in form to the FA/SS resolver in
+    ``pybmodes.elastodyn.params``.
+
+    The rotation is accepted only when it *cleanly* separates the pair —
+    both rotated modes dominated (``_DOMINANCE_THRESHOLD``) by *different*
+    platform DOFs. Otherwise the pair is genuinely coupled (an asymmetric
+    floater whose degeneracy is broken anyway, so this branch rarely
+    triggers there) and the originals are kept for the global assignment
+    to handle. The input is not mutated; a fresh copy is returned.
+    """
+    out = base.copy()
+    n = out.shape[1]
+    i = 0
+    while i < n - 1:
+        denom = max(abs(float(freqs[i])), abs(float(freqs[i + 1])), 1e-12)
+        if abs(float(freqs[i]) - float(freqs[i + 1])) / denom <= _DEGENERATE_FREQ_RTOL:
+            bi = out[:, i].copy()
+            bj = out[:, i + 1].copy()
+            # Target the pair's combined-dominant platform DOF; f1 is the
+            # FEM DOF that platform DOF maps from.
+            combined = _platform_dof_energy(bi, Mp) + _platform_dof_energy(bj, Mp)
+            f1 = int(_FEM_TO_PLATFORM[int(np.argmax(combined))])
+            a, b = float(bi[f1]), float(bj[f1])
+            theta = 0.5 * float(np.arctan2(2.0 * a * b, a * a - b * b))
+            c, s = np.cos(theta), np.sin(theta)
+            ri = c * bi + s * bj
+            rj = -s * bi + c * bj
+
+            ei = _platform_dof_energy(ri, Mp)
+            ej = _platform_dof_energy(rj, Mp)
+            ti, tj = float(ei.sum()), float(ej.sum())
+            if ti > 0.0 and tj > 0.0:
+                fi, fj = ei / ti, ej / tj
+                ki, kj = int(np.argmax(fi)), int(np.argmax(fj))
+                if (
+                    ki != kj
+                    and fi[ki] >= _DOMINANCE_THRESHOLD
+                    and fj[kj] >= _DOMINANCE_THRESHOLD
+                ):
+                    out[:, i], out[:, i + 1] = ri, rj
+                    i += 2
+                    continue
+        i += 1
+    return out
+
 
 def classify_platform_modes(
     eigvecs: np.ndarray,
     active_dofs: np.ndarray,
     nselt: int,
     platform_mass: np.ndarray,
+    frequencies: np.ndarray | None = None,
 ) -> list[str | None]:
     """Return a per-mode label list naming the platform rigid-body
     modes (``surge`` / … / ``yaw``) or ``None`` where no single
@@ -94,11 +201,21 @@ def classify_platform_modes(
         DOF order (``PlatformND.mass`` from
         :func:`pybmodes.fem.nondim.nondim_platform`). Supplies the
         mass / inertia metric for the energy weighting.
+    frequencies : (n_modes,) modal frequencies (any unit), ascending.
+        When given, frequency-degenerate rigid-body pairs (surge≈sway,
+        roll≈pitch on a symmetric platform) are rotated onto axis-
+        aligned directions before labelling so the result is
+        deterministic regardless of the arbitrary basis the eigensolver
+        returns within a degenerate eigenspace. When ``None`` the
+        rotation is skipped (the labels then rely on the global
+        assignment alone).
 
     Caller must invoke this only for a floating model
     (``hub_conn == 2`` with a ``PlatformSupport``); for any other
     model there are no rigid-body modes to name.
     """
+    from scipy.optimize import linear_sum_assignment
+
     ndt = NESH * nselt + 6
     n_modes = eigvecs.shape[1]
 
@@ -114,40 +231,43 @@ def classify_platform_modes(
     # candidates are the first _N_RIGID columns.
     n_rigid = min(_N_RIGID, n_modes)
 
-    labels: list[str | None] = []
-    used: set[str] = set()
-    for m in range(n_modes):
-        if m >= n_rigid:
-            labels.append(None)                 # flexible tower mode
-            continue
-        b = base[:, m]
-        # Per-DOF modal kinetic energy contribution b_i·(M_p b)_i. The
-        # platform mass matrix is the metric that puts translation and
-        # rotation amplitudes on a comparable footing.
-        e = np.abs(b * (Mp @ b))
+    labels: list[str | None] = [None] * n_modes
+    if n_rigid == 0:
+        return labels
+
+    # Resolve symmetric-platform degeneracies first: rotate surge≈sway
+    # and roll≈pitch pairs onto axis-aligned directions so the labelling
+    # doesn't depend on which (equally valid) rotation the eigensolver
+    # happened to return inside the degenerate eigenspace.
+    work = base[:, :n_rigid].astype(float, copy=True)
+    if frequencies is not None:
+        work = _align_degenerate_rigid_pairs(
+            work, np.asarray(frequencies, dtype=float)[:n_rigid], Mp
+        )
+
+    # Per-DOF modal-kinetic-energy fractions for each rigid-body
+    # candidate, in platform-DOF order: score[m, k] is the fraction of
+    # mode m's base-node modal kinetic energy carried by platform DOF k.
+    score = np.zeros((n_rigid, 6))
+    for m in range(n_rigid):
+        e = _platform_dof_energy(work[:, m], Mp)
         total = float(e.sum())
         if total <= 0.0 or not np.isfinite(total):
-            labels.append(None)
-            continue
-        frac = e[_FEM_TO_PLATFORM] / total      # platform-DOF order
-        k = int(np.argmax(frac))
-        if frac[k] < _DOMINANCE_THRESHOLD:
-            labels.append(None)                 # coupled / rotated pair
-            continue
-        name = _PLATFORM_DOF_NAMES[k]
-        if name in used:
-            # A 6-DOF platform has exactly one rigid-body mode per DOF.
-            # Seeing the same dominant DOF twice within the lowest six
-            # means the one-mode-per-DOF assumption has already failed
-            # (a degenerate / rotated pair, or a flexible mode leaking
-            # in) — emitting a suffixed physical label like "surge (2)"
-            # would mislead a downstream plot/report into treating the
-            # duplicate as meaningful. Stay conservative: leave it
-            # ``None``, consistent with this classifier's "name only
-            # the unambiguous" contract.
-            labels.append(None)
-            continue
-        used.add(name)
-        labels.append(name)
+            continue                            # inert row → stays zero
+        score[m] = e / total
+
+    # Global one-mode-per-DOF matching (Hungarian, maximising total
+    # energy fraction), so the mode that best expresses each platform
+    # DOF wins that label instead of an earlier mode greedily stealing
+    # it and starving the true owner (issue #93). The square 6×6 case
+    # gives a perfect matching, so no DOF is ever named twice; a short
+    # rigid block (fewer than six modes requested) matches the
+    # available rows. Each assignment is then gated by the dominance
+    # threshold: a genuinely coupled / rotated pair whose energy splits
+    # across DOFs falls below it and is left ``None``.
+    rows, cols = linear_sum_assignment(score, maximize=True)
+    for m, k in zip(rows, cols):
+        if score[m, k] >= _DOMINANCE_THRESHOLD:
+            labels[m] = _PLATFORM_DOF_NAMES[k]
 
     return labels

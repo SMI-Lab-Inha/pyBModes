@@ -253,6 +253,7 @@ def run_fem(
             active_dofs=active,
             nselt=bmi.n_elements,
             platform_mass=platform_nd.mass,
+            frequencies=freqs_hz,
         )
 
     return ModalResult(
