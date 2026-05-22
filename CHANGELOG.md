@@ -11,11 +11,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [1.11.0] — 2026-05-23
 
 A minor feature release: a WindIO monopile + tower constructor (#92) and a
-`check_model` guard that catches the implausible-platform-CM-offset input
-error behind #95. Additive and backward-compatible; no numerical change to
+suite of **floating-model readiness guards** in `check_model` that catch the
+seakeeping mistakes a non-specialist makes when treating a WindIO `.yaml`
+(geometry + material only) as sufficient for a floating system — the input
+errors behind #95. Additive and backward-compatible; no numerical change to
 any existing model.
 
 ### Added
+
+- **Floating-model readiness guards in `check_model` (#95).** A WindIO `.yaml`
+  carries geometry + material — enough for a *land* tower, but **not** for a
+  floating system, whose rigid-body behaviour is set by hydrodynamics (added
+  mass + hydrostatic restoring) and mooring that live in companion HydroDyn /
+  MoorDyn decks, not the yaml. A seakeeping-naive user can silently produce a
+  meaningless floating result; these gates make that loud. For any
+  `hub_conn = 2` `PlatformSupport` model, `check_model` now additionally
+  checks:
+  - **No hydrodynamic added mass** (`hydro_M` / `A_inf` all zero) — WARN; this
+    biases every rigid-body frequency high (commonly 10–30 %) and is the most
+    common omission.
+  - **No restoring at all** (`hydro_K` *and* `mooring_K` both zero) — WARN; the
+    rigid-body modes collapse to ~0 Hz (a free body, not a station-kept
+    floater).
+  - **Non-physical platform inertia** (non-positive `mass_pform` or a
+    non-positive `i_matrix` diagonal) — ERROR.
+  Each message names the fix and points at the validated deck path
+  (`Tower.from_windio_floating(yaml, hydrodyn_dat=…, moordyn_dat=…,
+  elastodyn_dat=…)`). Verified to stay silent on every validated floating model
+  (OC3 Hywind spar, IEA-15 UMaineSemi, the WindIO Morison screening tier).
 
 - **`check_model` gate for an implausibly large horizontal platform CM offset
   (#95).** `cm_pform_x` / `cm_pform_y` on a `PlatformSupport` are the CM offset

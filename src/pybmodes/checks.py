@@ -54,9 +54,22 @@ Checks performed (see :func:`check_model` for the details):
    ``√(I_yaw / m)`` — a larger value is almost always a coordinate-
    origin offset leaking into a field that means "CM offset from the
    tower axis", which mislabels the rigid-body modes (issue #95).
-8. The requested ``n_modes`` does not exceed the model's DOF count.
-9. The polynomial-fit design matrix on the mesh stations is not
-   ill-conditioned (cond > 1e4 ⇒ WARN, > 1e6 ⇒ ERROR).
+8. Floating platform inertia is physical: positive ``mass_pform`` and
+   strictly-positive ``i_matrix`` diagonal (ERROR otherwise).
+9. Floating model carries hydrodynamic added mass (``hydro_M`` not all
+   zero) — omitting it biases every rigid-body frequency high (WARN).
+10. Floating model has *some* restoring (``hydro_K`` or ``mooring_K``
+    non-zero); with neither, the rigid-body modes collapse to ~0 Hz
+    (WARN).
+11. The requested ``n_modes`` does not exceed the model's DOF count.
+12. The polynomial-fit design matrix on the mesh stations is not
+    ill-conditioned (cond > 1e4 ⇒ WARN, > 1e6 ⇒ ERROR).
+
+Checks 7–10 are the "floating-model readiness" gates (``hub_conn = 2``
+only): they catch the seakeeping omissions a non-specialist makes when
+a WindIO ``.yaml`` (geometry + material only) is treated as sufficient
+for a floating system — it is not, the way it is for a land tower
+(issue #95).
 """
 
 from __future__ import annotations
@@ -152,6 +165,9 @@ def check_model(
     _check_rna_vs_tower_mass(bmi, sp, out)
     _check_support_conditioning(bmi, out)
     _check_platform_cm_offset(bmi, out)
+    _check_platform_inertia_physical(bmi, out)
+    _check_added_mass_present(bmi, out)
+    _check_restoring_present(bmi, out)
     if n_modes is not None:
         _check_n_modes_vs_dof(bmi, n_modes, out)
     _check_polyfit_conditioning(bmi, out)
@@ -444,6 +460,123 @@ def _check_platform_cm_offset(bmi, out: list[ModelWarning]) -> None:
             f"them to the CM offset relative to the tower axis (≈0 for a tower "
             f"on the platform centroid).",
             "bmi.support.cm_pform_x",
+        ))
+
+
+_FLOATING_FIX_HINT = (
+    "A floating model needs more than the WindIO geometry + material: the "
+    "rigid-body behaviour is set by hydrodynamics (added mass + hydrostatic "
+    "restoring) and mooring, none of which live in the .yaml. Supply them via "
+    "the companion decks — Tower.from_windio_floating(yaml, hydrodyn_dat=…, "
+    "moordyn_dat=…, elastodyn_dat=…) — or an explicit, correctly-assembled "
+    "PlatformSupport. The deck path reads the WAMIT A_inf / C_hst and the "
+    "MoorDyn system in their correct reference frames and is the validated "
+    "(BModes-JJ ≈ 0.0003 %) route."
+)
+
+
+def _check_platform_inertia_physical(bmi, out: list[ModelWarning]) -> None:
+    """Flag a non-physical platform inertia (zero / negative mass or
+    diagonal moment of inertia).
+
+    A real floating body has strictly positive mass and rotational
+    inertia about every axis; a zero or negative diagonal in the 6×6
+    ``i_matrix`` (or a non-positive ``mass_pform``) is a transcription
+    error that produces meaningless rigid-body modes. ERROR severity.
+    """
+    from pybmodes.io.bmi import PlatformSupport
+
+    if not isinstance(bmi.support, PlatformSupport):
+        return
+    sup = bmi.support
+    i_mat = np.asarray(sup.i_matrix, dtype=float)
+    mass = float(getattr(sup, "mass_pform", 0.0) or 0.0)
+    if mass <= 0.0 and i_mat.size and i_mat.ndim == 2 \
+            and np.isfinite(i_mat[0, 0]):
+        mass = float(i_mat[0, 0])      # i_matrix[0,0] is the platform mass
+    if mass <= 0.0:
+        out.append(ModelWarning(
+            "ERROR",
+            f"Platform mass is not positive (mass_pform = {mass:.3g} kg). A "
+            f"floating body must have a strictly positive mass; verify the "
+            f"PlatformSupport / ElastoDyn PtfmMass.",
+            "bmi.support.mass_pform",
+        ))
+    if i_mat.ndim == 2 and i_mat.shape[0] == i_mat.shape[1] and i_mat.size:
+        diag = np.diag(i_mat)
+        bad = [int(k) for k in range(diag.size)
+               if np.isfinite(diag[k]) and diag[k] <= 0.0]
+        if bad:
+            out.append(ModelWarning(
+                "ERROR",
+                f"Platform inertia matrix has non-positive diagonal entries at "
+                f"DOF index {bad} (value(s) {[float(diag[k]) for k in bad]}). "
+                f"Every translational mass and rotational moment of inertia on "
+                f"the i_matrix diagonal must be > 0 for a physical body.",
+                "bmi.support.i_matrix",
+            ))
+
+
+def _check_added_mass_present(bmi, out: list[ModelWarning]) -> None:
+    """Warn when a floating model carries no hydrodynamic added mass.
+
+    ``hydro_M`` (the infinite-frequency added-mass matrix ``A_inf``) is
+    typically large for a floating platform — often comparable to the
+    structural mass in surge / sway / heave — so omitting it biases
+    *every* rigid-body frequency high. An all-zero ``hydro_M`` is the
+    single most common seakeeping omission for a non-specialist hand-
+    assembling a PlatformSupport (issue #95). WARN severity (a zero
+    added mass is occasionally a deliberate screening simplification).
+    """
+    from pybmodes.io.bmi import PlatformSupport
+
+    if not isinstance(bmi.support, PlatformSupport):
+        return
+    h_m = np.asarray(bmi.support.hydro_M, dtype=float)
+    has_added_mass = bool(h_m.size and np.any(np.isfinite(h_m) & (h_m != 0.0)))
+    if not has_added_mass:
+        out.append(ModelWarning(
+            "WARN",
+            "Floating model has no hydrodynamic added mass (hydro_M / A_inf is "
+            "zero). Added mass is typically large for a floating platform "
+            "(often comparable to the structural mass in surge / sway / heave); "
+            "omitting it biases all rigid-body frequencies high (commonly by "
+            "10–30 %). " + _FLOATING_FIX_HINT,
+            "bmi.support.hydro_M",
+        ))
+
+
+def _check_restoring_present(bmi, out: list[ModelWarning]) -> None:
+    """Warn when a floating model has no restoring at all.
+
+    A floating platform's rigid-body modes are set by hydrostatic
+    restoring (``hydro_K`` / ``C_hst``, the waterplane + buoyancy) plus
+    mooring stiffness (``mooring_K``). With neither, surge / sway /
+    heave / roll / pitch / yaw have no restoring and collapse to ~0 Hz —
+    a non-physical "free body in vacuum" rather than a station-kept
+    floater. WARN severity (the solve still completes, just meaningless).
+    """
+    from pybmodes.io.bmi import PlatformSupport
+
+    if not isinstance(bmi.support, PlatformSupport):
+        return
+    sup = bmi.support
+    any_restoring = False
+    for mat in (sup.hydro_K, sup.mooring_K):
+        arr = np.asarray(mat, dtype=float)
+        if arr.size and np.any(np.isfinite(arr) & (arr != 0.0)):
+            any_restoring = True
+            break
+    if not any_restoring:
+        out.append(ModelWarning(
+            "WARN",
+            "Floating model has no restoring: both the hydrostatic restoring "
+            "(hydro_K / C_hst) and the mooring stiffness (mooring_K) are zero. "
+            "The platform's rigid-body modes are entirely set by this "
+            "restoring; with none, surge / sway / heave / roll / pitch / yaw "
+            "collapse to ~0 Hz (a free body, not a station-kept floater). "
+            + _FLOATING_FIX_HINT,
+            "bmi.support.mooring_K",
         ))
 
 
