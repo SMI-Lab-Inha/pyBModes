@@ -22,7 +22,7 @@ without keeping a full git clone of the repository.
 - ``sample_inputs/`` — pyBmodes-authored, Apache 2.0-licensed ``.bmi`` and
   section-property ``.dat`` files. Four analytical-reference cases
   (uniform blade, tower with top mass, rotating uniform blade,
-  pinned-free cable) plus seven reference-wind-turbine sub-cases under
+  pinned-free cable) plus eleven reference-wind-turbine sub-cases under
   ``reference_turbines/``. ``verify.py`` runs the four analytical
   cases against closed-form references.
 - ``reference_decks/`` — six pre-patched ElastoDyn decks (three

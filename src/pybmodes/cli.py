@@ -221,7 +221,7 @@ _EXAMPLE_BUNDLES = {
     # bundle-name -> (sub-directory under pybmodes/_examples/,
     #                 human description)
     "samples": ("sample_inputs",
-                "analytical-reference cases + 7 RWT samples"),
+                "analytical-reference cases + 11 RWT samples"),
     "decks":   ("reference_decks",
                 "6 patched ElastoDyn decks (land + monopile + floating)"),
 }

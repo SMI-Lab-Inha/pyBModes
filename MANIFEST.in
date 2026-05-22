@@ -21,10 +21,14 @@ include .readthedocs.yaml
 recursive-include src/pybmodes/_examples *
 
 # Sphinx documentation source. Tests don't depend on it; users who
-# rebuild docs from sdist need it. Notebooks and ``external/`` are
-# intentionally excluded.
+# rebuild docs from sdist need it. Notebooks are excluded.
 recursive-include docs *.md *.rst *.py
 recursive-include docs/_static *
+
+# Maintenance / reproducibility scripts the shipped docs reference
+# (e.g. ``scripts/verify_external_data.py``), so an sdist consumer can
+# follow the validation/reproducibility workflow the docs describe.
+recursive-include scripts *.py
 
 # Exclude things that should never reach the sdist.
 global-exclude __pycache__
@@ -37,3 +41,9 @@ prune .pytest_cache
 prune .mypy_cache
 prune htmlcov
 prune .pytest-tmp
+
+# ...but DO ship the external-data manifest itself (the pinned-commit +
+# content-hash reproducibility contract the docs point at). The
+# gitignored upstream clones under external/ are never tracked, so only
+# this one file is added back after the ``prune external`` above.
+include external/MANIFEST.toml

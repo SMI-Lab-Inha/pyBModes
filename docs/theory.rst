@@ -305,28 +305,46 @@ mirrored after read.
 Citable references
 ------------------
 
-The reference set ``pybmodes`` validates against:
+The reference set ``pybmodes`` validates against (NREL reports link to
+the canonical ``docs.nrel.gov`` PDF or the OSTI.GOV record; papers by
+DOI; textbooks have no DOI):
 
 - **NREL 5MW Reference Turbine** — Jonkman, Butterfield, Musial,
   Scott (2009), *Definition of a 5-MW Reference Wind Turbine
-  for Offshore System Development*, NREL/TP-500-38060.
+  for Offshore System Development*, NREL/TP-500-38060
+  (`PDF <https://docs.nrel.gov/docs/fy09osti/38060.pdf>`__).
 - **OC3 Monopile** and **OC3 Hywind (floating spar)** —
-  Jonkman & Musial (2010), NREL/TP-5000-48191;
+  Jonkman & Musial (2010), NREL/TP-5000-48191
+  (`PDF <https://docs.nrel.gov/docs/fy11osti/48191.pdf>`__);
   Jonkman (2010), *Definition of the Floating System for
-  Phase IV of OC3*, NREL/TP-500-47535.
+  Phase IV of OC3*, NREL/TP-500-47535
+  (`PDF <https://docs.nrel.gov/docs/fy10osti/47535.pdf>`__).
 - **IEA-3.4-130-RWT**, IEA-10-198-RWT, IEA-15-240-RWT,
   IEA-22-280-RWT — Bortolotti, Tarrés, Dykes et al. (2019),
   *IEA Wind TCP Task 37: Systems Engineering in Wind Energy —
-  WP2.1 Reference Wind Turbines*, NREL/TP-5000-73492, and the
-  follow-on IEA Wind Task 37 reports for the larger sizes.
-- **BModes** — Bir (2010), NREL/CP-500-47953.
-- **Rotating-blade closed forms** — Wright (1982); Bir (2009);
+  WP2.1 Reference Wind Turbines*, NREL/TP-5000-73492
+  (`PDF <https://docs.nrel.gov/docs/fy19osti/73492.pdf>`__), and the
+  follow-on IEA Wind Task 37 reports for the larger sizes — notably
+  the IEA-15-240-RWT in Gaertner et al. (2020), NREL/TP-5000-75698
+  (`PDF <https://docs.nrel.gov/docs/fy20osti/75698.pdf>`__), on the
+  UMaine VolturnUS-S platform of Allen et al. (2020),
+  NREL/TP-5000-76773
+  (`PDF <https://docs.nrel.gov/docs/fy20osti/76773.pdf>`__).
+- **BModes** — Bir (2010), NREL/CP-500-47953
+  (`OSTI 975394 <https://www.osti.gov/biblio/975394>`__).
+- **Rotating-blade closed forms** — Wright (1982),
+  *J. Appl. Mech.* 49(1), 197–202
+  (DOI `10.1115/1.3161966 <https://doi.org/10.1115/1.3161966>`__);
+  Bir (2009), AIAA 2009-1035
+  (`OSTI 982266 <https://www.osti.gov/biblio/982266>`__);
   Bir (2010) Table 5 (tip-mass rotating blade); Bir 2009 Eq. 8
   (rotating cable, analytical Legendre solution).
-- **Beam tip-mass formulas** — Blevins (1979 / 2016).
+- **Beam tip-mass formulas** — Blevins (1979 / 2016); Karnovsky &
+  Lebed (2001). (Textbooks; no DOI.)
 - **Catenary mooring** — Jonkman (2007), *Dynamics Modeling and
   Loads Analysis of an Offshore Floating Wind Turbine*,
-  NREL/TP-500-41958, Appendix B.
+  NREL/TP-500-41958, Appendix B
+  (`OSTI 921803 <https://www.osti.gov/biblio/921803>`__).
 - **WAMIT** — Lee & Newman (1991/2006), *WAMIT User Manual*.
 - **Cable structures** — Irvine (1981), *Cable Structures*,
   MIT Press, §2.4.

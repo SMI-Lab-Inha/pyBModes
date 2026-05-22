@@ -35,10 +35,11 @@ tip-mass + no-tip-mass split.
 ## Index — reference-wind-turbine cases
 
 The [`reference_turbines/`](reference_turbines/) sub-directory ships
-**tower + blade** BMI samples for seven widely-cited open-literature
-reference wind turbines (RWTs): NREL 5MW (land + OC3 monopile + OC3
-Hywind floating spar), IEA-3.4, IEA-10, IEA-15, IEA-22 (monopile
-sub-cases), generated from the published structural data via
+tower-and-blade BMI samples for eleven open-literature
+reference-wind-turbine sub-cases (RWTs): NREL 5MW (land, OC3 monopile,
+OC3 Hywind spar, OC4 DeepCwind semi), IEA-3.4 (land), IEA-10 (monopile),
+IEA-15 (monopile, UMaine semi), IEA-22 (monopile, semi), and UPSCALE
+25 MW, generated from the published structural data via
 [`reference_turbines/build.py`](reference_turbines/build.py). See
 [`reference_turbines/README.md`](reference_turbines/README.md) for
 the full list, the modelling assumptions (cantilever tower from

@@ -95,17 +95,23 @@ metrics:
 | Degenerate-pair resolver, symmetric tower | construction (`EI_FA == EI_SS`) | post-rotation FA / SS purity | $p_{\text{FA}}, p_{\text{SS}} > 0.99$ | (within tol) | [`tests/test_classifier.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_classifier.py) | no |
 | IEA-3.4 modes 1-2 — degenerate-pair resolver fires no warning | IEA Wind Task 37 RWT deck | classifier verdict | no `RuntimeWarning` | clean | [`tests/test_classifier.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_classifier.py) | yes |
 
-**Citations** (full author / year forms used in the table above):
+**Citations** (full author / year forms used in the table above).
+NREL reports link to the canonical ``docs.nrel.gov`` PDF or the
+OSTI.GOV record; journal / conference papers link by DOI; textbooks
+have no DOI and are cited by title + publisher:
 
-- Blevins (1979). *Formulas for Natural Frequency and Mode Shape*. Krieger Publishing.
-- Karnovsky & Lebed (2001). *Formulas for Structural Dynamics*. McGraw-Hill.
-- Wright, Smith, Thresher & Wang (1982). *Vibration Modes of Centrifugally Stiffened Beams*. *Journal of Applied Mechanics*, Vol. 104, March 1982.
-- Bir (2009). *Blades and Towers Modal Analysis Code (BModes): Verification of Blade Modal Analysis Capability*. AIAA 2009-1035.
-- Bir (2010). *Verification of BModes: Rotary Beam and Tower Modal Analysis Code*. NREL/CP-500-47953.
-- Jonkman, Butterfield, Musial & Scott (2009). *Definition of a 5-MW Reference Wind Turbine for Offshore System Development*. NREL/TP-500-38060.
-- Jonkman & Musial (2010). *Offshore Code Comparison Collaboration (OC3) for IEA Wind Task 23*. NREL/TP-5000-48191.
-- Jonkman (2010). *Definition of the Floating System for Phase IV of OC3*. NREL/TP-500-47535.
-- Bortolotti, Tarrés, Dykes, Merz, Sethuraman, Verelst & Zahle (2019). *IEA Wind TCP Task 37: Systems Engineering in Wind Energy — WP2.1 Reference Wind Turbines*. NREL/TP-5000-73492.
+- Blevins (1979). *Formulas for Natural Frequency and Mode Shape*. Krieger Publishing. (Textbook; no DOI.)
+- Karnovsky & Lebed (2001). *Formulas for Structural Dynamics*. McGraw-Hill. (Textbook; no DOI.)
+- Wright, Smith, Thresher & Wang (1982). *Vibration Modes of Centrifugally Stiffened Beams*. *Journal of Applied Mechanics* 49(1), 197–202. DOI [10.1115/1.3161966](https://doi.org/10.1115/1.3161966).
+- Bir (2009). *Blades and Towers Modal Analysis Code (BModes): Verification of Blade Modal Analysis Capability*. AIAA 2009-1035. [OSTI 982266](https://www.osti.gov/biblio/982266).
+- Bir (2010). *Verification of BModes: Rotary Beam and Tower Modal Analysis Code*. NREL/CP-500-47953. [OSTI 975394](https://www.osti.gov/biblio/975394).
+- Jonkman (2007). *Dynamics Modeling and Loads Analysis of an Offshore Floating Wind Turbine* (Appendix B, catenary mooring). NREL/TP-500-41958. [OSTI 921803](https://www.osti.gov/biblio/921803).
+- Jonkman, Butterfield, Musial & Scott (2009). *Definition of a 5-MW Reference Wind Turbine for Offshore System Development*. NREL/TP-500-38060. [PDF](https://docs.nrel.gov/docs/fy09osti/38060.pdf).
+- Jonkman & Musial (2010). *Offshore Code Comparison Collaboration (OC3) for IEA Wind Task 23*. NREL/TP-5000-48191. [PDF](https://docs.nrel.gov/docs/fy11osti/48191.pdf).
+- Jonkman (2010). *Definition of the Floating System for Phase IV of OC3*. NREL/TP-500-47535. [PDF](https://docs.nrel.gov/docs/fy10osti/47535.pdf).
+- Bortolotti, Tarrés, Dykes, Merz, Sethuraman, Verelst & Zahle (2019). *IEA Wind TCP Task 37: Systems Engineering in Wind Energy — WP2.1 Reference Wind Turbines*. NREL/TP-5000-73492. [PDF](https://docs.nrel.gov/docs/fy19osti/73492.pdf).
+- Gaertner et al. (2020). *IEA Wind TCP Task 37: Definition of the IEA 15-Megawatt Offshore Reference Wind Turbine*. NREL/TP-5000-75698. [PDF](https://docs.nrel.gov/docs/fy20osti/75698.pdf).
+- Allen et al. (2020). *Definition of the UMaine VolturnUS-S Reference Platform Developed for the IEA Wind 15-Megawatt Offshore Reference Wind Turbine*. NREL/TP-5000-76773. [PDF](https://docs.nrel.gov/docs/fy20osti/76773.pdf).
 
 ## Track B — coefficient-consistency cases
 
@@ -159,7 +165,7 @@ is behavioural / contract-style.
 | `ModalResult` — metadata capture (version + timestamp + git hash) | self | metadata dict populated with non-empty pybmodes_version | always | (within tol) | [`tests/test_serialize.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_serialize.py) | no |
 | `CampbellResult.save / load` — NPZ round-trip | self | per-field `np.allclose` vs original | `rtol = 1e-12` | (within tol) | [`tests/test_serialize.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_serialize.py) | no |
 | `CampbellResult.to_csv` — spec column order | self | header = `[rpm, <labels>, <labels>_mac]` | exact match | (within tol) | [`tests/test_serialize.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_serialize.py) | no |
-| NPZ load is pickle-free on modern archives; legacy `dtype=object` `__meta__` takes a warned `allow_pickle=True` fallback (F2) | construction (forged legacy archive) | modern load emits no warning; legacy load raises `UserWarning` + still round-trips | exact / structural | (within tol) | [`tests/test_serialize.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_serialize.py) | no |
+| NPZ load is pickle-free on modern archives; legacy `dtype=object` `__meta__` is **refused by default** (object-array unpickling can execute code) and loads only via the opt-in `allow_legacy_pickle=True` (F2) | construction (forged legacy archive) | modern load emits no warning; default legacy load raises `ValueError` ("refusing to load a legacy …"); opt-in load raises `UserWarning` + round-trips | exact / structural | (within tol) | [`tests/test_serialize.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_serialize.py) | no |
 | `_validate_lengths` / `CampbellResult._validate` reject malformed schemas before any export (F5) | construction (bad participation / label shapes) | `ValueError` before save / to_json / to_csv | always raises | (within tol) | [`tests/test_serialize.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_serialize.py) | no |
 | `check_model` n_modes guard uses exact `n_free_dof`, not `6·n_nodes` — no false ERROR in (6·n_nodes, n_free_dof] (F3) | construction (nselt=10 ⇒ n_free_dof=90) | n_modes=80 clean; n_modes=200 ERROR | always | (within tol) | [`tests/test_checks.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_checks.py) | no |
 | `pybmodes patch` rejects conflicting `--output` / `--output-dir` (F4); silent-agree preserved for equal / single | construction | exit 2 + clear message only when paths differ | exact match | (within tol) | [`tests/test_cli_patch_args.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/test_cli_patch_args.py) | no |
@@ -287,36 +293,41 @@ licence terms of the upstream NREL / IEA Wind Task 37 packages
 include attribution / indemnification obligations that pyBmodes can't
 inherit by republication. The contributor clones them locally.
 
-**Integration-track coverage is therefore developer-local + manual
-pre-tag, not CI-gated.** Specifically:
+**Integration-track coverage is split by whether the upstream data is
+publicly clonable:**
 
-- The default GitHub Actions runner has no upstream decks checked
-  out, so `pytest -m integration` exits with code 5 ("no tests
-  collected"). The CI workflow treats that single exit code as a
-  pass, so the job stays green; **any other non-zero exit** (i.e.
-  a genuine integration-test failure when data IS provided by a
-  custom workflow run) fails the build.
-- The pre-tag release sequence (see
-  [`https://pybmodes.readthedocs.io/en/latest/release_checklist.html`](https://pybmodes.readthedocs.io/en/latest/release_checklist.html), step 2)
-  requires the maintainer to run `pytest -m integration` locally on
-  a checkout that has the upstream sources cloned, and confirm
-  every case passes, before tagging a new version. The tag therefore
-  represents a state that's been integration-verified by hand even
-  though CI couldn't see it.
-- `scripts/audit_validation_claims.py` (run as part of the release
+- **Public required set — CI-gated.** The
+  [Validation workflow](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/validation.yml)
+  clones the required public upstreams (OpenFAST r-test + IEA-3.4 / 10 /
+  15 / 22 + WISDEM) at their manifest-pinned commit SHAs and runs
+  `pytest -m integration` **hard-fail — no exit-5 tolerance** — on every
+  `workflow_dispatch` and the weekly cron. It first runs
+  `verify_external_data.py --strict` (pinned commit + line-ending-
+  normalized content hashes; a missing required clone is a hard FAIL)
+  and uploads the verifier report. **Publishing to PyPI is gated on a
+  green run of this workflow for the tagged commit.** So the public
+  integration cases carry re-runnable CI evidence, not just a maintainer
+  claim.
+- **BModes CertTest + optional cross-comparisons — maintainer-local.**
+  The BModes data is a NREL download (not on GitHub, not redistributable),
+  and MoorPy / RAFT are `optional = true` cross-comparison clones; those
+  rows stay maintainer-local until/unless mirrored somewhere CI can
+  fetch. Their tests skip cleanly when the data is absent.
+- **Per-PR `ci.yml`** runs the self-contained suite and *tolerates* exit
+  code 5 ("no tests collected") on its integration step, because the
+  default PR runner has no upstream decks — the hard-fail enforcement
+  lives in `validation.yml` above, not in the per-PR job.
+- `scripts/audit_validation_claims.py` (run in CI and the release
   checklist) scans this matrix and asserts that every test-file path
-  named in a row actually exists and contains at least one collected
-  test method. This is the gate that catches "claim ahead of test"
-  drift: a row may legitimately need external data (and thus skip
-  in CI), but its referenced test file must always be present and
-  populated.
+  named in a row exists and contains at least one collected test
+  method — the gate that catches "claim ahead of test" drift.
 
-**For users**: when you depend on pyBmodes, the integration-track
-guarantee is "the maintainer has run these locally before tagging
-this release." If you need stronger CI-level evidence (i.e. a
-re-runnable workflow against the same upstream commits), follow the
-audit script's instructions to mirror the upstream sources into a
-private repo and dispatch the integration workflow there.
+**For users**: the public integration cases (the NREL 5MW family and the
+IEA Wind Task 37 turbines) carry re-runnable CI evidence via the
+Validation workflow, pinned to immutable upstream commits and hashed for
+content. Only the BModes CertTest guarantee remains "the maintainer ran
+these locally before tagging," because that reference data isn't publicly
+clonable.
 
 ## Reproducing every row
 

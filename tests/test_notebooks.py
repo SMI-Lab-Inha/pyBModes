@@ -1,6 +1,6 @@
 """Headless execution of the bundled walkthrough notebooks.
 
-Two notebooks are exercised:
+Three notebooks are exercised:
 
 - ``notebooks/walkthrough.ipynb`` — contractually self-contained tour
   of the public API (synthetic uniform-blade and tower cases with
@@ -19,6 +19,12 @@ Two notebooks are exercised:
   * Integration-marked: with the upstream data **present**, every
     cell must execute without error. Skipped on a fresh clone so the
     default suite stays self-contained.
+
+- ``cases/iea15_volturnus_windio_walkthrough.ipynb`` — the WISDEM/
+  WindIO one-click FOWT walkthrough. Same friendly-error +
+  integration contract as the UMaineSemi notebook, keyed on the
+  upstream WindIO ontology ``.yaml`` (and needing the ``[windio]``
+  extra, PyYAML).
 
 Requires the optional ``[notebook]`` extra (``nbclient`` /
 ``nbformat`` / ``ipykernel``); the test skips at collection time if
@@ -104,7 +110,7 @@ if not IEA15_WALKTHROUGH.is_file():
     pytest.skip(
         f"IEA-15 UMaineSemi walkthrough not found at {IEA15_WALKTHROUGH}; "
         "this normally indicates a checkout problem rather than a real skip",
-        allow_module_level=False,
+        allow_module_level=True,
     )
 
 
@@ -166,4 +172,80 @@ def test_iea15_walkthrough_executes_when_data_present() -> None:
     except CellExecutionError as err:
         pytest.fail(
             f"iea15_umainesemi_walkthrough.ipynb failed end-to-end:\n{err}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# IEA-15 VolturnUS-S WindIO walkthrough — friendly-error and integration paths
+# ---------------------------------------------------------------------------
+
+VOLTURNUS_WALKTHROUGH = (
+    REPO_ROOT / "cases" / "iea15_volturnus_windio_walkthrough.ipynb"
+)
+VOLTURNUS_YAML = (
+    REPO_ROOT / "external" / "OpenFAST_files" / "IEA-15-240-RWT"
+    / "WT_Ontology" / "IEA-15-240-RWT_VolturnUS-S.yaml"
+)
+
+if not VOLTURNUS_WALKTHROUGH.is_file():
+    pytest.skip(
+        f"IEA-15 VolturnUS-S WindIO walkthrough not found at "
+        f"{VOLTURNUS_WALKTHROUGH}; this normally indicates a checkout problem",
+        allow_module_level=True,
+    )
+
+
+def test_volturnus_windio_walkthrough_friendly_error_when_data_absent() -> None:
+    """When the upstream WindIO ontology is NOT present under
+    ``external/OpenFAST_files/IEA-15-240-RWT/WT_Ontology/``, the
+    notebook's first code cell must raise a ``FileNotFoundError`` whose
+    message names the upstream IEA-15-240-RWT repository — the same
+    documented contract as the UMaineSemi notebook, so this one can also
+    ship under ``cases/`` without leaving a fresh-clone user with a
+    cryptic traceback.
+
+    Skipped on machines where the upstream data IS present.
+    """
+    if VOLTURNUS_YAML.is_file():
+        pytest.skip(
+            f"upstream VolturnUS-S ontology present at {VOLTURNUS_YAML}; "
+            "see test_volturnus_windio_walkthrough_executes_when_data_present"
+        )
+    from nbclient.exceptions import CellExecutionError
+
+    with pytest.raises(CellExecutionError) as exc_info:
+        _execute_notebook(VOLTURNUS_WALKTHROUGH, timeout=60)
+    err_text = str(exc_info.value)
+    assert "FileNotFoundError" in err_text, (
+        f"expected a FileNotFoundError on the first code cell; got:\n{err_text}"
+    )
+    assert "IEA-15-240-RWT" in err_text and "Clone" in err_text, (
+        "expected the friendly 'Clone the upstream IEA-15-240-RWT' hint; "
+        f"got:\n{err_text}"
+    )
+
+
+@pytest.mark.integration
+def test_volturnus_windio_walkthrough_executes_when_data_present() -> None:
+    """When the upstream WindIO ontology + companion decks ARE present,
+    every cell of ``cases/iea15_volturnus_windio_walkthrough.ipynb`` must
+    execute without error. Needs the ``[windio]`` extra (PyYAML).
+    Skipped on a fresh clone (no upstream data) so the default suite
+    stays self-contained.
+    """
+    if not VOLTURNUS_YAML.is_file():
+        pytest.skip(
+            f"upstream VolturnUS-S ontology not present at {VOLTURNUS_YAML}; "
+            "clone the IEA-15-240-RWT repo there to run this test"
+        )
+    pytest.importorskip(
+        "yaml", reason="install the [windio] extra (PyYAML) to run this test",
+    )
+    from nbclient.exceptions import CellExecutionError
+
+    try:
+        _execute_notebook(VOLTURNUS_WALKTHROUGH, timeout=300)
+    except CellExecutionError as err:
+        pytest.fail(
+            f"iea15_volturnus_windio_walkthrough.ipynb failed end-to-end:\n{err}"
         )

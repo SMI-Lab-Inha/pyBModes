@@ -36,7 +36,7 @@ from pybmodes.workflows._base import WorkflowResult
 _EXAMPLE_BUNDLES: dict[str, tuple[str, str]] = {
     "samples": (
         "sample_inputs",
-        "analytical-reference cases + 7 RWT samples",
+        "analytical-reference cases + 11 RWT samples",
     ),
     "decks": (
         "reference_decks",

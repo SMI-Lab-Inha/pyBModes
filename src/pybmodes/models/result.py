@@ -259,10 +259,19 @@ class ModalResult:
         np.savez_compressed(path, **kwargs)  # type: ignore[arg-type]
 
     @classmethod
-    def load(cls, path: str | pathlib.Path) -> ModalResult:
+    def load(
+        cls, path: str | pathlib.Path, *, allow_legacy_pickle: bool = False,
+    ) -> ModalResult:
         """Read a result back from a ``.npz`` archive saved by
         :meth:`save`. The reconstructed instance is value-equal to the
-        original modulo numpy dtype promotion."""
+        original modulo numpy dtype promotion.
+
+        Archives written by current pyBmodes are pickle-free and load
+        under ``allow_pickle=False``. A legacy pre-1.0 archive whose
+        ``__meta__`` is a pickled object array is **refused by default**
+        (object-array unpickling can execute arbitrary code); pass
+        ``allow_legacy_pickle=True`` to opt in for a file you trust.
+        """
         from pybmodes.io._serialize import _read_npz_meta
 
         path = pathlib.Path(path)
@@ -275,7 +284,9 @@ class ModalResult:
                 for name in ("flap_disp", "flap_slope", "lag_disp",
                              "lag_slope", "twist")
             }
-            metadata = _read_npz_meta(npz, path)
+            metadata = _read_npz_meta(
+                npz, path, allow_legacy_pickle=allow_legacy_pickle,
+            )
             participation: np.ndarray | None = None
             if "participation" in npz.files:
                 participation = np.asarray(npz["participation"], dtype=float)

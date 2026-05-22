@@ -208,14 +208,24 @@ class CampbellResult:
         )
 
     @classmethod
-    def load(cls, path: str | pathlib.Path) -> CampbellResult:
+    def load(
+        cls, path: str | pathlib.Path, *, allow_legacy_pickle: bool = False,
+    ) -> CampbellResult:
         """Read a sweep result back from a ``.npz`` archive saved by
-        :meth:`save`."""
+        :meth:`save`.
+
+        A legacy pre-1.0 archive whose ``__meta__`` is a pickled object
+        array is **refused by default** (object-array unpickling can
+        execute arbitrary code); pass ``allow_legacy_pickle=True`` to opt
+        in for a file you trust.
+        """
         from pybmodes.io._serialize import _read_npz_meta
 
         path = pathlib.Path(path)
         with np.load(path, allow_pickle=False) as npz:
-            meta = _read_npz_meta(npz, path)
+            meta = _read_npz_meta(
+                npz, path, allow_legacy_pickle=allow_legacy_pickle,
+            )
             inst = cls(
                 omega_rpm=np.asarray(npz["omega_rpm"], dtype=float),
                 frequencies=np.asarray(npz["frequencies"], dtype=float),

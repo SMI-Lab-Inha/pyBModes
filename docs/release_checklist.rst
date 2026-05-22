@@ -74,12 +74,14 @@ failure mode is a hard fail.
    The pinned manifest is the published reproducibility
    contract for the validation matrix's external-data tracks:
    manifest-pinned commit SHAs plus line-ending-normalized
-   SHA-256 hashes for the text validation decks. Anyone with
-   the manifest can reproduce the published 0.01 % tolerance
-   against the BModes Fortran reference solver; without it, the
-   integration track is lab-local. Treat the manifest pins as
-   part of the API contract — bumping a pin is a deliberate
-   maintainer action documented in the corresponding
+   SHA-256 hashes for the text validation decks. The public
+   required set (r-test + IEA-3.4 / 10 / 15 / 22 + WISDEM) is
+   **CI-gated** by ``validation.yml`` and reproducible by anyone
+   with the manifest; only the BModes archive (a NREL download,
+   not publicly clonable) and the optional cross-comparison
+   clones (MoorPy / RAFT) stay maintainer-local. Treat the
+   manifest pins as part of the API contract — bumping a pin is
+   a deliberate maintainer action documented in the corresponding
    ``CHANGELOG.md`` entry under *Changed*.
 
 3. Linting + type checking
@@ -142,14 +144,27 @@ shipping.
 6. Walkthrough notebook smoke-check
 -----------------------------------
 
+The walkthrough notebooks ship **source-only** — committed without
+executed cell outputs (no stored figures). CI executes every cell
+headlessly via ``tests/test_notebooks.py``; reproduce that here:
+
+.. code-block:: bash
+
+   pytest tests/test_notebooks.py                  # synthetic walkthrough (default)
+   pytest -m integration tests/test_notebooks.py   # the two IEA-15 notebooks (needs external/ data)
+
+Expected: ``notebooks/walkthrough.ipynb`` executes in the default run;
+the two ``cases/`` IEA-15 notebooks execute under the integration
+marker once the upstream decks are present (and assert the friendly
+``FileNotFoundError`` contract when the data is absent).
+
+To eyeball the rendered figures (optional — outputs aren't committed),
+execute one to a transient copy and open it, then delete it:
+
 .. code-block:: bash
 
    jupyter nbconvert --to notebook --execute notebooks/walkthrough.ipynb --output _smoke.ipynb
-
-Expected: every cell executes without error. Inspect the rendered
-notebook briefly to confirm the figures aren't empty / clipped.
-Delete ``notebooks/_smoke.ipynb`` afterwards (it's a transient
-artefact).
+   # ...inspect notebooks/_smoke.ipynb, then remove it (transient artefact)
 
 7. Case scripts (optional — produce PNGs under ``outputs/``)
 ------------------------------------------------------------
