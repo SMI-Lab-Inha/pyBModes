@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.11.0] — 2026-05-23
+
+A minor feature release: a WindIO monopile + tower constructor (#92) and a
+`check_model` guard that catches the implausible-platform-CM-offset input
+error behind #95. Additive and backward-compatible; no numerical change to
+any existing model.
+
 ### Added
 
 - **`check_model` gate for an implausibly large horizontal platform CM offset
