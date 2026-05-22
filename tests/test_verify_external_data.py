@@ -180,9 +180,9 @@ def test_collect_updates_leaves_clones_without_hash_files_untouched():
 
 
 def test_update_clears_stale_hashes_when_all_missing():
-    # Regression (Codex P2): --update must not leave a stale hashes pin
-    # behind when a declared clone has no computable files. The table is
-    # rewritten to ``{ }``, dropping the obsolete entry.
+    # Regression (static review): --update must not leave a stale hashes
+    # pin behind when a declared clone has no computable files. The table
+    # is rewritten to ``{ }``, dropping the obsolete entry.
     sample = (
         '[clone.ghost]\n'
         'relative_path = "external/__nope__"\n'
