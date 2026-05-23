@@ -238,6 +238,69 @@ def test_tubular_rejects_bad_geometry() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 2b. Domain-aware construction-layer plausibility guards (issue #102)
+# ---------------------------------------------------------------------------
+
+_GOOD_GRID = np.array([0.0, 1.0])
+_GOOD_OD = np.full(2, 8.0)
+_GOOD_WT = np.full(2, 0.05)        # D/t = 160 — a normal tower section
+
+
+def test_implausible_modulus_warns() -> None:
+    """E supplied in GPa (200) instead of Pa (2e11) is flagged."""
+    with pytest.warns(UserWarning, match="Young's modulus"):
+        tubular_section_props(_GOOD_GRID, _GOOD_OD, _GOOD_WT, E=200.0, rho=7850.0)
+
+
+def test_implausible_density_warns() -> None:
+    """Density in t/m^3 (7.85) instead of kg/m^3 (7850) is flagged."""
+    with pytest.warns(UserWarning, match="density"):
+        tubular_section_props(_GOOD_GRID, _GOOD_OD, _GOOD_WT, E=2.0e11, rho=7.85)
+
+
+def test_extreme_dt_ratio_warns() -> None:
+    """A sub-mm wall on an 8 m tube (D/t = 16000) is outside the broad
+    plausible band — the gross unit/geometry sanity. (A real floating
+    tower reaches ~1100, so the band is deliberately loose.)"""
+    with pytest.warns(UserWarning, match="diameter-to-thickness"):
+        tubular_section_props(
+            _GOOD_GRID, _GOOD_OD, np.full(2, 0.0005), E=2.0e11, rho=7850.0,
+        )
+
+
+def test_thin_floating_tower_dt_is_silent() -> None:
+    """A legitimately thin floating-tower wall (D/t ≈ 1096, as on the
+    IEA-15 VolturnUS-S) must NOT warn — the band passes every real RWT."""
+    import warnings as _w
+
+    with _w.catch_warnings():
+        _w.simplefilter("error")
+        tubular_section_props(
+            _GOOD_GRID, np.full(2, 6.5), np.full(2, 6.5 / 1096.0),
+            E=2.0e11, rho=7800.0,
+        )
+
+
+def test_inverted_taper_warns() -> None:
+    """Outer diameter growing base→top signals reversed station ordering."""
+    with pytest.warns(UserWarning, match="outer diameter increases"):
+        tubular_section_props(
+            _GOOD_GRID, np.array([6.0, 8.0]), _GOOD_WT, E=2.0e11, rho=7850.0,
+        )
+
+
+def test_plausible_steel_tube_is_silent() -> None:
+    """A normal steel tower section emits no plausibility warnings."""
+    import warnings as _w
+
+    with _w.catch_warnings():
+        _w.simplefilter("error")          # any UserWarning -> failure
+        tubular_section_props(
+            _GOOD_GRID, _GOOD_OD, _GOOD_WT, E=2.0e11, rho=7850.0,
+        )
+
+
+# ---------------------------------------------------------------------------
 # 3. WindIO parser on a minimal hand-written fixture
 # ---------------------------------------------------------------------------
 
@@ -676,6 +739,9 @@ def test_windio_missing_shape_and_structure_raises(
 
 _DOCS = pathlib.Path(__file__).resolve().parents[1] / "external" / "OpenFAST_files"
 _IEA15_YAML = _DOCS / "IEA-15-240-RWT/WT_Ontology/IEA-15-240-RWT.yaml"
+_IEA15_FLOAT_YAML = (
+    _DOCS / "IEA-15-240-RWT/WT_Ontology/IEA-15-240-RWT_VolturnUS-S.yaml"
+)
 _IEA15_MONO_ED = (
     _DOCS / "IEA-15-240-RWT/OpenFAST/IEA-15-240-RWT-Monopile/"
     "IEA-15-240-RWT-Monopile_ElastoDyn.dat"
@@ -731,6 +797,30 @@ def test_from_windio_modal_smoke() -> None:
         ).frequencies
         assert np.all(np.isfinite(f)) and np.all(f > 0.0)
         assert np.all(np.diff(f) >= -1e-9)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not _IEA15_YAML.is_file(),
+    reason="IEA-15 WindIO yaml not present",
+)
+def test_rwt_geometry_emits_no_plausibility_warnings() -> None:
+    """Constructing from real reference-turbine geometry must not trip any
+    construction-layer plausibility warning (issue #102) — the bands are
+    calibrated to pass every validated RWT, including the IEA-15
+    VolturnUS-S *floating* tower whose thin upper wall reaches D/t ≈ 1096
+    (the regression that the initial [40, 500] band wrongly flagged)."""
+    import warnings as _w
+
+    for comp in ("tower", "monopile"):
+        with _w.catch_warnings():
+            _w.simplefilter("error")
+            Tower.from_windio(_IEA15_YAML, component=comp)   # build only
+
+    if _IEA15_FLOAT_YAML.is_file():
+        with _w.catch_warnings():
+            _w.simplefilter("error")
+            Tower.from_windio(_IEA15_FLOAT_YAML, component="tower")
 
 
 @pytest.mark.integration

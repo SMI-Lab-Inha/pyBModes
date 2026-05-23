@@ -49,9 +49,78 @@ the stiffness — the same separation the AdjTwMa fix established.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from pybmodes.io.sec_props import SectionProperties
+
+# Construction-layer plausibility bands for domain-aware input validation
+# (issue #102). These run on the user's RAW geometry + material — the only
+# safe place for material checks, since derived ``SectionProperties`` carry
+# convention-dependent placeholders (ElastoDyn towers are axially rigid, so
+# their ``axial_stff`` is not the physical E·A).
+#
+# Bands are calibrated against EVERY WindIO reference turbine (fixed + floating)
+# so they never false-positive on a validated model: across IEA-3.4 / 10 / 15 /
+# 22, NREL 5MW and their monopiles/floaters, E is 200–210 GPa and ρ is
+# 7800–8500 kg/m³, and D/t spans 56–1096 — the high end is the IEA-15
+# VolturnUS-S *floating* tower, whose thin upper wall is legitimate (a floating
+# tower carries far less bending than a fixed-bottom one). The D/t band is
+# therefore a *gross* unit/geometry sanity (it catches a ×1000 D-vs-t unit
+# mismatch or a near-solid / sub-mm wall), NOT a fixed-tower shell-buckling
+# code check — a tight buckling band would need to know the support type
+# (fixed vs floating), which this layer doesn't (tracked in #102).
+_E_MIN_PA, _E_MAX_PA = 1.0e9, 1.0e12          # structural moduli (1 GPa–1 TPa)
+_RHO_MIN, _RHO_MAX = 100.0, 25000.0           # kg/m³ (wood → dense ballast)
+_DT_MIN, _DT_MAX = 5.0, 10000.0               # outer-diameter / wall-thickness
+
+
+def _warn_implausible_tube(
+    do: np.ndarray, t: np.ndarray, E: float, rho: float, title: str,
+) -> None:
+    """Emit ``UserWarning`` for physically implausible tube material /
+    geometry — the domain-engineering guardrail a non-specialist needs
+    (issue #102). Soft (warn, not raise): the values are usable, just
+    almost certainly a unit error or a buckling-implausible section.
+    """
+    if not (_E_MIN_PA <= E <= _E_MAX_PA):
+        warnings.warn(
+            f"[{title}] Young's modulus E = {E:.3g} Pa is outside the "
+            f"plausible structural range [{_E_MIN_PA:.0e}, {_E_MAX_PA:.0e}] Pa "
+            f"(steel is ~2.0e11 Pa). Common cause: E supplied in GPa or MPa "
+            f"instead of Pa.",
+            UserWarning, stacklevel=3,
+        )
+    if not (_RHO_MIN <= rho <= _RHO_MAX):
+        warnings.warn(
+            f"[{title}] material density rho = {rho:.3g} kg/m^3 is outside the "
+            f"plausible range [{_RHO_MIN:.0f}, {_RHO_MAX:.0f}] kg/m^3 (steel is "
+            f"~7850). Common cause: density in t/m^3 or g/cm^3 instead of "
+            f"kg/m^3.",
+            UserWarning, stacklevel=3,
+        )
+    dt = do / t
+    lo, hi = float(np.min(dt)), float(np.max(dt))
+    if hi > _DT_MAX or lo < _DT_MIN:
+        worst = hi if hi > _DT_MAX else lo
+        warnings.warn(
+            f"[{title}] tube diameter-to-thickness ratio D/t reaches "
+            f"{worst:.0f}, outside the broad plausible range "
+            f"[{_DT_MIN:.0f}, {_DT_MAX:.0f}] (real wind-turbine towers / "
+            f"monopiles span ~56–1100). Likely a unit mismatch between D and "
+            f"t (they must share the same length unit) or a non-physical wall "
+            f"thickness.",
+            UserWarning, stacklevel=3,
+        )
+    if do.size >= 2 and float(do[-1]) > float(do[0]) * 1.02:
+        warnings.warn(
+            f"[{title}] outer diameter increases from base ({float(do[0]):.2f} "
+            f"m) to top ({float(do[-1]):.2f} m); a tower / monopile normally "
+            f"tapers down or stays constant. Check the station ordering "
+            f"(span_loc must run base → top).",
+            UserWarning, stacklevel=3,
+        )
 
 
 def tubular_section_props(
@@ -100,6 +169,10 @@ def tubular_section_props(
             "wall thickness must be < outer radius (2*t < outer_diameter) "
             "for every station; got a section with t >= Ro"
         )
+
+    # Domain-aware plausibility warnings (material units, shell D/t, taper
+    # direction) — caught at the construction layer on the raw inputs.
+    _warn_implausible_tube(do, t, float(E), float(rho), title)
 
     ro = 0.5 * do
     ri = ro - t
