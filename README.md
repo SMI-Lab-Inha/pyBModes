@@ -12,24 +12,24 @@ Validated against the BModes Fortran reference solver on six benchmark cases (NR
 
 ## Documentation
 
-The guide source lives under [`docs/`](https://github.com/SMI-Lab-Inha/pyBModes/tree/master/docs) (reStructuredText) and is published as a rendered site on [Read the Docs](https://pybmodes.readthedocs.io/en/latest/) — the status badge above shows whether that build is live. The table below links to the source on GitHub, which renders directly in the browser; a handful of Sphinx roles (`:math:`, `:doc:`, `:func:`) show as plain text on GitHub but read fully on the rendered site. To read everything offline, build the docs locally (below).
+Full documentation is published on [Read the Docs](https://pybmodes.readthedocs.io/en/latest/) (the status badge above shows whether that build is live); the table below links straight to the rendered pages. The source lives under [`docs/`](https://github.com/SMI-Lab-Inha/pyBModes/tree/master/docs) if you'd rather read it on GitHub, and you can build it offline (below).
 
 | Page | What's there |
 | --- | --- |
-| [Installation](docs/installation.rst) | PyPI / source install, extras matrix, Windows + conda quickstart, troubleshooting |
-| [Quickstart](docs/quickstart.rst) | Nine worked recipes — synthetic tower, OpenFAST deck, monopile + SubDyn, floating coupled, Campbell sweep, WindIO one-click, MAC, batch, persistence |
-| [Theory](docs/theory.rst) | Eigenproblem maths, 15-DOF beam element, four boundary conditions, polynomial ansatz, solver dispatch, citable references |
-| [Data sources](docs/data_sources.rst) | Every input format — BModes `.bmi`, ElastoDyn / SubDyn / HydroDyn / MoorDyn `.dat`, WAMIT `.1` / `.hst`, WindIO `.yaml` — with snippet examples |
-| [Conventions](docs/conventions.rst) | Coordinate system, origin (tower base), axis directions, DOF order, boundary conditions, and the floating MSL datum + `draft` / `cm_pform` / `ref_*` signs — per model type |
-| [Units](docs/units.rst) | SI conventions, conversion tables, mode-shape normalisation, OpenFAST DOF order, common pitfalls |
-| [Limitations](docs/limitations.rst) | Polynomial-representation limits, validation-matrix edge cases, "when to reach for a different tool" |
-| [Validation matrix](docs/validation.rst) | Per-case cross-checks against published references (mirrors [`VALIDATION.md`](VALIDATION.md)) |
-| [API reference](docs/api.rst) | Autodoc-generated module reference |
-| [API contract](docs/api_contract.rst) | Semver-frozen public surface + deprecation policy + stability tiers |
+| [Installation](https://pybmodes.readthedocs.io/en/latest/installation.html) | PyPI / source install, extras matrix, Windows + conda quickstart, troubleshooting |
+| [Quickstart](https://pybmodes.readthedocs.io/en/latest/quickstart.html) | Nine worked recipes — synthetic tower, OpenFAST deck, monopile + SubDyn, floating coupled, Campbell sweep, WindIO one-click, MAC, batch, persistence |
+| [Theory](https://pybmodes.readthedocs.io/en/latest/theory.html) | Eigenproblem maths, 15-DOF beam element, four boundary conditions, polynomial ansatz, solver dispatch, citable references |
+| [Data sources](https://pybmodes.readthedocs.io/en/latest/data_sources.html) | Every input format — BModes `.bmi`, ElastoDyn / SubDyn / HydroDyn / MoorDyn `.dat`, WAMIT `.1` / `.hst`, WindIO `.yaml` — with snippet examples |
+| [Conventions](https://pybmodes.readthedocs.io/en/latest/conventions.html) | Coordinate system, origin (tower base), axis directions, DOF order, boundary conditions, and the floating MSL datum + `draft` / `cm_pform` / `ref_*` signs — per model type |
+| [Units](https://pybmodes.readthedocs.io/en/latest/units.html) | SI conventions, conversion tables, mode-shape normalisation, OpenFAST DOF order, common pitfalls |
+| [Limitations](https://pybmodes.readthedocs.io/en/latest/limitations.html) | Polynomial-representation limits, validation-matrix edge cases, "when to reach for a different tool" |
+| [Validation matrix](https://pybmodes.readthedocs.io/en/latest/validation.html) | Per-case cross-checks against published references (mirrors [`VALIDATION.md`](VALIDATION.md)) |
+| [API reference](https://pybmodes.readthedocs.io/en/latest/api.html) | Autodoc-generated module reference |
+| [API contract](https://pybmodes.readthedocs.io/en/latest/api_contract.html) | Semver-frozen public surface + deprecation policy + stability tiers |
 | [Changelog](CHANGELOG.md) | Versioning policy + full release history |
 | [Contributing](CONTRIBUTING.md) | Welcome scope, pre-commit, PR checklist, no-AI-attribution rule |
-| [Release checklist](docs/release_checklist.rst) | 11-step pre-tag sequence (maintainer) |
-| [Deployment](docs/deployment.rst) | One-time Read the Docs setup + versioning policy (maintainer) |
+| [Release checklist](https://pybmodes.readthedocs.io/en/latest/release_checklist.html) | 11-step pre-tag sequence (maintainer) |
+| [Deployment](https://pybmodes.readthedocs.io/en/latest/deployment.html) | One-time Read the Docs setup + versioning policy (maintainer) |
 
 To build locally:
 
@@ -92,7 +92,7 @@ python -c "import pybmodes; print(pybmodes.__version__)"
 
 Take care that **`pybmodes` is a different project from `pyModeS`** (an ADS-B / Mode-S decoder). The PyPI name is `pybmodes` (lowercase, no S); double-check the package name + the GitHub `SMI-Lab-Inha/pyBModes` repo URL before installing.
 
-See [`docs/installation.rst`](docs/installation.rst) for the full Windows + conda quickstart and the optional-extras matrix (`[plots]`, `[windio]`, `[notebook]`, `[docs]`).
+See the [Installation guide](https://pybmodes.readthedocs.io/en/latest/installation.html) for the full Windows + conda quickstart and the optional-extras matrix (`[plots]`, `[windio]`, `[notebook]`, `[docs]`).
 
 ## Quick example
 
@@ -111,7 +111,7 @@ params = compute_tower_params(modal)
 patch_dat("NRELOffshrBsline5MW_Onshore_ElastoDyn.dat", params)
 ```
 
-More — Campbell sweeps, WindIO one-click, mode-by-mode MAC comparison, bundled reports — in [`docs/quickstart.rst`](docs/quickstart.rst).
+More — Campbell sweeps, WindIO one-click, mode-by-mode MAC comparison, bundled reports — in the [Quickstart](https://pybmodes.readthedocs.io/en/latest/quickstart.html).
 
 ## CLI
 
