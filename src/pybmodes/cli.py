@@ -105,7 +105,7 @@ def _cmd_patch(args: argparse.Namespace) -> int:
         print(
             "error: --output and --output-dir were given different "
             f"paths ({args.output!r} vs {args.output_dir!r}); they are "
-            "aliases — pass only one (or the same value)",
+            "aliases. Pass only one (or the same value)",
             file=sys.stderr,
         )
         return 2
@@ -327,7 +327,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pybmodes",
         description=(
-            "pyBmodes — pure-Python finite-element library for "
+            "pyBmodes, a pure-Python finite-element library for "
             "wind-turbine blade and tower modal analysis."
         ),
     )
@@ -441,14 +441,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--n-blade-modes",
         type=int,
         default=4,
-        help="number of blade modes to track across the sweep (default: 4 — "
+        help="number of blade modes to track across the sweep (default: 4, "
              "1st/2nd flap and 1st/2nd edge)",
     )
     p_camp.add_argument(
         "--n-tower-modes",
         type=int,
         default=4,
-        help="number of tower modes to overlay as horizontal lines (default: 4 — "
+        help="number of tower modes to overlay as horizontal lines (default: 4, "
              "1st/2nd FA and 1st/2nd SS); set to 0 to suppress",
     )
     p_camp.add_argument(
@@ -511,7 +511,7 @@ def _build_parser() -> argparse.ArgumentParser:
              "combined with --validate, also writes a "
              "<deck>_validate_after.txt report alongside the "
              "before-patch one. Default-safe in 1.8.0: each side-deck "
-             "is .bak-copied before the rewrite — pass --no-backup to "
+             "is .bak-copied before the rewrite; pass --no-backup to "
              "opt out; pass --dry-run for a no-write preview; pass "
              "--output-dir DIR to write patched copies elsewhere.",
     )
@@ -643,13 +643,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # -----------------------------------------------------------------
-    # windio — one-click WindIO ontology → tower + blade + (floating)
+    # windio - one-click WindIO ontology to tower + blade + (floating)
     # coupled platform + Campbell + bundled report
     # -----------------------------------------------------------------
     p_windio = sub.add_parser(
         "windio",
         help="one-click: a WindIO ontology .yaml (or an RWT directory) "
-             "→ tower + blade + (floating) coupled-platform modes + "
+             "to tower + blade + (floating) coupled-platform modes + "
              "optional Campbell + a bundled report. Companion "
              "HydroDyn/MoorDyn/ElastoDyn decks are auto-discovered so "
              "a floating platform is industry-grade by default; "
@@ -675,7 +675,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_windio.add_argument(
         "--water-depth", type=float, default=None,
-        help="site water depth (m) — only needed for the yaml-only "
+        help="site water depth (m), only needed for the yaml-only "
              "floating screening preview when no MoorDyn deck is found",
     )
     p_windio.add_argument(
@@ -691,7 +691,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--min-rpm", type=float, default=0.0,
         help="lower end of the operating rotor-speed range used for "
              "the 1P/3P design bands on the environmental-spectra "
-             "figure (default: 0.0 — the figure is then labelled a "
+             "figure (default: 0.0; the figure is then labelled a "
              "SCREENING envelope since no real cut-in is given)",
     )
     p_windio.add_argument(

@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.14.1] — 2026-05-23
+
+### Fixed
+
+- **CLI ``--help`` crashed on a non-UTF-8 Windows console.** The
+  ``windio`` subcommand help carried a rightwards-arrow glyph, so
+  ``pybmodes --help`` raised ``UnicodeEncodeError`` when argparse wrote
+  the formatted help to a legacy Windows console (cp1252 / cp437) where
+  that character has no mapping. The CLI help and description strings are
+  now plain ASCII, and a test asserts every parser's formatted help is
+  ASCII-encodable so it prints on any code page. Caught by the
+  conda-forge Windows build.
+
 ## [1.14.0] — 2026-05-23
 
 An engineering-hardening pass that makes the library fail closed on

@@ -67,7 +67,7 @@ Check the installed version, and pin one if you need reproducibility:
 
 ```bash
 python -c "import pybmodes; print(pybmodes.__version__)"
-pip install "pybmodes==1.14.0"        # install / pin a specific release
+pip install "pybmodes==1.14.1"        # install / pin a specific release
 ```
 
 For a source checkout, pull and reinstall:
