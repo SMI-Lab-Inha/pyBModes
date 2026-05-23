@@ -199,6 +199,60 @@ def test_classifier_resolves_degenerate_pair_basis() -> None:
     assert {labels[0], labels[1]} == {"surge", "sway"}
 
 
+def test_classifier_resolves_near_degenerate_pair_basis() -> None:
+    """Issue #57 (asymmetric FOWT): a real floater's surge/sway pair is
+    rarely *exactly* degenerate — a slightly asymmetric mooring/hull
+    splits it by a fraction of a percent — yet the eigensolver still
+    hands back a rotated/mixed basis, and that mix varies between solves.
+    With the old strict ``1e-4`` degeneracy window the pair fell through
+    un-aligned and was left ``None`` in one solve while a sister solve
+    named it, so the mode-shape plot said surge/sway while the Campbell
+    sweep said "1st tower FA/SS". The widened window aligns the
+    near-degenerate pair and names it deterministically.
+
+    Mirrors :func:`test_classifier_resolves_degenerate_pair_basis` but
+    with a 0.5 % frequency split (within the window, above the old one).
+    """
+    nselt = 4
+    n_modes = 8
+    inv = 1.0 / np.sqrt(2.0)
+    mode_dofs = {
+        0: {1: inv, 3: inv},    # (surge + sway)/√2
+        1: {1: inv, 3: -inv},   # (surge − sway)/√2
+    }
+    ev = _base_eigvecs(nselt, mode_dofs, n_modes)
+    active = active_dof_indices(nselt, hub_conn=2)
+    Mp = np.eye(6)
+
+    # 0.5 % split — above the old 1e-4 window (would stay None), within
+    # the widened one (gets aligned + named).
+    freqs = np.array([0.01000, 0.01005, 0.05, 0.06, 0.07, 0.08, 0.5, 0.6])
+    labels = classify_platform_modes(ev, active, nselt, Mp, frequencies=freqs)
+    assert {labels[0], labels[1]} == {"surge", "sway"}
+
+
+def test_classifier_does_not_align_distant_mixed_modes() -> None:
+    """Guard against over-widening: a 45°-mixed pair whose frequencies
+    are *far* apart (5×, well beyond the degeneracy window) is NOT a
+    degenerate pair — it must stay ``None`` rather than being spuriously
+    rotated and named. Confirms the widened window still discriminates
+    genuine (near-)degeneracy from distinct, merely-mixed modes."""
+    nselt = 4
+    n_modes = 8
+    inv = 1.0 / np.sqrt(2.0)
+    mode_dofs = {
+        0: {1: inv, 3: inv},
+        1: {1: inv, 3: -inv},
+    }
+    ev = _base_eigvecs(nselt, mode_dofs, n_modes)
+    active = active_dof_indices(nselt, hub_conn=2)
+    Mp = np.eye(6)
+
+    freqs = np.array([0.01, 0.05, 0.06, 0.07, 0.08, 0.09, 0.5, 0.6])  # 5× apart
+    labels = classify_platform_modes(ev, active, nselt, Mp, frequencies=freqs)
+    assert labels[0] is None and labels[1] is None
+
+
 def test_classifier_truncated_frequencies_no_crash() -> None:
     """Codex P2: a frequencies array shorter than the rigid-body block
     (e.g. an externally-built mode subset) must not index past its end —

@@ -80,7 +80,8 @@ Optional extras
        :file:`tests/test_notebooks.py`. Test-only — not imported
        by ``pybmodes`` itself.
    * - ``[docs]``
-     - ``sphinx<9``, ``furo``, ``myst-parser``, ``sphinx-copybutton``
+     - ``sphinx<9``, ``sphinx-rtd-theme``, ``myst-parser``,
+       ``sphinx-copybutton``
      - Build this documentation site locally.
 
 Combine extras with commas:
@@ -122,6 +123,56 @@ runs this exact sequence:
    ``STATUS_DLL_INIT_FAILED`` because the env relies on conda's
    ``PATH`` manipulations. Use Anaconda Prompt, or wrap the call
    in ``cmd /c "call activate.bat pybmodes && python ..."``.
+
+Updating to a new release
+-------------------------
+
+New versions are published to PyPI (see the `releases
+<https://github.com/SMI-Lab-Inha/pyBModes/releases>`_ and the
+:doc:`changelog`). To upgrade an existing PyPI install to the latest
+release, run
+
+.. code-block:: bash
+
+   pip install --upgrade pybmodes        # add the same extras you use,
+                                         # e.g. -U "pybmodes[plots,windio]"
+
+Check the installed version, and pin one if you need reproducibility.
+
+.. code-block:: bash
+
+   python -c "import pybmodes; print(pybmodes.__version__)"
+   pip install "pybmodes==1.13.1"        # install or pin a specific release
+
+For a source checkout, pull and reinstall so new dependencies are
+picked up too.
+
+.. code-block:: bash
+
+   git pull
+   pip install -e ".[dev,plots]"
+
+Inside a conda environment
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+pyBmodes is not on conda-forge, so it is installed with ``pip`` inside
+the conda env. Upgrading is therefore a ``pip`` operation rather than a
+``conda update``. Activate the env first, then upgrade with pip.
+
+.. code-block:: bash
+
+   conda activate pybmodes               # the env you installed it into
+   pip install --upgrade pybmodes        # or -U "pybmodes[plots,windio]"
+   python -c "import pybmodes; print(pybmodes.__version__)"
+
+.. note::
+
+   ``conda update pybmodes`` will not work, because conda doesn't know
+   the package (pip installed it). If you're unsure which env has it,
+   ``conda env list`` shows every env and ``pip show pybmodes`` confirms
+   the version installed in the currently active one. For a source
+   checkout living in a conda env, ``git pull`` then re-run the editable
+   ``pip install -e ".[dev,plots]"`` with the env active.
 
 Verifying the install
 ---------------------

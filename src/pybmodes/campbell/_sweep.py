@@ -38,6 +38,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from pybmodes.fem.normalize import NodeModeShape
+from pybmodes.fem.platform_modes import _N_RIGID
+from pybmodes.io.bmi import PlatformSupport
 from pybmodes.models._pipeline import run_fem
 
 from ._classify import (
@@ -148,6 +150,23 @@ def _solve_tower_once(
     blade-sweep output.
     """
     tbmi, tsp = tower
+
+    # A floating tower carries six rigid-body modes (surge through yaw)
+    # ahead of its first flexible bending mode. ``classify_platform_modes``
+    # assigns those DOF names by a Hungarian matching over the leading
+    # ``_N_RIGID`` modes, so its result is only stable when the solve
+    # actually contains that whole block. Requesting fewer modes than the
+    # rigid block (the default ``n_tower_modes = 4`` is below 6) truncated
+    # the matching and could leave surge/sway unnamed, after which the
+    # fallback mislabelled them as flexible "1st tower FA/SS". That
+    # diverged from a direct ``Tower(...).run()`` whose larger solve named
+    # them (the asymmetric-FOWT bug). So for a floating tower we always
+    # solve the full rigid block, classify over it, then slice the result
+    # back to the requested ``n_modes``. The labels then match the direct
+    # solve regardless of ``n_tower_modes``.
+    floating = tbmi.hub_conn == 2 and isinstance(tbmi.support, PlatformSupport)
+    n_solve = max(n_modes, _N_RIGID) if floating else n_modes
+
     # Save and restore the caller's ``rot_rpm`` — tower modes are
     # rotor-speed-independent so we force ``0.0`` for the solve, but
     # we mustn't leave the caller's BMI mutated on the way out
@@ -156,36 +175,45 @@ def _solve_tower_once(
     original_rpm = tbmi.rot_rpm
     try:
         tbmi.rot_rpm = 0.0
-        modal = run_fem(tbmi, n_modes=n_modes, sp=tsp)
+        modal = run_fem(tbmi, n_modes=n_solve, sp=tsp)
     finally:
         tbmi.rot_rpm = original_rpm
     # Defensive: mirror the blade-sweep "too few modes" guard. The
-    # symmetric ``eigh`` path always returns exactly ``n_modes`` rows,
+    # symmetric ``eigh`` path always returns exactly ``n_solve`` rows,
     # but the rare general-eig fallback (floating ``PlatformSupport``
     # with non-symmetric ``hydro_K`` / ``mooring_K``) can drop NaN rows
     # from a degenerate eigenproblem and return fewer. Without this
     # guard the downstream ``np.broadcast_to`` call would raise a
     # cryptic shape error; we want the same friendly diagnostic the
     # blade path emits.
-    if len(modal.frequencies) < n_modes:
+    if len(modal.frequencies) < n_solve:
         raise RuntimeError(
             f"campbell_sweep: tower solve returned only "
-            f"{len(modal.frequencies)} of the requested {n_modes} "
+            f"{len(modal.frequencies)} of the requested {n_solve} "
             f"modes — typically a sign of a near-degenerate "
             f"eigenproblem (floating tower with a non-symmetric "
             f"PlatformSupport block). Reduce ``n_tower_modes``."
         )
-    tshapes = list(modal.shapes[:n_modes])
-    tfreqs = np.asarray(modal.frequencies[:n_modes], dtype=float)
-    tparts = np.array([_participation(s) for s in tshapes])
+    tshapes = list(modal.shapes[:n_solve])
+    tfreqs_full = np.asarray(modal.frequencies[:n_solve], dtype=float)
+    tparts_full = np.array([_participation(s) for s in tshapes])
 
-    freqs = np.broadcast_to(tfreqs, (n_steps, n_modes)).copy()
-    parts = np.broadcast_to(tparts, (n_steps, n_modes, 3)).copy()
     # Prefer the FEM's own platform-mode classification for a floating
     # tower (``ModalResult.mode_labels`` — populated only for
     # ``hub_conn == 2``); fall back to participation argmax for
-    # cantilever / monopile towers and for flexible bending modes.
-    labels = _label_tower_modes_with_overrides(tparts, modal.mode_labels)
+    # cantilever / monopile towers and for flexible bending modes. The
+    # classification is done over the full ``n_solve`` block so the
+    # rigid-body labels are stable, then everything is sliced back to
+    # the requested ``n_modes``.
+    labels_full = _label_tower_modes_with_overrides(
+        tparts_full, modal.mode_labels
+    )
+    tfreqs = tfreqs_full[:n_modes]
+    tparts = tparts_full[:n_modes]
+    labels = labels_full[:n_modes]
+
+    freqs = np.broadcast_to(tfreqs, (n_steps, n_modes)).copy()
+    parts = np.broadcast_to(tparts, (n_steps, n_modes, 3)).copy()
     return freqs, parts, labels
 
 

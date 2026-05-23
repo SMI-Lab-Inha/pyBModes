@@ -27,6 +27,16 @@ from __future__ import annotations
 import numpy as np
 
 from pybmodes.fem.normalize import NodeModeShape
+from pybmodes.fem.platform_modes import _N_RIGID
+
+# Label for a floating-platform rigid-body mode that the FEM classifier
+# declined to attribute to a single DOF, such as a strongly-coupled
+# surge/pitch or sway/roll pair on an asymmetric floater. It is not a
+# flexible tower bending mode. Naming a ~0.01 Hz rigid-body mode "1st
+# tower FA" (a ~0.5 Hz bending mode) is physically wrong and confused
+# users on an asymmetric FOWT. It stays in the red Platform family on the
+# Campbell diagram. ``_plot.py`` matches this constant.
+_COUPLED_PLATFORM_LABEL = "platform (coupled)"
 
 
 def _participation(shape: NodeModeShape) -> np.ndarray:
@@ -99,10 +109,27 @@ def _label_tower_modes_with_overrides(
     when six rigid modes precede it. ``mode_labels=None`` (every
     cantilever / monopile tower) reproduces :func:`_label_tower_modes`
     exactly.
+
+    A floating tower (``mode_labels`` not ``None``) carries its six
+    rigid-body modes in the leading ``_N_RIGID`` slots by construction
+    of :func:`pybmodes.fem.platform_modes.classify_platform_modes`,
+    because a large spectral gap separates them from the first flexible
+    bending mode on every real FOWT. So a mode the classifier left
+    ``None`` within that rigid block is a coupled rigid-body mode, not a
+    flexible bending mode. It is labelled :data:`_COUPLED_PLATFORM_LABEL`
+    (red Platform family on the diagram) rather than mislabelled
+    ``"1st tower FA"``. Only ``None`` modes beyond the rigid block get
+    the participation-derived flexible name. This is the fix for the
+    asymmetric-FOWT report-vs-Campbell label divergence, where surge/sway
+    showed up as "1st tower" modes.
     """
     n = participation.shape[0]
     counts = [0, 0, 0]
     names = ("FA", "SS", "torsion")
+    floating = mode_labels is not None
+    # The rigid-body block: leading min(_N_RIGID, n) modes on a floating
+    # tower; none on a cantilever / monopile tower.
+    n_rigid = min(_N_RIGID, n) if floating else 0
     out: list[str] = []
     for i in range(n):
         plat = (
@@ -112,6 +139,13 @@ def _label_tower_modes_with_overrides(
         )
         if plat is not None:
             out.append(str(plat))
+            continue
+        if i < n_rigid:
+            # Unnamed mode inside the rigid-body block is a coupled
+            # platform mode, never a flexible bending name. It does not
+            # advance the flexible ordinal, so the first true bending mode
+            # still counts as "1st tower FA".
+            out.append(_COUPLED_PLATFORM_LABEL)
             continue
         axis = int(np.argmax(participation[i]))
         counts[axis] += 1

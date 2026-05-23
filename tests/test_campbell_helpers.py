@@ -120,18 +120,26 @@ def test_tower_overrides_use_classified_platform_dofs() -> None:
     ]
 
 
-def test_tower_overrides_partial_none_falls_back() -> None:
-    """A None entry (classifier stayed conservative on a rotated pair)
+def test_tower_overrides_none_in_rigid_block_is_coupled_platform() -> None:
+    """A None *inside* the rigid-body block (a coupled pair the
+    classifier left conservative on an asymmetric floater) becomes the
+    coupled-platform sentinel — NOT a flexible "1st tower FA/SS" name (a
+    ~0.01 Hz rigid mode must never read as a ~0.5 Hz bending mode). A
+    None *beyond* the rigid block is a genuine flexible mode and still
     falls back to the participation label, counted over flexible modes
-    only."""
-    participation = np.array([
-        [0.5, 0.3, 0.2],   # surge
-        [0.9, 0.05, 0.05],  # None -> participation -> 1st tower FA
-        [0.05, 0.9, 0.05],  # None -> participation -> 1st tower SS
-    ])
-    assert _label_tower_modes_with_overrides(
-        participation, ["surge", None, None]
-    ) == ["surge", "1st tower FA", "1st tower SS"]
+    only. This is the asymmetric-FOWT report-vs-Campbell label fix."""
+    from pybmodes.campbell._classify import _COUPLED_PLATFORM_LABEL
+
+    # 6 rigid (sway at index 1 left None) + 2 flexible bending modes.
+    participation = np.zeros((8, 3))
+    participation[6] = [0.9, 0.05, 0.05]   # FA-dominant flexible mode
+    participation[7] = [0.05, 0.9, 0.05]   # SS-dominant flexible mode
+    mode_labels = ["surge", None, "heave", "roll", "pitch", "yaw",
+                   None, None]
+    assert _label_tower_modes_with_overrides(participation, mode_labels) == [
+        "surge", _COUPLED_PLATFORM_LABEL, "heave", "roll", "pitch", "yaw",
+        "1st tower FA", "1st tower SS",
+    ]
 
 
 def test_participation_returns_axis_energy_fractions() -> None:
