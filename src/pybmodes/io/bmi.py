@@ -161,7 +161,16 @@ class PlatformSupport:
         Optional guy-wire support.
     cm_pform_x, cm_pform_y : float
         Horizontal offset of the platform CM **from the tower axis**
-        (see the inline note below).
+        (applied to the *inertia* transform; see the inline note below).
+    ref_x, ref_y : float
+        Horizontal position of the hydro/mooring reference point
+        (``PtfmRefxt`` / ``PtfmRefyt``) **from the tower axis**, metres.
+        Default 0.0 (reference on the tower axis — every standard deck).
+        Set non-zero for an off-axis floater so ``hydro_*`` / ``mooring_K``
+        are carried horizontally to the tower base too (issue #100, 1.13.0).
+    tower_base_z : float (property)
+        Intuitive positive-up alias for ``draft``
+        (``tower_base_z == -draft``).
     """
 
     draft: float
@@ -194,6 +203,33 @@ class PlatformSupport:
     # vertical component stays ``cm_pform``). Added 1.2.0.
     cm_pform_x: float = 0.0
     cm_pform_y: float = 0.0
+    # Horizontal position of the hydro / mooring reference point
+    # (``PtfmRefxt`` / ``PtfmRefyt``) relative to the TOWER AXIS, metres.
+    # Default 0.0 = the reference is on the tower axis (every standard
+    # HydroDyn/WAMIT deck), which keeps ``hydro_*`` / ``mooring_K`` with
+    # a zero horizontal arm — byte-identical to pre-1.13.0. Set non-zero
+    # for an off-axis floater (e.g. a tower on an off-centre column) so
+    # the rigid-arm transform carries those matrices horizontally to the
+    # tower base too, the same way ``cm_pform_x`` / ``cm_pform_y`` do for
+    # the inertia. Added 1.13.0 (issue #100).
+    ref_x: float = 0.0
+    ref_y: float = 0.0
+
+    @property
+    def tower_base_z(self) -> float:
+        """Elevation of the tower base above MSL, metres, **positive up**.
+
+        Intuitive alias for :attr:`draft`, which is the BModes-inherited
+        *signed, negative-up* spelling: ``tower_base_z == -draft``. A
+        tower base 15 m above the waterline is ``tower_base_z = 15``
+        (equivalently ``draft = -15``). Reading or assigning one keeps
+        the other in sync. Added 1.13.0 (issue #100).
+        """
+        return -self.draft
+
+    @tower_base_z.setter
+    def tower_base_z(self, value: float) -> None:
+        self.draft = -float(value)
 
 
 @dataclass

@@ -252,12 +252,19 @@ def nondim_platform(plat: Any, nd: NondimParams) -> PlatformND:
     )
     M_i_fem = T_i.T @ plat.i_matrix @ T_i
 
-    # Hydrodynamic and mooring: reference at ref_msl below MSL. These
-    # matrices are defined at the platform reference point, which lies
-    # on the tower axis for every standard HydroDyn/WAMIT deck
-    # (PtfmRefxt = PtfmRefyt = 0), so the horizontal arm is zero here.
+    # Hydrodynamic and mooring: reference at ref_msl below MSL. For a
+    # standard HydroDyn/WAMIT deck the reference lies on the tower axis
+    # (PtfmRefxt = PtfmRefyt = 0), so the horizontal arm is zero. For an
+    # off-axis floater (e.g. a tower on an off-centre column) the caller
+    # sets ref_x / ref_y and those matrices are carried horizontally to
+    # the tower base as well (issue #100). Defaults keep every standard
+    # deck byte-identical.
     p_base_h = plat.ref_msl - plat.draft + rroot
-    T_h = _rigid_arm_T(p_base_h)
+    T_h = _rigid_arm_T(
+        p_base_h,
+        rx=getattr(plat, "ref_x", 0.0),
+        ry=getattr(plat, "ref_y", 0.0),
+    )
     K_fem = T_h.T @ (plat.hydro_K + plat.mooring_K) @ T_h
     M_h_fem = T_h.T @ plat.hydro_M @ T_h
 

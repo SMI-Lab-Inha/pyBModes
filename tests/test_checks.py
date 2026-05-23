@@ -358,6 +358,17 @@ class TestCheckModel:
         tower = self._build_cm_offset_tower(cm_x=0.0, cm_y=0.0)
         assert _filter(check_model(tower), "cm_pform_x") == []
 
+    def test_cm_offset_warning_suppressed_when_ref_offset_set(self) -> None:
+        """Issue #100: setting ref_x/ref_y means the hydro/mooring are
+        referenced off-axis too (intentional off-axis floater), so a large
+        CM offset is consistent — the warning stands down."""
+        tower = self._build_cm_offset_tower(cm_x=-39.0)   # would WARN alone
+        assert _filter(check_model(tower), "cm_pform_x")  # sanity: it warns
+        tower._bmi.support = dataclasses.replace(
+            tower._bmi.support, ref_x=-39.0,
+        )
+        assert _filter(check_model(tower), "cm_pform_x") == []
+
     # --- floating-model readiness (issue #95) ---------------------------
     def test_zero_added_mass_warns(self) -> None:
         """A floating model with no added mass (hydro_M = 0) warns — the
