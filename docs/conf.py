@@ -31,6 +31,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
     "sphinx_copybutton",
+    "sphinx_rtd_theme",
     "myst_parser",
 ]
 
@@ -94,16 +95,13 @@ intersphinx_mapping = {
     "matplotlib": ("https://matplotlib.org/stable/", None),
 }
 
-# Default Sphinx theme (alabaster) — bundled with Sphinx, so the docs
-# build needs no extra theme dependency (replaces furo, which was
-# failing to provision on the docs builder).
-html_theme = "alabaster"
+# Read the Docs theme (replaces furo, which was failing to provision on
+# the docs builder). Declared in the ``docs`` extra; registered via the
+# entry point, so ``html_theme = "sphinx_rtd_theme"`` is enough.
+html_theme = "sphinx_rtd_theme"
 html_title = f"pyBmodes {release}"
 html_static_path = ["_static"]
 html_theme_options = {
-    "description": "Wind-turbine blade & tower modal analysis",
-    "github_user": "SMI-Lab-Inha",
-    "github_repo": "pyBModes",
-    "github_button": True,
-    "fixed_sidebar": True,
+    "navigation_depth": 3,
+    "collapse_navigation": False,
 }

@@ -77,6 +77,19 @@ git pull
 pip install -e ".[dev,plots]"         # picks up new dependencies too
 ```
 
+**Using a conda environment?** pyBmodes is installed with `pip` *inside* the
+conda env (it's not on conda-forge), so activate the env first, then upgrade
+with pip — don't use `conda update`:
+
+```bash
+conda activate pybmodes               # the env you installed it into
+pip install --upgrade pybmodes        # or -U "pybmodes[plots,windio]"
+python -c "import pybmodes; print(pybmodes.__version__)"
+```
+
+(If you're unsure which env has it, `conda env list` shows them and
+`pip show pybmodes` confirms the version in the active env.)
+
 Take care that **`pybmodes` is a different project from `pyModeS`** (an ADS-B / Mode-S decoder). The PyPI name is `pybmodes` (lowercase, no S); double-check the package name + the GitHub `SMI-Lab-Inha/pyBModes` repo URL before installing.
 
 See [`docs/installation.rst`](docs/installation.rst) for the full Windows + conda quickstart and the optional-extras matrix (`[plots]`, `[windio]`, `[notebook]`, `[docs]`).

@@ -872,6 +872,47 @@ def test_plot_campbell_labels_in_right_margin() -> None:
     plt.close(fig)
 
 
+def test_plot_campbell_external_ax_keeps_labels_inside() -> None:
+    """Codex review P2: on a caller-supplied Axes there is no reserved
+    right margin, so the frequency labels must sit INSIDE the axes
+    (x <= xmax) — otherwise they clip off the canvas in embedded
+    (subplots / gridspec) use. When plot_campbell owns the figure they
+    go in the reserved outside column (covered above)."""
+    pytest.importorskip("matplotlib")
+    import re
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from pybmodes.campbell import plot_campbell
+
+    rpm = np.linspace(0.0, 12.0, 5)
+    f = np.empty((rpm.size, 2))
+    f[:, 0] = np.linspace(0.66, 0.78, rpm.size)
+    f[:, 1] = 0.52
+    parts = np.full((rpm.size, 2, 3), 1.0 / 3.0)
+    res = CampbellResult(
+        omega_rpm=rpm, frequencies=f, labels=["1st flap", "tower FA"],
+        participation=parts, n_blade_modes=1, n_tower_modes=1,
+        mac_to_previous=np.full((rpm.size, 2), np.nan),
+    )
+    fig, ax = plt.subplots()
+    plot_campbell(res, ax=ax)                     # caller-supplied Axes
+    rpm_max = float(rpm.max())
+    pat = re.compile(r".* \(.*Hz\)$")
+    found = False
+    for t in ax.texts:
+        if pat.match(t.get_text()):
+            x_label, _ = t.get_position()
+            assert x_label <= rpm_max + 1e-9, (
+                f"label at x={x_label} is outside the axes (rpm_max="
+                f"{rpm_max}); it would clip off a caller-supplied Axes")
+            found = True
+    assert found, "no frequency labels were drawn"
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 # issue #51 — campbell_sweep accepts already-loaded models
 # ---------------------------------------------------------------------------

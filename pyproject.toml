@@ -89,6 +89,7 @@ docs = [
     # (-W) builds until the ecosystem catches up. Relax the upper
     # pin once a 9-compatible plugin set is available.
     "sphinx>=7,<9",
+    "sphinx-rtd-theme>=2",
     "myst-parser>=2",
     "sphinx-copybutton>=0.5",
     # pybmodes' public API references numpy / scipy / matplotlib
