@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.12.1] — 2026-05-23
+
+Documentation release — clarifies the reference-frame conventions that were
+tripping users up. No code-behaviour change.
+
 ### Added
 
 - **Coordinate-systems / conventions documentation.** A new
