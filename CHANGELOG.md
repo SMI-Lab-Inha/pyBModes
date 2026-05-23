@@ -8,6 +8,55 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.12.0] — 2026-05-23
+
+Domain-aware input validation (#102): construction-layer guards that catch the
+mechanical / civil-structural mistakes a non-specialist makes (unit errors,
+implausible geometry), plus two fixes for review findings on the 1.10.1 /
+1.11.0 floating guards. Additive and backward-compatible; no numerical change
+to any existing model.
+
+### Added
+
+- **Construction-layer plausibility guards in `tubular_section_props` (#102).**
+  Every geometry path (`Tower.from_geometry`, `from_windio`,
+  `from_windio_with_monopile`) now emits a `UserWarning` for physically
+  implausible *raw* inputs — caught at the door, before a meaningless solve:
+  - **Material modulus** `E` outside `[1e9, 1e12]` Pa (catches the classic
+    "E in GPa/MPa instead of Pa" unit error).
+  - **Material density** `ρ` outside `[100, 25000]` kg/m³ (catches t/m³ or
+    g/cm³).
+  - **Diameter-to-thickness** `D/t` outside a broad `[5, 10000]` band — a
+    gross unit/geometry sanity (a ×1000 D-vs-t unit mismatch, or a near-solid
+    / sub-mm wall). Deliberately loose: real towers span D/t ≈ 56–1096
+    (the high end is the IEA-15 VolturnUS-S *floating* tower, whose thin
+    upper wall is legitimate), so this is not a fixed-tower shell-buckling
+    check.
+  - **Taper direction** — outer diameter growing base→top (reversed station
+    ordering).
+  Material checks run on the user's raw `E`/`ρ`, the only safe place — derived
+  `SectionProperties` carry convention-dependent placeholders (ElastoDyn
+  towers are axially rigid, so their `axial_stff` is not the physical E·A).
+  All bands verified silent on every WindIO reference turbine, fixed and
+  floating.
+
+### Fixed
+
+- **Floating-readiness `check_model` gates no longer fire on fixed-bottom
+  decks.** The 1.11.0 floating gates (added mass / restoring / platform
+  inertia / CM offset) keyed only on the presence of a `PlatformSupport`, so
+  they emitted spurious WARN/ERROR findings on fixed-bottom **monopile** decks
+  that carry an all-zero `PlatformSupport` block by layout convention (the
+  bundled `02`/`04`/`05`/`06` samples — 2 ERRORs + 2 WARNs each). They now
+  gate on `hub_conn == 2` (the genuine free-free floating path), matching where
+  the solver actually assembles the platform DOFs. (Codex review, P1.)
+
+- **`classify_platform_modes` no longer raises `IndexError` on a truncated
+  `frequencies` array.** When `frequencies` has fewer entries than the
+  rigid-body block (e.g. an externally-built mode subset), the degeneracy
+  alignment is skipped (the global assignment still labels the modes) instead
+  of indexing past the array end. (Codex review, P2.)
+
 ## [1.11.0] — 2026-05-23
 
 A minor feature release: a WindIO monopile + tower constructor (#92) and a
