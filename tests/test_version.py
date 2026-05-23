@@ -4,6 +4,12 @@
 available and otherwise falls back to a literal in ``__init__.py`` (for
 an uninstalled source tree). That literal silently drifted behind
 ``pyproject.toml`` once already, so this test pins the two together.
+
+``CITATION.cff`` carries its own ``version:`` field, maintained by hand,
+which had drifted several releases behind (1.10.0 while the package was
+1.14.x). This test also pins the citation version to ``pyproject`` so a
+release that forgets to bump it fails CI rather than shipping a stale
+citation.
 """
 
 from __future__ import annotations
@@ -28,5 +34,18 @@ def _init_fallback_version() -> str:
     return matches[-1]
 
 
+def _citation_version() -> str:
+    src = (REPO_ROOT / "CITATION.cff").read_text(encoding="utf-8")
+    # The software ``version:`` field, distinct from the ``cff-version:``
+    # schema field. Match a line that starts with ``version:`` exactly.
+    m = re.search(r'^version:\s*"?([^"\s]+)"?\s*$', src, re.MULTILINE)
+    assert m, "no software version: field found in CITATION.cff"
+    return m.group(1)
+
+
 def test_init_fallback_matches_pyproject() -> None:
     assert _init_fallback_version() == _pyproject_version()
+
+
+def test_citation_version_matches_pyproject() -> None:
+    assert _citation_version() == _pyproject_version()

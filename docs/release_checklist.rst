@@ -191,13 +191,17 @@ should be obvious from the per-case error message.
   tag's value.
 - ``src/pybmodes/__init__.py``: bump the dev fallback string
   ``__version__ = "X.Y.Z-dev"``.
+- ``CITATION.cff``: bump the software ``version:`` to ``X.Y.Z`` and
+  ``date-released:`` to the release date (this is the ``version:``
+  field, not the ``cff-version:`` schema field). ``tests/test_version.py``
+  gates this against ``pyproject`` so a forgotten bump fails CI.
 - ``CHANGELOG.md``: promote the ``## [Unreleased]`` block to
   ``## [X.Y.Z] — YYYY-MM-DD``; reset ``[Unreleased]`` to
   ``(nothing yet)``.
 
 Commit with a stand-alone message like
 ``chore: bump version to X.Y.Z, promote CHANGELOG``. Verify the
-commit's stat shows only those three files changed.
+commit's stat shows only those four files changed.
 
 9. Tag + push
 -------------
