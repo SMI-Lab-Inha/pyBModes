@@ -161,7 +161,16 @@ class PlatformSupport:
         Optional guy-wire support.
     cm_pform_x, cm_pform_y : float
         Horizontal offset of the platform CM **from the tower axis**
-        (see the inline note below).
+        (applied to the *inertia* transform; see the inline note below).
+    ref_x, ref_y : float
+        Horizontal position of the hydro/mooring reference point
+        (``PtfmRefxt`` / ``PtfmRefyt``) **from the tower axis**, metres.
+        Default 0.0 (reference on the tower axis — every standard deck).
+        Set non-zero for an off-axis floater so ``hydro_*`` / ``mooring_K``
+        are carried horizontally to the tower base too (issue #100, 1.13.0).
+    tower_base_z : float (property)
+        Intuitive positive-up alias for ``draft``
+        (``tower_base_z == -draft``).
     """
 
     draft: float
@@ -194,6 +203,33 @@ class PlatformSupport:
     # vertical component stays ``cm_pform``). Added 1.2.0.
     cm_pform_x: float = 0.0
     cm_pform_y: float = 0.0
+    # Horizontal position of the hydro / mooring reference point
+    # (``PtfmRefxt`` / ``PtfmRefyt``) relative to the TOWER AXIS, metres.
+    # Default 0.0 = the reference is on the tower axis (every standard
+    # HydroDyn/WAMIT deck), which keeps ``hydro_*`` / ``mooring_K`` with
+    # a zero horizontal arm — byte-identical to pre-1.13.0. Set non-zero
+    # for an off-axis floater (e.g. a tower on an off-centre column) so
+    # the rigid-arm transform carries those matrices horizontally to the
+    # tower base too, the same way ``cm_pform_x`` / ``cm_pform_y`` do for
+    # the inertia. Added 1.13.0 (issue #100).
+    ref_x: float = 0.0
+    ref_y: float = 0.0
+
+    @property
+    def tower_base_z(self) -> float:
+        """Elevation of the tower base above MSL, metres, **positive up**.
+
+        Intuitive alias for :attr:`draft`, which is the BModes-inherited
+        *signed, negative-up* spelling: ``tower_base_z == -draft``. A
+        tower base 15 m above the waterline is ``tower_base_z = 15``
+        (equivalently ``draft = -15``). Reading or assigning one keeps
+        the other in sync. Added 1.13.0 (issue #100).
+        """
+        return -self.draft
+
+    @tower_base_z.setter
+    def tower_base_z(self, value: float) -> None:
+        self.draft = -float(value)
 
 
 @dataclass
@@ -684,6 +720,8 @@ def _read_platform_common_tail(
     r: _LineReader,
 ) -> tuple[
     float,
+    float,
+    float,
     np.ndarray,
     np.ndarray,
     np.ndarray,
@@ -693,7 +731,7 @@ def _read_platform_common_tail(
     np.ndarray,
 ]:
     """Read the shared hydrodynamic/mooring/distributed-data tail of a platform block."""
-    ref_msl = _parse_float(r.read_var())
+    ref_msl, ref_x, ref_y = _read_ref_msl_line(r)
 
     r.read_com()
     hydro_M = _read_square_matrix(r, 6)
@@ -722,7 +760,8 @@ def _read_platform_common_tail(
     r.read_com()
     z_distr_k, distr_k = _read_optional_row_array_pair(r)
 
-    return ref_msl, hydro_M, hydro_K, mooring_K, z_distr_m, distr_m, z_distr_k, distr_k
+    return (ref_msl, ref_x, ref_y, hydro_M, hydro_K, mooring_K,
+            z_distr_m, distr_m, z_distr_k, distr_k)
 
 
 def _read_platform_inertia(r: _LineReader, mass_pform: float) -> np.ndarray:
@@ -772,6 +811,31 @@ def _read_cm_pform_line(r: _LineReader) -> tuple[float, float, float]:
     return cm_pform, cm_pform_x, cm_pform_y
 
 
+def _read_ref_msl_line(r: _LineReader) -> tuple[float, float, float]:
+    """Read the ``ref_msl`` line, returning ``(ref_msl, ref_x, ref_y)``.
+
+    Mirrors :func:`_read_cm_pform_line`. Legacy form
+    ``<ref_msl>  ref_msl : <comment>`` → the label stops the leading-float
+    run, so ``ref_x = ref_y = 0`` (every standard on-axis deck). Off-axis
+    form ``<ref_msl> <ref_x> <ref_y>  ref_msl : <comment>`` → all three
+    (the hydro/mooring reference horizontal offset, issue #100). The
+    offsets are an (x, y) pair: the leading numeric run must be 1 or 3.
+    """
+    nums = _leading_floats(r.read_line_tokens())
+    if len(nums) not in (1, 3):
+        raise ValueError(
+            "Malformed BMI platform block: the ref_msl line must have "
+            "exactly 1 leading number (on-axis: <ref_msl>) or 3 (off-axis: "
+            "<ref_msl> <ref_x> <ref_y>); got "
+            f"{len(nums)}: {nums!r}. The horizontal reference offsets are an "
+            "(x, y) pair — supply both or neither."
+        )
+    ref_msl = nums[0]
+    ref_x = nums[1] if len(nums) == 3 else 0.0
+    ref_y = nums[2] if len(nums) == 3 else 0.0
+    return ref_msl, ref_x, ref_y
+
+
 def _parse_platform_legacy(r: _LineReader) -> PlatformSupport:
     """Parse the legacy offshore platform block (`tow_support == 2`)."""
     draft = _parse_float(r.read_var())
@@ -781,6 +845,8 @@ def _parse_platform_legacy(r: _LineReader) -> PlatformSupport:
     i_mat = _read_platform_inertia(r, mass_pform)
     (
         ref_msl,
+        ref_x,
+        ref_y,
         hydro_M,
         hydro_K,
         mooring_K,
@@ -805,6 +871,8 @@ def _parse_platform_legacy(r: _LineReader) -> PlatformSupport:
         distr_k=distr_k,
         cm_pform_x=cm_pform_x,
         cm_pform_y=cm_pform_y,
+        ref_x=ref_x,
+        ref_y=ref_y,
     )
 
 
@@ -817,6 +885,8 @@ def _parse_platform_extended(r: _LineReader) -> PlatformSupport:
     i_mat = _read_platform_inertia(r, mass_pform)
     (
         ref_msl,
+        ref_x,
+        ref_y,
         hydro_M,
         hydro_K,
         mooring_K,
@@ -845,4 +915,6 @@ def _parse_platform_extended(r: _LineReader) -> PlatformSupport:
         wires=wires,
         cm_pform_x=cm_pform_x,
         cm_pform_y=cm_pform_y,
+        ref_x=ref_x,
+        ref_y=ref_y,
     )

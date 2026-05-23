@@ -94,11 +94,16 @@ intersphinx_mapping = {
     "matplotlib": ("https://matplotlib.org/stable/", None),
 }
 
-html_theme = "furo"
+# Default Sphinx theme (alabaster) — bundled with Sphinx, so the docs
+# build needs no extra theme dependency (replaces furo, which was
+# failing to provision on the docs builder).
+html_theme = "alabaster"
 html_title = f"pyBmodes {release}"
 html_static_path = ["_static"]
 html_theme_options = {
-    "source_repository": "https://github.com/SMI-Lab-Inha/pyBModes/",
-    "source_branch": "master",
-    "source_directory": "docs/",
+    "description": "Wind-turbine blade & tower modal analysis",
+    "github_user": "SMI-Lab-Inha",
+    "github_repo": "pyBModes",
+    "github_button": True,
+    "fixed_sidebar": True,
 }

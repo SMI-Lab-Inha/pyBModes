@@ -26,7 +26,7 @@ second "platform-centre" or "global" frame inside pyBmodes; every
 offset you supply is ultimately expressed relative to the tower base.
 
 * **z-axis** runs **along the tower/blade span**, with the **base at**
-  :math:`z = 0` and increasing toward the top/tip.
+  :math:`z = 0` and increasing towards the top/tip.
 * **x-axis** is fore-aft (downwind), aligned with the *surge* /
   fore-aft-bending direction.
 * **y-axis** is lateral (cross-wind), aligned with the *sway* /

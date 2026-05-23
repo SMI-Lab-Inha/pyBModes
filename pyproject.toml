@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pybmodes"
-version = "1.12.1"
+version = "1.13.0"
 description = "Python finite-element library for wind turbine blade and tower modal analysis (OpenFAST/ElastoDyn)"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -89,7 +89,6 @@ docs = [
     # (-W) builds until the ecosystem catches up. Relax the upper
     # pin once a 9-compatible plugin set is available.
     "sphinx>=7,<9",
-    "furo>=2024.1",
     "myst-parser>=2",
     "sphinx-copybutton>=0.5",
     # pybmodes' public API references numpy / scipy / matplotlib

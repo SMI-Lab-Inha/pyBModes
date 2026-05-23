@@ -125,8 +125,11 @@ def plot_campbell(
     if excitation_orders is None:
         excitation_orders = [1, 3, 6, 9]
 
+    owns_fig = ax is None
     if ax is None:
-        fig, ax = plt.subplots(figsize=(9.0, 6.0))
+        # Wider than tall: the extra width is the right-margin label
+        # column (issue #57).
+        fig, ax = plt.subplots(figsize=(11.0, 6.0))
     else:
         # ``ax.figure`` is typed as ``Figure | SubFigure`` upstream
         # but in every realistic embedding the caller passes an Axes
@@ -144,6 +147,12 @@ def plot_campbell(
     C_PLAT = (0.85, 0.0, 0.0)
     C_BP = (0.0, 0.0, 0.62)
     C_OPR = (0.85, 0.85, 0.85)        # operating-speed-range shade
+
+    # Per-line dash cycle within a colour band (issue #57): same-family
+    # lines share a colour, so a distinct dash lets adjacent lines be
+    # told apart and traced to their right-margin labels.
+    _LS_CYCLE = ["-", "--", "-.", ":", (0, (3, 1, 1, 1)), (0, (5, 2)),
+                 (0, (1, 1))]
 
     rpm = result.omega_rpm
     rpm_max = float(rpm.max()) if rpm.size > 0 else 0.0
@@ -207,15 +216,17 @@ def plot_campbell(
         ax.plot(ray, order * ray / 60.0, "-", color=C_BP,
                 linewidth=1.8, zorder=2)
 
-    # Blade modes — uniform green curves ("Blades" family).
+    # Blade modes — green curves ("Blades" family), each a distinct dash.
     for k in range(n_blade):
-        ax.plot(rpm, result.frequencies[:, k], "-", color=C_BLADE,
-                linewidth=1.8, zorder=3)
+        ax.plot(rpm, result.frequencies[:, k], color=C_BLADE,
+                linewidth=1.8, linestyle=_LS_CYCLE[k % len(_LS_CYCLE)],
+                zorder=3)
 
-    # Flexible tower modes — black horizontal lines; platform modes —
-    # red horizontal lines.
-    for _nm, f in flex_modes:
-        ax.axhline(f, color=C_TOWER, linewidth=1.6, zorder=2)
+    # Flexible tower modes — black horizontal lines (distinct dashes);
+    # platform modes — red horizontal lines.
+    for i, (_nm, f) in enumerate(flex_modes):
+        ax.axhline(f, color=C_TOWER, linewidth=1.6,
+                   linestyle=_LS_CYCLE[i % len(_LS_CYCLE)], zorder=2)
     # Platform modes cluster within a narrow low-frequency band, so
     # one red colour alone makes them indistinguishable — give each a
     # distinct line *style* (still the red family) so they can be told
@@ -303,77 +314,61 @@ def plot_campbell(
                 bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
                           edgecolor="none", alpha=0.80))
 
-    # Structural mode names written inline *along* their lines at
-    # staggered x positions (the reference technique) rather than
-    # stacked at the margin — a FOWT clusters several modes within a
-    # narrow frequency band, so vertical-only de-overlap piles them
-    # into one corner. Spreading the labels horizontally separates
-    # freq-adjacent modes; a white backing keeps them readable where
-    # they cross the per-rev rays. Only modes too close to the axis
-    # floor are nudged up (with a thin leader to the true line).
-    # Spell the engineering terms out for the figure (the terse
-    # tokens in CampbellResult.labels stay as-is for CSV / API).
+    # Structural mode names + frequencies in a clean column down the
+    # **right margin** (issue #57): every mode is labelled at the right
+    # edge at its frequency height, de-overlapped vertically, with a
+    # thin leader from the line's right end to its label. This reads far
+    # more clearly than labels scattered inline along the curves —
+    # especially for a FOWT whose modes cluster in a narrow band.
+    # Engineering terms are spelled out for the figure (the terse tokens
+    # in CampbellResult.labels stay as-is for CSV / API).
     _pretty_tok = {"flap": "flapwise", "edge": "edgewise",
                    "FA": "Fore-Aft", "SS": "Side-to-Side"}
 
     def _pretty(name: str) -> str:
         return " ".join(_pretty_tok.get(t, t) for t in name.split(" "))
 
-    # ``curve`` is the per-rpm blade frequency vector (blade modes are
-    # rotor-speed dependent) or ``None`` for the constant
-    # tower/platform lines. ``f0`` is the parked / constant frequency
-    # used only to order the labels and assign the x comb.
-    structural: list[tuple[str, float, tuple, np.ndarray | None]] = []
+    # (label, y at the line's right end, x of that right end, colour).
+    # Blade modes are rotor-speed dependent, so anchor at the swept
+    # end (rpm_max); tower / platform lines are constant.
+    right_labels: list[tuple[str, float, float, tuple]] = []
     for k in range(n_blade):
-        structural.append((_pretty(result.labels[k]),
-                           float(result.frequencies[0, k]), C_BLADE,
-                           np.asarray(result.frequencies[:, k],
-                                      dtype=float)))
+        curve = np.asarray(result.frequencies[:, k], dtype=float)
+        yend = float(curve[-1]) if curve.size else float(
+            result.frequencies[0, k])
+        right_labels.append(
+            (f"{_pretty(result.labels[k])} ({yend:.3g} Hz)", yend,
+             rpm_max, C_BLADE))
     for _nm, f in flex_modes:
-        structural.append((_pretty(_nm), f, C_TOWER, None))
+        right_labels.append((f"{_pretty(_nm)} ({f:.3g} Hz)", f, xmax,
+                             C_TOWER))
     for _nm, f in plat_merged:
-        structural.append((_pretty(_nm), f, C_PLAT, None))
-    structural.sort(key=lambda e: e[1])
-    # Interleaved x comb (well inside the axes, never at the y-axis
-    # edge) so frequency-adjacent labels land far apart horizontally
-    # and clear of the legend.
-    _comb = [0.07, 0.45, 0.24, 0.63, 0.36, 0.78, 0.15, 0.55]
-    floor_fr = 0.05
-    lifted = 0          # sub-floor modes stack up a low band, not pile
-    # Blade curves only exist on [rpm.min(), rpm.max()]; tower / platform
-    # axhline lines span the full [0, xmax]. The comb fraction is scaled
-    # to the *curve domain* for blade labels (otherwise an operating-only
-    # sweep starting above 0 rpm parks early-comb labels left of the
-    # curve, where np.interp silently clamps to curve[0]).
-    rpm_min = float(rpm.min()) if rpm.size else 0.0
-    blade_span = max(xmax - rpm_min, 0.0)
-    for i, (nm, f0, col, curve) in enumerate(structural):
-        frac = _comb[i % len(_comb)]
-        # For a blade curve, anchor the label *on the curve* at this
-        # x (interpolated) — not at the parked frequency — so a mode
-        # with appreciable centrifugal stiffening isn't drawn far off
-        # its line, and the bracketed Hz matches where it sits
-        # (issue #54 follow-up — static review).
-        if curve is not None and rpm.size:
-            xl = rpm_min + frac * blade_span if blade_span > 0.0 else rpm_min
-            f = float(np.interp(xl, rpm, curve))
-        else:
-            xl = frac * xmax
-            f = f0
-        tf = _to_frac(f)
-        if tf < floor_fr:                       # too near the x-axis
-            ty = _from_frac(floor_fr + 0.075 * lifted)
-            lifted += 1
-            ax.plot([xl, xl], [f, ty], color=col, linewidth=0.6,
-                    alpha=0.45, zorder=2)        # thin leader, no head
-        else:
-            ty = f
-        ax.text(
-            xl, ty, f"{nm} ({f:.3g} Hz)", color=col, fontsize=8.5,
-            ha="left", va="center", zorder=5,
-            bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
-                      edgecolor="none", alpha=0.70),
-        )
+        right_labels.append((f"{_pretty(_nm)} ({f:.3g} Hz)", f, xmax,
+                             C_PLAT))
+
+    # De-overlap the *label* y-positions in axes-fraction space (works
+    # for linear and log axes alike); the lines themselves don't move —
+    # only the text is nudged, with a leader back to the true height.
+    right_labels.sort(key=lambda e: e[1])
+    _min_gap_fr = 0.042
+    _prev_fr = -1.0
+    x_lab = xmax * 1.02
+    for text, yline, xend, col in right_labels:
+        fr = _to_frac(yline)
+        fr = min(max(fr, _prev_fr + _min_gap_fr), 1.0)
+        _prev_fr = fr
+        ly = _from_frac(fr)
+        ax.plot([xend, x_lab], [yline, ly], color=col, linewidth=0.6,
+                alpha=0.55, zorder=2, clip_on=False)   # leader to margin
+        ax.text(x_lab + 0.012 * xmax, ly, text, color=col, fontsize=8.0,
+                ha="left", va="center", zorder=5, clip_on=False)
+
+    # Reserve room in the right margin for the label column (only when
+    # this function owns the figure; a caller-supplied Axes keeps its
+    # own layout — ``savefig(bbox_inches="tight")`` will include the
+    # labels via ``clip_on=False``).
+    if owns_fig:
+        fig.subplots_adjust(right=0.74)
 
     # Four family keys only (those that are present).
     handles = []

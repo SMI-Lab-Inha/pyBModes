@@ -439,10 +439,21 @@ def _check_platform_cm_offset(bmi, out: list[ModelWarning]) -> None:
     the rigid-arm transform, shifts the rigid-body frequencies, and
     mislabels the modes (issue #95). Emitted as WARN, not ERROR — a
     genuinely large offset is physically representable, just unusual.
+
+    Suppressed when ``ref_x`` / ``ref_y`` are set: a non-zero
+    hydro/mooring reference offset signals the caller is *intentionally*
+    modelling an off-axis floater (issue #100), in which case a large
+    ``cm_pform_x`` / ``cm_pform_y`` is consistent rather than a leak.
     """
     if not _is_floating(bmi):
         return
     sup = bmi.support
+    # Intentional off-axis modelling: the caller has referenced the
+    # hydro/mooring matrices off the tower axis too, so a large CM offset
+    # is expected, not a coordinate-leak symptom.
+    if float(getattr(sup, "ref_x", 0.0) or 0.0) != 0.0 \
+            or float(getattr(sup, "ref_y", 0.0) or 0.0) != 0.0:
+        return
     cm_x = float(getattr(sup, "cm_pform_x", 0.0) or 0.0)
     cm_y = float(getattr(sup, "cm_pform_y", 0.0) or 0.0)
     offset = float(np.hypot(cm_x, cm_y))

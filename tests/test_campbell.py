@@ -808,17 +808,14 @@ def test_plot_campbell_non_floating_has_no_platform_family() -> None:
     plt.close(fig)
 
 
-def test_plot_campbell_blade_label_anchored_on_curve_for_positive_rpm(
-) -> None:
-    """Issue #54 static-review follow-up: when ``omega_rpm`` doesn't start at
-    0 (an operating-only sweep), blade-label x positions must stay
-    inside ``[rpm.min(), rpm.max()]`` so the label sits on the green
-    blade curve and the bracketed Hz matches ``np.interp`` at that x.
+def test_plot_campbell_labels_in_right_margin() -> None:
+    """Issue #57: structural-mode labels sit in a column in the **right
+    margin** (to the right of the swept rotor-speed range), each at its
+    line's right-end frequency — not scattered inline along the curves.
 
-    Pre-fix bug: the comb was scaled to ``xmax = rpm.max()``, so
-    early-comb positions like ``0.07 * 12.1 = 0.847`` parked left of
-    the curve (where ``np.interp`` silently clamps to ``curve[0]``)
-    and the labels dangled off the line."""
+    For a blade curve the right end is the swept maximum (``rpm_max``),
+    so the bracketed Hz reads the curve's value there (``curve[-1]``),
+    and the label x sits beyond ``rpm_max``."""
     pytest.importorskip("matplotlib")
     import re
 
@@ -847,33 +844,31 @@ def test_plot_campbell_blade_label_anchored_on_curve_for_positive_rpm(
     fig = plot_campbell(res)
     ax = fig.axes[0]
 
-    rpm_min, rpm_max = float(rpm.min()), float(rpm.max())
+    rpm_max = float(rpm.max())
     pat = re.compile(r"^(.*?) \((\d+(?:\.\d+)?)\s*Hz\)$")
-    expected = {"1st flapwise": flap, "1st edgewise": edge}
+    # Blade labels read the swept-end (rpm_max) frequency.
+    expected_end = {"1st flapwise": float(flap[-1]),
+                    "1st edgewise": float(edge[-1])}
     seen: set[str] = set()
     for t in ax.texts:
         m = pat.match(t.get_text())
         if m is None:
             continue
         name, hz_str = m.group(1), float(m.group(2))
-        if name not in expected:
+        if name not in expected_end:
             continue                             # tower / per-rev tag
         x_label, _ = t.get_position()
-        # (1) blade label x must lie inside the curve domain so the
-        #     label sits on the green line, not off in empty space.
-        assert rpm_min <= x_label <= rpm_max, (
-            f"{name} label at x={x_label} is outside the blade-curve "
-            f"domain [{rpm_min}, {rpm_max}]")
-        # (2) bracketed Hz must match interpolation at that x — the
-        #     pre-fix bug had Hz reading curve[0] (silent clamp) even
-        #     though the label was drawn left of the curve.
-        f_expected = float(np.interp(x_label, rpm, expected[name]))
-        assert abs(hz_str - f_expected) < 5e-3, (
-            f"{name} bracket {hz_str} Hz != interp {f_expected} Hz "
-            f"at x={x_label}")
+        # (1) label sits in the right margin, beyond the swept range.
+        assert x_label > rpm_max, (
+            f"{name} label at x={x_label} should be in the right margin "
+            f"(beyond rpm_max={rpm_max})")
+        # (2) bracketed Hz matches the curve's right-end value.
+        assert abs(hz_str - expected_end[name]) < 5e-3, (
+            f"{name} bracket {hz_str} Hz != curve end "
+            f"{expected_end[name]} Hz")
         seen.add(name)
-    assert seen == set(expected), (
-        f"missing blade labels: expected {set(expected)}, saw {seen}")
+    assert seen == set(expected_end), (
+        f"missing blade labels: expected {set(expected_end)}, saw {seen}")
     plt.close(fig)
 
 

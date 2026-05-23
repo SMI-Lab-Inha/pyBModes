@@ -731,9 +731,22 @@ def _floating_platform_block_from_platform_support(
         f"Platform mass inertia 3X3 matrix (i_matrix_pform):  [{provenance}]"
     )
     lines.extend(_fmt_matrix(angular_inertia))
-    lines.append(
-        f"{ps.ref_msl:.6f}    ref_msl    : distance of platform reference point below MSL (m)"
-    )
+    # Same-line horizontal-reference extension (1.13.0, issue #100): emit
+    # the optional ref_x/ref_y ONLY when non-zero, so an on-axis platform
+    # is byte-identical to the legacy single-value line. Mirrors the
+    # cm_pform_xyz extension above.
+    ref_x = float(getattr(ps, "ref_x", 0.0))
+    ref_y = float(getattr(ps, "ref_y", 0.0))
+    if ref_x != 0.0 or ref_y != 0.0:
+        lines.append(
+            f"{ps.ref_msl:.6f}  {ref_x:.6f}  {ref_y:.6f}    ref_msl_xyz : "
+            f"platform reference point below MSL + horizontal (x downwind, "
+            f"y lateral) offsets from the tower axis (m)"
+        )
+    else:
+        lines.append(
+            f"{ps.ref_msl:.6f}    ref_msl    : distance of platform reference point below MSL (m)"
+        )
     lines.append(
         f"Hydrodynamic 6X6 mass matrix at platform ref point (hydro_M)  [{provenance}]:"
     )

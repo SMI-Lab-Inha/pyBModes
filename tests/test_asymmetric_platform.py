@@ -227,6 +227,64 @@ def test_horizontal_cm_offset_is_wired_and_stable(rx: float) -> None:
     assert np.all(np.isfinite(fr)) and np.all(fr > 0.0)
 
 
+def _solve_with_ref_offset(rx: float, ry: float, n_modes: int = 12):
+    """Solve sample-09 with the hydro/mooring reference horizontal offset
+    ``ref_x`` / ``ref_y`` overridden (issue #100, off-axis floater)."""
+    from pybmodes.io.bmi import read_bmi
+    from pybmodes.io.sec_props import read_sec_props
+    from pybmodes.models import Tower
+
+    bmi = read_bmi(_SAMPLE09)
+    bmi.support = dataclasses.replace(bmi.support, ref_x=rx, ref_y=ry)
+    t = Tower.__new__(Tower)
+    t._bmi = bmi
+    t._sp = read_sec_props(bmi.resolve_sec_props_path())
+    return t.run(n_modes=n_modes, check_model=False).frequencies
+
+
+@pytest.mark.parametrize("rx", [10.0, 30.0])
+def test_hydro_mooring_ref_offset_is_wired_and_stable(rx: float) -> None:
+    """``ref_x`` / ``ref_y`` carry the hydro + mooring matrices
+    horizontally to the tower base (issue #100, off-axis floater). A
+    non-zero ``ref_x`` must shift the rigid-body spectrum vs the on-axis
+    case (proving the field is wired through ``nondim_platform``) and stay
+    n_modes-stable."""
+    f0 = _solve_with_ref_offset(0.0, 0.0, n_modes=12)
+    fr = _solve_with_ref_offset(rx, 0.0, n_modes=12)
+    assert np.max(np.abs(fr[:6] - f0[:6])) > 1e-4, (
+        "ref_x had no effect — not wired through nondim_platform"
+    )
+    fr15 = _solve_with_ref_offset(rx, 0.0, n_modes=15)
+    assert float(np.max(np.abs(fr[:6] - fr15[:6]))) < 1e-4
+    assert np.all(np.isfinite(fr)) and np.all(fr > 0.0)
+
+
+def test_ref_offset_zero_is_byte_identical_to_stock() -> None:
+    """``ref_x = ref_y = 0`` (the default) must reproduce the stock
+    sample-09 spectrum exactly — the new field is inert on a standard
+    on-axis floater."""
+    from pybmodes.io.bmi import read_bmi
+    from pybmodes.io.sec_props import read_sec_props
+    from pybmodes.models import Tower
+
+    bmi = read_bmi(_SAMPLE09)
+    t = Tower.__new__(Tower)
+    t._bmi = bmi
+    t._sp = read_sec_props(bmi.resolve_sec_props_path())
+    stock = t.run(n_modes=12, check_model=False).frequencies
+    np.testing.assert_array_equal(stock, _solve_with_ref_offset(0.0, 0.0))
+
+
+def test_tower_base_z_alias() -> None:
+    """``tower_base_z`` is the positive-up alias of ``draft`` (issue #100):
+    ``tower_base_z == -draft``, and assigning one updates the other."""
+    ps = _platform(0.0, 0.0)            # built with draft = -15.0
+    assert ps.draft == -15.0
+    assert ps.tower_base_z == 15.0
+    ps.tower_base_z = 20.0
+    assert ps.draft == -20.0
+
+
 # ---------------------------------------------------------------------------
 # BMI text-format round-trip (1.2.1): hand-authored asymmetric .bmi.
 # ---------------------------------------------------------------------------
@@ -323,6 +381,34 @@ def test_hand_authored_asymmetric_bmi_roundtrips(tmp_path, cm_x, cm_y) -> None:
     assert back.support.cm_pform == pytest.approx(14.0, rel=1e-6)
     assert back.support.cm_pform_x == pytest.approx(cm_x, abs=1e-6)
     assert back.support.cm_pform_y == pytest.approx(cm_y, abs=1e-6)
+
+
+@pytest.mark.parametrize("ref_x,ref_y", [(6.5, -3.25), (0.0, 4.0), (-7.0, 0.0)])
+def test_hand_authored_ref_offset_bmi_roundtrips(tmp_path, ref_x, ref_y) -> None:
+    """Emit → re-parse: a hand-authored .bmi preserves the hydro/mooring
+    reference horizontal offset ``ref_x`` / ``ref_y`` through the extended
+    ``ref_msl_xyz`` line (issue #100), so off-axis support is available on
+    the file-ingestion path, not only via a hand-built dataclass."""
+    from pybmodes.io.bmi import read_bmi
+
+    ps = dataclasses.replace(_platform(0.0, 0.0), ref_x=ref_x, ref_y=ref_y)
+    bmi_path = _write_floating_bmi(tmp_path, ps, "refoff")
+    back = read_bmi(bmi_path)
+    assert back.support.ref_x == pytest.approx(ref_x, abs=1e-6)
+    assert back.support.ref_y == pytest.approx(ref_y, abs=1e-6)
+
+
+def test_on_axis_ref_emits_legacy_single_value_line(tmp_path) -> None:
+    """An on-axis platform (ref_x = ref_y = 0) emits the legacy
+    single-value ref_msl line — byte-identical to every existing deck."""
+    bmi_path = _write_floating_bmi(tmp_path, _platform(0.0, 0.0), "onaxis")
+    ref_lines = [
+        ln for ln in bmi_path.read_text().splitlines()
+        if "ref_msl" in ln
+    ]
+    assert len(ref_lines) == 1
+    toks = ref_lines[0].split()
+    assert toks[1].startswith("ref_msl")          # single value, then label
 
 
 def test_hand_authored_asymmetric_bmi_changes_spectrum(tmp_path) -> None:
