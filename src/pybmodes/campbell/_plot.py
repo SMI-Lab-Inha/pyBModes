@@ -126,7 +126,7 @@ def plot_campbell(
         excitation_orders = [1, 3, 6, 9]
 
     owns_fig = ax is None
-    if owns_fig:
+    if ax is None:
         # Wider than tall: the extra width is the right-margin label
         # column (issue #57).
         fig, ax = plt.subplots(figsize=(11.0, 6.0))
