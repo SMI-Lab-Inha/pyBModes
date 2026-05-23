@@ -152,7 +152,12 @@ jobs:
         run: python scripts/audit_validation_claims.py
 
       - name: Integration tests (hard-fail, no exit-5 tolerance)
-        run: pytest -m integration --tb=short
+        # ``--no-cov`` disables the coverage gate here: this runs only the
+        # integration subset, whose coverage is far below the project
+        # ``fail_under`` floor, so gating it would fail the workflow even
+        # when every integration test passes. The comprehensive coverage
+        # gate lives on the default self-contained run in ci.yml.
+        run: pytest -m integration --tb=short --no-cov
 
       - name: Upload verifier report artifact
         if: always()
