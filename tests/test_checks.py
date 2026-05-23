@@ -483,6 +483,56 @@ class TestAutoRunIntegration:
         relevant = [w for w in recwarn.list if "EI_FA jumps by" in str(w.message)]
         assert relevant == []
 
+    def _tower_with_error_finding(self, tmp_path: pathlib.Path) -> Tower:
+        """A tower whose section properties trigger an ERROR finding
+        (a non-positive mass density)."""
+        tower = _build_synthetic_tower(tmp_path)
+        from pybmodes.io.sec_props import read_sec_props
+        sp = read_sec_props(tower._bmi.resolve_sec_props_path())
+        sp.mass_den[1] = 0.0          # non-physical → ERROR finding
+        tower._sp = sp
+        return tower
+
+    def test_run_fails_closed_on_error_by_default(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """An ERROR-severity finding raises ModelValidationError from
+        .run() by default (fail-closed, 1.14.0) rather than warning and
+        feeding the eigensolver non-physical input."""
+        from pybmodes.checks import ModelValidationError
+
+        tower = self._tower_with_error_finding(tmp_path)
+        with pytest.raises(ModelValidationError) as exc:
+            tower.run(n_modes=4)
+        # The exception carries the offending findings, all ERROR.
+        assert exc.value.findings
+        assert all(f.severity == "ERROR" for f in exc.value.findings)
+        # And is a ValueError subclass for legacy callers.
+        assert isinstance(exc.value, ValueError)
+
+    def test_run_on_error_warn_downgrades_to_warning(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """on_error='warn' restores the pre-1.14.0 behaviour: the ERROR
+        finding is emitted as a UserWarning and the solve continues."""
+        tower = self._tower_with_error_finding(tmp_path)
+        with pytest.warns(UserWarning, match="mass_den"):
+            # The solve itself may further fail on the bad input, but the
+            # check must warn (not raise ModelValidationError) first.
+            try:
+                tower.run(n_modes=4, on_error="warn")
+            except Exception as exc:
+                from pybmodes.checks import ModelValidationError
+                assert not isinstance(exc, ModelValidationError)
+
+    def test_run_rejects_unknown_on_error(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """An unrecognised on_error value is rejected up front."""
+        tower = _build_synthetic_tower(tmp_path)
+        with pytest.raises(ValueError, match="on_error must be"):
+            tower.run(n_modes=4, on_error="explode")  # type: ignore[arg-type]
+
 
 # ===========================================================================
 # Non-finite section-property gate (runs before per-field checks)

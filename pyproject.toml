@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pybmodes"
-version = "1.13.1"
+version = "1.14.0"
 description = "Python finite-element library for wind turbine blade and tower modal analysis (OpenFAST/ElastoDyn)"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -120,13 +120,17 @@ testpaths = ["tests"]
 # Default run skips integration tests so a fresh clone gets a green
 # pytest with no external data. Run integration tests explicitly with
 # ``pytest -m integration`` (requires local OpenFAST / BModes decks).
-# Coverage reporting is on by default (informational); no
-# ``--cov-fail-under`` floor at this stage because many ``models/``
-# and ``io/`` paths only run under the ``integration`` marker, so the
-# default-run number undersells real coverage. CI can add a soft
-# threshold to its integration-inclusive job once we settle on a
-# stable target. Full-suite coverage (``pytest -m ''``) currently
-# sits around 80 %.
+# Coverage reporting is on by default with an enforced floor (see
+# ``[tool.coverage.report] fail_under`` below). The default
+# (self-contained) run sits around 87 % branch+line coverage; the floor
+# is set a couple of points under that so a regression that drops a
+# core solver / parser / workflow path fails the run, without being so
+# tight that an integration-only addition (those paths only run under
+# the ``integration`` marker) trips it. Raise the floor as coverage
+# climbs; never lower it without justification. The floor gates the
+# default (and full) run; a deliberate *subset* run such as
+# ``pytest -m integration`` on its own covers little, so pass
+# ``--no-cov`` for those (CI does this on its integration step).
 addopts = """\
     -v \
     -m 'not integration' \
@@ -151,11 +155,17 @@ omit = [
 ]
 
 [tool.coverage.report]
+# Enforced quality gate. The default self-contained run exceeds this;
+# CI fails if a change drops below it. ``pytest-cov`` reads this floor.
+fail_under = 85
 exclude_lines = [
     "pragma: no cover",
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
     "if __name__ == .__main__.:",
+    # Defensive overload stubs carry only ``...`` bodies.
+    "^\\s*\\.\\.\\.$",
+    "@overload",
 ]
 
 [tool.ruff]
@@ -270,6 +280,12 @@ module = [
     "pybmodes.campbell._plot",
     "pybmodes.campbell._sweep",
     "pybmodes.campbell.result",
+    # 1.14.0 ratchet — pure-logic / typed-dataclass modules verified
+    # clean under the strict flags.
+    "pybmodes.checks",
+    "pybmodes.coords",
+    "pybmodes.io.errors",
+    "pybmodes.workflows._base",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

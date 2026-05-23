@@ -46,6 +46,9 @@ below uses ``mode='normal'`` accordingly.
 from __future__ import annotations
 
 import logging
+import warnings
+from dataclasses import dataclass
+from typing import Literal, overload
 
 import numpy as np
 from scipy.linalg import eig, eigh
@@ -53,6 +56,64 @@ from scipy.linalg import eig, eigh
 from pybmodes.options import DEFAULT_SOLVER_OPTIONS as _SOLVER_OPTIONS
 
 _log = logging.getLogger(__name__)
+
+# Above this reduced-system size the dense conditioning estimate
+# (``np.linalg.cond``, an O(ngd^3) SVD) is skipped and reported as
+# ``None`` to keep the per-solve cost negligible. Real blade / tower
+# meshes sit well under this, so the estimate is populated for them; a
+# 500+ DOF spliced monopile takes the sparse path anyway, where the
+# estimate is not meaningful.
+_COND_DENSE_MAX = 800
+
+
+@dataclass(frozen=True)
+class SolverDiagnostics:
+    """Numerical-health record for one :func:`solve_modes` call.
+
+    Returned alongside the eigenpairs when ``return_diagnostics=True`` and
+    carried on :class:`pybmodes.models.result.ModalResult.diagnostics`. It
+    makes the solve auditable for certification-grade work: which path
+    ran, whether the sparse path silently fell back to dense, how many
+    modes were actually recovered versus requested, the per-mode
+    backward-error residuals, and a mass-matrix conditioning estimate.
+
+    Attributes
+    ----------
+    path : which solver path produced the result. One of
+        ``"sparse_shift_invert"``, ``"dense_symmetric"``,
+        ``"dense_general"``.
+    symmetric : whether the assembled matrices were treated as symmetric
+        (``eigh`` / sparse) rather than routed through the general
+        ``eig`` path.
+    n_requested : modes asked for (``None`` means the full spectrum).
+    n_returned : modes actually returned. Fewer than ``n_requested``
+        means the general path filtered out complex / non-positive
+        eigenvalues and could not recover enough valid modes (a warning
+        is also emitted in that case).
+    sparse_fallback : ``True`` when the sparse shift-invert path was
+        attempted and failed, so the result came from the dense fallback.
+    fallback_reason : the repr of the exception that triggered the
+        fallback, or ``None`` when no fallback happened.
+    max_residual : the largest per-mode relative residual
+        ``||K x - λ M x|| / ||K x||`` over the returned modes (``0.0``
+        when no modes were returned). A healthy modal solve sits near
+        machine precision; a large value flags an ill-conditioned or
+        defective eigenproblem.
+    residuals : the per-mode relative residuals, one per returned mode.
+    matrix_cond : 2-norm condition number of the (symmetrised) mass
+        matrix, or ``None`` when not computed (sparse path, or a system
+        larger than the dense-conditioning size limit).
+    """
+
+    path: Literal["sparse_shift_invert", "dense_symmetric", "dense_general"]
+    symmetric: bool
+    n_requested: int | None
+    n_returned: int
+    sparse_fallback: bool
+    fallback_reason: str | None
+    max_residual: float
+    residuals: tuple[float, ...]
+    matrix_cond: float | None
 
 # Sparse path activates once the reduced system has more than this
 # many DOFs and the caller asked for a small subset of modes. Below
@@ -66,11 +127,30 @@ _log = logging.getLogger(__name__)
 _SPARSE_NDOF_THRESHOLD = _SOLVER_OPTIONS.sparse_ndof_threshold
 
 
+@overload
+def solve_modes(
+    gk: np.ndarray, gm: np.ndarray, n_modes: int | None = ...,
+    *, return_diagnostics: Literal[False] = ...,
+) -> tuple[np.ndarray, np.ndarray]: ...
+
+
+@overload
+def solve_modes(
+    gk: np.ndarray, gm: np.ndarray, n_modes: int | None = ...,
+    *, return_diagnostics: Literal[True],
+) -> tuple[np.ndarray, np.ndarray, SolverDiagnostics]: ...
+
+
 def solve_modes(
     gk: np.ndarray,
     gm: np.ndarray,
     n_modes: int | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
+    *,
+    return_diagnostics: bool = False,
+) -> (
+    tuple[np.ndarray, np.ndarray]
+    | tuple[np.ndarray, np.ndarray, SolverDiagnostics]
+):
     """Solve the generalised eigenproblem ``K ψ = λ M ψ``.
 
     Parameters
@@ -78,15 +158,28 @@ def solve_modes(
     gk      : (ngd, ngd) global stiffness matrix
     gm      : (ngd, ngd) global mass matrix
     n_modes : number of lowest modes to return (``None`` = all)
+    return_diagnostics : when ``True``, also return a
+        :class:`SolverDiagnostics` record (path taken, sparse-to-dense
+        fallback, mode-count guarantee, per-mode residuals, mass-matrix
+        conditioning). Default ``False`` keeps the historical
+        two-tuple return for existing callers.
 
     Returns
     -------
     eigvals : (n_modes,) eigenvalues λ, sorted ascending (λ = (ω_nd)²)
     eigvecs : (ngd, n_modes) eigenvectors, columns correspond to eigvals,
               each normalised to unit L2 norm.
+    diagnostics : :class:`SolverDiagnostics`, only when
+        ``return_diagnostics=True``.
     """
     ngd = gk.shape[0]
     sym = _is_effectively_symmetric(gk) and _is_effectively_symmetric(gm)
+
+    path: Literal["sparse_shift_invert", "dense_symmetric", "dense_general"]
+    sparse_fallback = False
+    fallback_reason: str | None = None
+    eigvals: np.ndarray | None = None
+    eigvecs: np.ndarray | None = None
 
     # Sparse path — symmetric, big enough, small-subset request.
     if (
@@ -97,33 +190,140 @@ def solve_modes(
     ):
         try:
             eigvals, eigvecs = _solve_sparse_shift_invert(gk, gm, n_modes)
-            _normalize_columns_l2(eigvecs)
+            path = "sparse_shift_invert"
             _log.info(
                 "solve_modes: sparse shift-invert path "
                 "(ngd=%d, n_modes=%d)",
                 ngd, n_modes,
             )
-            return eigvals, eigvecs
         except Exception as exc:
             # eigsh can fail to converge on near-singular K, on
             # poorly-conditioned M, or when MKL throws an ARPACK
             # error. Fall back to dense in any such case so the
-            # solver remains robust.
+            # solver remains robust — but record that the path changed
+            # so the caller can audit it (it is no longer silent).
+            sparse_fallback = True
+            fallback_reason = repr(exc)
+            eigvals = eigvecs = None
             _log.warning(
                 "solve_modes: sparse path failed (%r); "
                 "falling back to dense eigh",
                 exc,
             )
 
-    if sym:
-        eigvals, eigvecs = _solve_dense_symmetric(gk, gm, n_modes)
-        _log.info("solve_modes: dense symmetric eigh (ngd=%d)", ngd)
-    else:
-        eigvals, eigvecs = _solve_dense_general(gk, gm, n_modes)
-        _log.info("solve_modes: dense general eig (ngd=%d)", ngd)
+    if eigvals is None or eigvecs is None:
+        if sym:
+            eigvals, eigvecs = _solve_dense_symmetric(gk, gm, n_modes)
+            path = "dense_symmetric"
+            _log.info("solve_modes: dense symmetric eigh (ngd=%d)", ngd)
+        else:
+            eigvals, eigvecs = _solve_dense_general(gk, gm, n_modes)
+            path = "dense_general"
+            _log.info("solve_modes: dense general eig (ngd=%d)", ngd)
 
     _normalize_columns_l2(eigvecs)
-    return eigvals, eigvecs
+
+    # Mode-count guarantee: the general path filters complex / non-
+    # positive eigenvalues, so it can return fewer modes than requested.
+    # Surface that rather than letting it pass silently (a downstream
+    # broadcast would otherwise fail with an opaque shape error).
+    #
+    # Gate the warning to the general path only (Codex P2). The dense
+    # symmetric path also returns fewer than ``n_modes`` when the request
+    # simply exceeds the available DOFs (it truncates to
+    # ``min(n_modes, ngd)``), which is a benign "asked for more modes than
+    # the system has" case, not a defective eigenproblem — warning there
+    # would mislead, and would fail callers that treat warnings as errors.
+    n_returned = int(eigvecs.shape[1])
+    if (
+        path == "dense_general"
+        and n_modes is not None
+        and n_returned < n_modes
+    ):
+        warnings.warn(
+            f"solve_modes recovered only {n_returned} of the requested "
+            f"{n_modes} modes via the general (non-symmetric) eig path. "
+            f"The eigenproblem is likely near-degenerate or defective (a "
+            f"non-symmetric PlatformSupport block can do this); the "
+            f"missing modes had complex or non-positive eigenvalues and "
+            f"were filtered out.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+    if not return_diagnostics:
+        return eigvals, eigvecs
+
+    diagnostics = _build_diagnostics(
+        gk, gm, eigvals, eigvecs, path=path, symmetric=sym,
+        n_requested=n_modes, sparse_fallback=sparse_fallback,
+        fallback_reason=fallback_reason,
+    )
+    return eigvals, eigvecs, diagnostics
+
+
+def _build_diagnostics(
+    gk: np.ndarray,
+    gm: np.ndarray,
+    eigvals: np.ndarray,
+    eigvecs: np.ndarray,
+    *,
+    path: Literal["sparse_shift_invert", "dense_symmetric", "dense_general"],
+    symmetric: bool,
+    n_requested: int | None,
+    sparse_fallback: bool,
+    fallback_reason: str | None,
+) -> SolverDiagnostics:
+    """Assemble a :class:`SolverDiagnostics` for a completed solve."""
+    residuals = _modal_residuals(gk, gm, eigvals, eigvecs)
+    cond = _mass_matrix_cond(gm, path)
+    return SolverDiagnostics(
+        path=path,
+        symmetric=symmetric,
+        n_requested=n_requested,
+        n_returned=int(eigvecs.shape[1]),
+        sparse_fallback=sparse_fallback,
+        fallback_reason=fallback_reason,
+        max_residual=float(residuals.max()) if residuals.size else 0.0,
+        residuals=tuple(float(r) for r in residuals),
+        matrix_cond=cond,
+    )
+
+
+def _modal_residuals(
+    gk: np.ndarray, gm: np.ndarray, eigvals: np.ndarray, eigvecs: np.ndarray,
+) -> np.ndarray:
+    """Per-mode relative backward error ``||K x - λ M x|| / ||K x||``.
+
+    The honest health metric for a generalised modal solve. Cheap
+    (matrix-times-thin-matrix), so computed for every path.
+    """
+    if eigvecs.size == 0:
+        return np.empty(0, dtype=float)
+    kx = gk @ eigvecs                                 # (ngd, k)
+    mx = gm @ eigvecs
+    num = np.linalg.norm(kx - mx * eigvals[np.newaxis, :], axis=0)
+    den = np.linalg.norm(kx, axis=0)
+    return np.asarray(num / np.where(den > 0.0, den, 1.0), dtype=float)
+
+
+def _mass_matrix_cond(
+    gm: np.ndarray,
+    path: Literal["sparse_shift_invert", "dense_symmetric", "dense_general"],
+) -> float | None:
+    """2-norm conditioning of the (symmetrised) mass matrix, or ``None``.
+
+    Skipped for the sparse path and for systems above
+    :data:`_COND_DENSE_MAX`, where the O(ngd^3) SVD would dominate the
+    solve cost without adding actionable information (those systems take
+    the sparse path precisely because they are large).
+    """
+    if path == "sparse_shift_invert" or gm.shape[0] > _COND_DENSE_MAX:
+        return None
+    try:
+        return float(np.linalg.cond(0.5 * (gm + gm.T)))
+    except np.linalg.LinAlgError:
+        return float("inf")
 
 
 # ---------------------------------------------------------------------------

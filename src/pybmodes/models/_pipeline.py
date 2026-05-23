@@ -217,7 +217,9 @@ def run_fem(
         elm_distr_k      = elm_distr_k,
     )
 
-    eigvals, eigvecs = solve_modes(gk, gm, n_modes=n_modes)
+    eigvals, eigvecs, diagnostics = solve_modes(
+        gk, gm, n_modes=n_modes, return_diagnostics=True,
+    )
     freqs_hz = eigvals_to_hz(eigvals, nd.romg)
 
     active = active_dof_indices(bmi.n_elements, hub_conn)
@@ -256,6 +258,17 @@ def run_fem(
             frequencies=freqs_hz,
         )
 
+    # Record any parsed-but-not-modelled physics so the result is honest
+    # about its fidelity rather than silently dropping it. Distributed
+    # hydrodynamic added mass (``distr_m``) is read from the BMI but not
+    # yet assembled into the mass matrix; ``distr_k`` (soil) IS assembled
+    # (``elm_distr_k`` above), so it is not listed here.
+    ignored: list[str] = []
+    if isinstance(bmi.support, PlatformSupport) \
+            and np.asarray(bmi.support.distr_m).size > 0:
+        ignored.append("distributed added mass (distr_m)")
+
     return ModalResult(
         frequencies=freqs_hz, shapes=shapes, mode_labels=mode_labels,
+        ignored_physics=tuple(ignored), diagnostics=diagnostics,
     )

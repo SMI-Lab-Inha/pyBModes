@@ -8,15 +8,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from pybmodes.campbell import (
-    _greedy_assignment,
-    _hungarian_assignment,
+from pybmodes.campbell._classify import (
     _label_blade_modes,
     _label_tower_modes,
     _label_tower_modes_with_overrides,
     _ordinal,
     _participation,
 )
+from pybmodes.campbell._mac import _greedy_assignment, _hungarian_assignment
 from pybmodes.fem.normalize import NodeModeShape
 
 

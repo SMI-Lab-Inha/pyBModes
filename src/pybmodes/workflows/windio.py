@@ -146,6 +146,58 @@ class WindioResult(WorkflowResult):
     campbell_csv_path: pathlib.Path | None = None
     spectra_png_path: pathlib.Path | None = None
     skipped: list[str] = field(default_factory=list)
+    # Completeness stamp shown in the report's Model summary section and
+    # available to callers. ``"complete"`` (full fidelity, nothing
+    # skipped), ``"screening"`` (floating with the seakeeping decks
+    # missing — reduced fidelity by design), or ``"partial"`` (something
+    # the workflow normally produces was skipped).
+    report_status: str = "complete"
+
+
+def _load_windio_doc(path: pathlib.Path) -> dict | None:
+    """Parse ``path`` as a WindIO ontology document, or return ``None``.
+
+    Returns the parsed mapping only when the file is a *bona-fide*
+    WindIO ontology: it parses as YAML, the top level is a mapping, and
+    it carries a ``components`` mapping. A parse error, a non-mapping
+    document (e.g. a list-only config), or a yaml without ``components``
+    all return ``None``. This replaces the previous substring scan for
+    ``"components:"`` / ``"floating_platform:"``, which picked the wrong
+    file (any yaml that merely *mentioned* the word) and missed valid
+    ontologies whose key sat past the scanned byte window.
+    """
+    from pybmodes.io.windio import _dup_anchor_loader, _require_yaml
+
+    # Resolve PyYAML OUTSIDE the try so a missing-``[windio]``-extra
+    # ModuleNotFoundError propagates with its actionable install hint
+    # (Codex P2). Only a YAML parse error or a file-read error means
+    # "this candidate isn't a usable ontology" and maps to ``None``;
+    # swallowing the import error here would surface later as a
+    # misleading "no WindIO ontology .yaml found".
+    yaml = _require_yaml()
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            doc = yaml.load(fh, Loader=_dup_anchor_loader(yaml))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        # A read error, a non-UTF-8 file, or unparseable YAML all mean
+        # "this candidate isn't a usable ontology" → skip it. Catching
+        # UnicodeDecodeError (a ValueError, not an OSError) keeps one bad
+        # sidecar yaml from aborting a whole directory scan (Codex P2).
+        # The missing-PyYAML error is still raised above.
+        return None
+    if not isinstance(doc, dict):
+        return None
+    if not isinstance(doc.get("components"), dict):
+        return None
+    return doc
+
+
+def _doc_is_floating(doc: dict | None) -> bool:
+    """True when a parsed WindIO document declares a floating platform."""
+    if not isinstance(doc, dict):
+        return False
+    comps = doc.get("components")
+    return isinstance(comps, dict) and "floating_platform" in comps
 
 
 def discover_windio_inputs(
@@ -160,10 +212,16 @@ def discover_windio_inputs(
     :meth:`pybmodes.models.Tower.from_windio_floating`).
 
     Auto-discovery is scoped to a bona-fide *turbine root*: the
-    directory the user passed, or the nearest ancestor (≤ 4 levels
-    up from the yaml) that owns an ``OpenFAST`` / ``openfast`` tree.
-    A bare yaml in some scratch directory yields no decks (→ the
-    labelled screening preview).
+    directory the user passed, or the nearest ancestor that owns an
+    ``OpenFAST`` / ``openfast`` tree, searching up to the enclosing
+    project (``.git``) boundary so a deeply-nested ontology still
+    resolves its decks without the walk climbing into a broader
+    multi-project workspace. A bare yaml in some scratch directory
+    yields no decks (→ the labelled screening preview). Candidate
+    ontologies are confirmed by a structured YAML parse
+    (:func:`_load_windio_doc`), not a substring scan, so a non-WindIO
+    yaml that merely mentions ``components`` is
+    never selected.
     """
     path = pathlib.Path(path)
     if path.is_file():
@@ -171,8 +229,8 @@ def discover_windio_inputs(
     elif path.is_dir():
         cands = sorted(
             p for p in path.rglob("*.yaml")
-            if "components:" in p.read_text(errors="ignore")[:4000]
-            and "OpenFAST" not in str(p) and "openfast" not in str(p)
+            if "OpenFAST" not in str(p) and "openfast" not in str(p)
+            and _load_windio_doc(p) is not None
         )
         if not cands:
             raise FileNotFoundError(
@@ -186,15 +244,31 @@ def discover_windio_inputs(
     if path.is_dir():
         turbine_root = path
     else:
-        for anc in list(yaml_path.parents)[:4]:
+        # Find the turbine root that owns an ``OpenFAST`` / ``openfast``
+        # tree by climbing the ontology's ancestors. The stop condition
+        # is the enclosing *project* boundary (a directory containing
+        # ``.git``), NOT a fixed ancestor depth. A fixed depth cap is a
+        # blunt instrument: too deep and a scratch yaml climbs into a
+        # broad multi-project workspace (e.g. ``D:\repos``) and grabs an
+        # unrelated OpenFAST clone; too shallow and a deeply-nested
+        # ontology never reaches its own turbine root, silently
+        # downgrading an industry-grade run to screening (Codex P1). The
+        # project boundary resolves both: a deeply-nested ontology still
+        # finds ``OpenFAST`` at any depth *within* its turbine repo,
+        # while the walk stops at the repo root rather than ascending
+        # into the workspace above it. A generous numeric backstop bounds
+        # the walk for a loose yaml that sits in no project at all.
+        for anc in list(yaml_path.parents)[:8]:
             if (anc / "OpenFAST").is_dir() or (anc / "openfast").is_dir():
                 turbine_root = anc
                 break
+            if (anc / ".git").exists():
+                break        # project root reached without an OpenFAST tree
 
     if turbine_root is None:
         return WindioDiscovery(yaml=yaml_path)
 
-    floating = "floating_platform:" in yaml_path.read_text(errors="ignore")
+    floating = _doc_is_floating(_load_windio_doc(yaml_path))
     pref = (
         ("semi", "spar", "umaine", "volturn", "floating", "hywind")
         if floating
@@ -507,12 +581,31 @@ def run_windio(
             skipped.append("spectra")
             spectra_png = None
 
+    # Stamp the report's completeness so a reader can tell at a glance
+    # whether it is the full analysis. A data skip (e.g. blade reduction
+    # failed) is "partial"; a floating run without the seakeeping decks
+    # is a known-reduced-fidelity "screening" preview; otherwise
+    # "complete". A data skip outranks screening (missing output is more
+    # severe than a deliberately reduced-fidelity model).
+    data_skipped = any(_SKIP_KIND.get(s, "data") == "data" for s in skipped)
+    screening = is_floating and not all(
+        [discovery.hydrodyn, discovery.moordyn, discovery.elastodyn]
+    )
+    if data_skipped:
+        report_status = "partial"
+    elif screening:
+        report_status = "screening"
+    elif skipped:
+        report_status = "partial"
+    else:
+        report_status = "complete"
+
     generate_report(
         modal, out, format=format, model=model,
         blade_params=blade_params, campbell=campbell_result,
-        source_file=yaml_path,
+        source_file=yaml_path, status=report_status,
     )
-    messages.append(f"wrote {out}")
+    messages.append(f"wrote {out} [{report_status}]")
 
     # Apply the on_skip policy: classify each accumulated skip and
     # toggle exit_code accordingly. The report is always written first
@@ -549,4 +642,5 @@ def run_windio(
         campbell_csv_path=campbell_csv,
         spectra_png_path=spectra_png,
         skipped=skipped,
+        report_status=report_status,
     )

@@ -215,6 +215,61 @@ def test_modal_result_positional_constructor_abi() -> None:
     assert r2.metadata == meta and r2.mode_labels is None
 
 
+def test_ignored_physics_round_trips_npz_and_json(
+    tmp_path: pathlib.Path,
+) -> None:
+    """``ignored_physics`` (the parsed-but-not-modelled fidelity flag)
+    round-trips through both serialisers; absent when empty."""
+    r = _make_modal_result(n_modes=2)
+    r.ignored_physics = ("distributed added mass (distr_m)",)
+
+    npz = tmp_path / "r.npz"
+    r.save(npz)
+    assert ModalResult.load(npz).ignored_physics == (
+        "distributed added mass (distr_m)",
+    )
+
+    js = tmp_path / "r.json"
+    r.to_json(js)
+    assert ModalResult.from_json(js).ignored_physics == (
+        "distributed added mass (distr_m)",
+    )
+
+    # A full-fidelity result has an empty tuple and stays empty on load.
+    clean = _make_modal_result(n_modes=2)
+    clean.save(tmp_path / "clean.npz")
+    assert ModalResult.load(tmp_path / "clean.npz").ignored_physics == ()
+
+
+def test_diagnostics_is_transient_and_excluded_from_equality(
+    tmp_path: pathlib.Path,
+) -> None:
+    """``diagnostics`` is solve telemetry: marked ``compare=False`` (so it
+    never participates in dataclass equality) and not serialised, so a
+    saved result drops it on reload."""
+    import dataclasses
+
+    from pybmodes.fem.solver import SolverDiagnostics
+
+    # The field is excluded from the generated __eq__.
+    fld = {f.name: f for f in dataclasses.fields(ModalResult)}["diagnostics"]
+    assert fld.compare is False
+
+    diag = SolverDiagnostics(
+        path="dense_symmetric", symmetric=True, n_requested=2, n_returned=2,
+        sparse_fallback=False, fallback_reason=None, max_residual=1e-12,
+        residuals=(1e-12, 2e-12), matrix_cond=1.0,
+    )
+    a = _make_modal_result(n_modes=2)
+    a.diagnostics = diag
+    a.save(tmp_path / "d.npz")
+    loaded = ModalResult.load(tmp_path / "d.npz")
+    assert loaded.diagnostics is None
+    # JSON path likewise omits it.
+    a.to_json(tmp_path / "d.json")
+    assert ModalResult.from_json(tmp_path / "d.json").diagnostics is None
+
+
 def test_modal_result_save_rejects_frequency_shape_mismatch(
     tmp_path: pathlib.Path,
 ) -> None:

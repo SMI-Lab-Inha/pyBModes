@@ -74,35 +74,18 @@ family doesn't reach inside any realistic operating envelope.
 """
 from __future__ import annotations
 
-# Public API — kept at the package top-level for back-compat with the
-# original monolith. ``from pybmodes.campbell import CampbellResult,
-# campbell_sweep, plot_campbell`` works unchanged.
+# Public API only. ``from pybmodes.campbell import CampbellResult,
+# campbell_sweep, plot_campbell`` is the supported surface.
 #
-# Underscore-private helpers are re-exported too because existing
-# tests (``test_campbell.py``, ``test_campbell_helpers.py``) import
-# them from ``pybmodes.campbell`` by name. The ``noqa: F401`` markers
-# silence ruff's "unused import" lint — these are intentional
-# re-exports, not dead imports.
-from ._classify import (
-    _label_blade_modes,  # noqa: F401
-    _label_tower_modes,  # noqa: F401
-    _label_tower_modes_with_overrides,  # noqa: F401
-    _ordinal,  # noqa: F401
-    _participation,  # noqa: F401
-)
-from ._mac import (
-    _greedy_assignment,  # noqa: F401
-    _hungarian_assignment,  # noqa: F401
-    _mac_matrix,  # noqa: F401
-    _shape_vector,  # noqa: F401
-)
-from ._models import _load_models, _model_pair  # noqa: F401
+# The internal helpers live in the private sub-modules (``._classify``,
+# ``._mac``, ``._models``, ``._sweep``) and are NOT re-exported here.
+# Code that needs one (tests, advanced callers) imports it from its
+# sub-module explicitly, e.g. ``from pybmodes.campbell._sweep import
+# _solve_tower_once`` — so the package root stays a clean, semver-frozen
+# boundary rather than a grey-market surface where ``__all__`` hides
+# names the package still re-exports.
 from ._plot import plot_campbell
-from ._sweep import (
-    _solve_blade_sweep,  # noqa: F401
-    _solve_tower_once,  # noqa: F401
-    campbell_sweep,
-)
+from ._sweep import campbell_sweep
 from .result import CampbellResult
 
 __all__ = [

@@ -100,6 +100,7 @@ def generate_report(
     blade_params: BladeElastoDynParams | None = None,
     elastodyn_compatible: bool | None = None,
     source_file: str | pathlib.Path | None = None,
+    status: str | None = None,
 ) -> pathlib.Path:
     """Render a modal-analysis report to ``output_path``.
 
@@ -107,6 +108,13 @@ def generate_report(
     metadata block. When omitted, the function falls back to
     ``result.metadata["source_file"]`` and then to
     ``model._bmi.source_file`` if those are populated.
+
+    ``status`` is an optional completeness stamp shown at the top of the
+    *Model summary* section (``"complete"`` / ``"partial"`` /
+    ``"screening"`` / ``"invalid"``). A workflow that may skip part of
+    its output (e.g. :func:`pybmodes.workflows.windio.run_windio`) passes
+    it so a reader can tell at a glance whether the report is the full
+    analysis or a reduced one. ``None`` omits the row.
 
     Returns the resolved output path so the caller can chain.
     """
@@ -144,6 +152,7 @@ def generate_report(
         tower_params=tower_params,
         blade_params=blade_params,
         elastodyn_compatible=elastodyn_compatible,
+        status=status,
     )
     path = pathlib.Path(output_path)
     if format == "md":
@@ -174,9 +183,10 @@ def _build_sections(
     tower_params: TowerElastoDynParams | None,
     blade_params: BladeElastoDynParams | None,
     elastodyn_compatible: bool | None,
+    status: str | None = None,
 ) -> list[_Section]:
     sections: list[_Section] = []
-    sections.append(_section_model_summary(result, model))
+    sections.append(_section_model_summary(result, model, status=status))
     sections.append(_section_assumptions(model, elastodyn_compatible))
     sections.append(_section_frequencies(result))
     sections.append(_section_mode_classification(result))
@@ -195,6 +205,7 @@ def _build_sections(
 
 def _section_model_summary(
     result: ModalResult, model: Tower | RotatingBlade | None,
+    *, status: str | None = None,
 ) -> _Section:
     meta = result.metadata or {}
     body: list[Any] = []
@@ -208,6 +219,10 @@ def _section_model_summary(
         beam_type = "Tower" if bmi.beam_type == 2 else "Blade"
         if bmi.source_file is not None:
             source = str(bmi.source_file)
+    if status is not None:
+        # Completeness stamp first, so a partial / screening report is
+        # flagged before any numbers are read.
+        table_rows.append(["Report status", str(status)])
     table_rows.extend([
         ["Turbine / title", title],
         ["Beam type", beam_type],
@@ -218,6 +233,13 @@ def _section_model_summary(
          or datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")],
         ["Git hash", str(meta.get("git_hash") or "—")],
     ])
+    # Surface any parsed-but-not-modelled physics so a reader knows the
+    # result is an approximation (e.g. distributed added mass parsed but
+    # not assembled). Empty for a full-fidelity solve.
+    if result.ignored_physics:
+        table_rows.append(
+            ["Ignored physics", "; ".join(result.ignored_physics)]
+        )
     body.append({"kind": "table",
                  "header": ["Field", "Value"], "rows": table_rows})
     return _Section("1. Model summary", body)

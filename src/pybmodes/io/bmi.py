@@ -33,6 +33,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from pybmodes.io.errors import BMIParseError
+
 
 @dataclass
 class TipMassProps:
@@ -335,9 +337,18 @@ class _Discretization:
 
 
 class _LineReader:
-    """Stateful line-by-line reader following .bmi file format conventions."""
+    """Stateful line-by-line reader following .bmi file format conventions.
 
-    def __init__(self, lines: list[str]):
+    Every read failure raises :class:`pybmodes.io.errors.BMIParseError`
+    carrying the source ``file``, the 1-based ``line`` it tripped on, the
+    offending line text as ``context``, and the current ``section`` label
+    in the message. :class:`BMIParseError` subclasses :class:`ValueError`,
+    so older ``except ValueError`` callers keep catching these unchanged.
+    """
+
+    def __init__(
+        self, lines: list[str], source_file: str | pathlib.Path | None = None,
+    ):
         processed = []
         for raw in lines:
             line = raw.rstrip("\r\n")
@@ -347,6 +358,43 @@ class _LineReader:
             processed.append(line)
         self._lines = processed
         self._pos = 0
+        self._source_file = str(source_file) if source_file is not None else None
+        self._section: str | None = None
+
+    def section(self, name: str) -> None:
+        """Set the current section label used to contextualise errors.
+
+        Called at the top of each parse block (general parameters, tip
+        mass, tower support, ...) so a malformed line names which block
+        of the deck it sits in.
+        """
+        self._section = name
+
+    def _fail(
+        self, message: str, *, line_index: int | None = None,
+    ) -> BMIParseError:
+        """Build a :class:`BMIParseError` for the current position.
+
+        ``line_index`` defaults to the current cursor; pass the index the
+        bad token actually lives on when the cursor has already advanced
+        past it. Returns the exception so the caller writes ``raise
+        self._fail(...)`` and static analysis sees the control flow.
+        """
+        idx = self._pos if line_index is None else line_index
+        ctx = None
+        if 0 <= idx < len(self._lines):
+            ctx = self._lines[idx].strip() or "(blank line)"
+        where = f" in the {self._section} block" if self._section else ""
+        # 1-based for humans, and never below 1. An empty file makes the
+        # EOF callers pass line_index = len(lines) - 1 = -1, which would
+        # otherwise report line 0 and break the 1-based contract
+        # (Codex P3).
+        return BMIParseError(
+            message=f"{message}{where}.",
+            file=self._source_file,
+            line=max(idx + 1, 1),
+            context=ctx,
+        )
 
     def read_com(self) -> None:
         """Advance one line verbatim, including blanks."""
@@ -354,6 +402,11 @@ class _LineReader:
 
     def read_str(self) -> str:
         """Return the stripped contents of the next line."""
+        if self._pos >= len(self._lines):
+            raise self._fail(
+                "reached the end of the file while a string value was "
+                "expected", line_index=len(self._lines) - 1,
+            )
         line = self._lines[self._pos]
         self._pos += 1
         return line.strip()
@@ -362,32 +415,35 @@ class _LineReader:
         """Return the first token from the next non-blank line."""
         self._skip_blanks()
         line = self._lines[self._pos]
+        idx = self._pos
         self._pos += 1
         tokens = line.split()
         if not tokens:
-            raise ValueError(f"Empty data line at position {self._pos}")
+            raise self._fail("expected a value but found a blank line",
+                             line_index=idx)
         return tokens[0]
 
     def read_ary(self, n: int) -> list[str]:
         """Return the first ``n`` tokens from the next non-blank line.
 
-        Raises ``ValueError`` if the line has fewer than ``n`` tokens.
-        The previous behaviour was to silently truncate to whatever
-        was present, which deferred the failure to downstream
-        ``[_parse_float(t) for t in ...]``-style broadcasts that
-        produced shape errors with no contextual path / row info.
+        Raises :class:`BMIParseError` if the line has fewer than ``n``
+        tokens. The previous behaviour was to silently truncate to
+        whatever was present, which deferred the failure to downstream
+        ``[_parse_float(t) for t in ...]``-style broadcasts that produced
+        shape errors with no contextual path / row info.
         """
         self._skip_blanks()
         line = self._lines[self._pos]
+        idx = self._pos
         self._pos += 1
         tokens = line.split()
         if len(tokens) < n:
-            raise ValueError(
-                f"Truncated array at BMI line {self._pos}: expected "
-                f"{n} tokens, got {len(tokens)}: {line.strip()!r}. "
-                f"The most common cause is a wrapped line or a "
-                f"missing element-count scalar (n_elements / n_att / "
-                f"matrix dimension) earlier in the deck."
+            raise self._fail(
+                f"expected {n} value(s) on this line but found "
+                f"{len(tokens)} (a wrapped line, or a missing "
+                f"element-count scalar such as n_elements / n_att / a "
+                f"matrix dimension earlier in the deck)",
+                line_index=idx,
             )
         return tokens[:n]
 
@@ -419,7 +475,10 @@ class _LineReader:
         while self._pos < len(self._lines) and not self._lines[self._pos].strip():
             self._pos += 1
         if self._pos >= len(self._lines):
-            raise EOFError("Unexpected end of input file")
+            raise self._fail(
+                "reached the end of the file while more data was expected",
+                line_index=len(self._lines) - 1,
+            )
 
 
 def _find_comment_start(line: str) -> int:
@@ -502,7 +561,7 @@ def read_bmi(path: str | pathlib.Path) -> BMIFile:
     """Parse a .bmi main input file and return a :class:`BMIFile`."""
     path = pathlib.Path(path)
     lines = path.read_text(encoding="latin-1").splitlines()
-    reader = _LineReader(lines)
+    reader = _LineReader(lines, source_file=path)
     return _parse(reader, source_file=path)
 
 
@@ -599,16 +658,23 @@ def _parse_discretization(r: _LineReader) -> _Discretization:
 
 
 def _parse(r: _LineReader, source_file: pathlib.Path | None = None) -> BMIFile:
+    r.section("header")
     title = _parse_header(r)
+    r.section("general parameters")
     general = _parse_general_params(r)
+    r.section("tip mass")
     tip_mass = _parse_tip_mass(r)
+    r.section("section-properties reference")
     section_props = _parse_section_props_ref(r)
+    r.section("scaling factors")
     scaling = _parse_scaling(r)
+    r.section("discretisation / element locations")
     discretization = _parse_discretization(r)
 
     tow_support = 0
     support: TensionWireSupport | PlatformSupport | None = None
     if general.beam_type == 2:
+        r.section("tower support")
         r.read_com()
         r.read_com()
         tow_support, support = _parse_tower_support(r)

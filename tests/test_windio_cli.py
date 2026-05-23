@@ -68,6 +68,45 @@ def test_windio_cli_discovery_scoping(tmp_path) -> None:
     assert d2.elastodyn.name == "turb_ElastoDyn.dat"
 
 
+def test_windio_discovery_finds_deeply_nested_ontology(tmp_path) -> None:
+    """Codex P1: an ontology nested several directories below the turbine
+    root still resolves its OpenFAST decks. A fixed shallow ancestor cap
+    regressed this into a silent screening downgrade; the project-boundary
+    walk finds OpenFAST at any depth within the repo."""
+    pytest.importorskip("yaml")
+    root = tmp_path / "DEEP-RWT"
+    (root / ".git").mkdir(parents=True)            # project boundary
+    (root / "OpenFAST").mkdir()
+    (root / "OpenFAST" / "turb_ElastoDyn.dat").write_text("x", "utf-8")
+    deep = root / "design" / "wt" / "ontology"
+    deep.mkdir(parents=True)                        # yaml 3 levels down
+    y = deep / "turb.yaml"
+    y.write_text(_TOWER_ONLY, encoding="utf-8")
+
+    d = discover_windio_inputs(y)
+    assert d.elastodyn is not None
+    assert d.elastodyn.name == "turb_ElastoDyn.dat"
+
+
+def test_windio_discovery_stops_at_project_boundary(tmp_path) -> None:
+    """The walk must not climb past the enclosing project (``.git``) into
+    a broad workspace that holds an unrelated OpenFAST clone, which would
+    turn a scratch yaml into a wrong-turbine deck-backed solve."""
+    pytest.importorskip("yaml")
+    workspace = tmp_path / "workspace"
+    (workspace / "OpenFAST").mkdir(parents=True)    # unrelated clone
+    (workspace / "OpenFAST" / "other_ElastoDyn.dat").write_text("x", "utf-8")
+    proj = workspace / "proj"
+    (proj / ".git").mkdir(parents=True)             # project boundary (no OpenFAST)
+    y = proj / "scratch" / "turb.yaml"
+    y.parent.mkdir(parents=True)
+    y.write_text(_TOWER_ONLY, encoding="utf-8")
+
+    d = discover_windio_inputs(y)
+    # Stopped at proj/.git; never reached workspace/OpenFAST.
+    assert d.elastodyn is None and d.hydrodyn is None and d.moordyn is None
+
+
 def test_windio_cli_fixed_tower(tmp_path) -> None:
     """`pybmodes windio <tower yaml>` → a cantilever-tower report."""
     pytest.importorskip("yaml")

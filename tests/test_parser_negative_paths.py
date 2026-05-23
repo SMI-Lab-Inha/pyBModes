@@ -110,15 +110,46 @@ class TestBMIParserNegativePaths:
     def test_truncated_el_loc_raises_with_context(
         self, tmp_path: pathlib.Path,
     ) -> None:
-        """``read_ary(n_elements + 1)`` raises when the el_loc line has
-        fewer tokens. Used to silently truncate, deferring the failure
-        to a downstream NumPy broadcasting error."""
-        path = self._write_bmi_with_short_el_loc(tmp_path / "short.bmi")
+        """``read_ary(n_elements + 1)`` raises a structured
+        :class:`BMIParseError` when the el_loc line has fewer tokens.
+        Used to silently truncate, deferring the failure to a downstream
+        NumPy broadcasting error. The error now carries the file, the
+        1-based line, the offending text and the section it sits in."""
         from pybmodes.io.bmi import read_bmi
+        from pybmodes.io.errors import BMIParseError
+
+        path = self._write_bmi_with_short_el_loc(tmp_path / "short.bmi")
+        # Still a ValueError subclass, so legacy ``except ValueError``
+        # keeps working.
         with pytest.raises(
-            ValueError, match="Truncated array.*expected 5 tokens, got 3",
+            ValueError, match="expected 5 value.*found 3",
         ):
             read_bmi(path)
+        # And the typed BMIParseError carries structured context.
+        with pytest.raises(BMIParseError) as exc:
+            read_bmi(path)
+        err = exc.value
+        assert err.file is not None and str(path.name) in str(err.file)
+        expected_line = (
+            path.read_text(encoding="latin-1").splitlines().index("0.0  0.25  0.5") + 1
+        )
+        assert err.line == expected_line           # the el_loc data line
+        assert err.context == "0.0  0.25  0.5"
+        assert "discretisation" in str(err)        # section context
+
+    def test_empty_bmi_reports_1_based_line(
+        self, tmp_path: pathlib.Path,
+    ) -> None:
+        """An empty .bmi must still report a 1-based line (>= 1), not the
+        line 0 a naive ``len(lines) - 1`` fallback produces (Codex P3)."""
+        from pybmodes.io.bmi import read_bmi
+        from pybmodes.io.errors import BMIParseError
+
+        path = tmp_path / "empty.bmi"
+        path.write_text("", encoding="utf-8")
+        with pytest.raises(BMIParseError) as exc:
+            read_bmi(path)
+        assert exc.value.line is not None and exc.value.line >= 1
 
     def test_bmi_sec_props_path_normalises_backslashes(
         self, tmp_path: pathlib.Path,
