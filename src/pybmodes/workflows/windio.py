@@ -212,12 +212,15 @@ def discover_windio_inputs(
     :meth:`pybmodes.models.Tower.from_windio_floating`).
 
     Auto-discovery is scoped to a bona-fide *turbine root*: the
-    directory the user passed, or the nearest ancestor (≤ 3 levels
-    up from the yaml) that owns an ``OpenFAST`` / ``openfast`` tree.
-    A bare yaml in some scratch directory yields no decks (→ the
-    labelled screening preview). Candidate ontologies are confirmed by
-    a structured YAML parse (:func:`_load_windio_doc`), not a substring
-    scan, so a non-WindIO yaml that merely mentions ``components`` is
+    directory the user passed, or the nearest ancestor that owns an
+    ``OpenFAST`` / ``openfast`` tree, searching up to the enclosing
+    project (``.git``) boundary so a deeply-nested ontology still
+    resolves its decks without the walk climbing into a broader
+    multi-project workspace. A bare yaml in some scratch directory
+    yields no decks (→ the labelled screening preview). Candidate
+    ontologies are confirmed by a structured YAML parse
+    (:func:`_load_windio_doc`), not a substring scan, so a non-WindIO
+    yaml that merely mentions ``components`` is
     never selected.
     """
     path = pathlib.Path(path)
@@ -241,14 +244,26 @@ def discover_windio_inputs(
     if path.is_dir():
         turbine_root = path
     else:
-        # Keep discovery scoped to the turbine layout itself. Climbing
-        # farther reaches broad workspace parents such as ``D:\repos``
-        # that may contain unrelated OpenFAST clones, turning a scratch
-        # yaml into a wrong-turbine deck-backed solve.
-        for anc in list(yaml_path.parents)[:3]:
+        # Find the turbine root that owns an ``OpenFAST`` / ``openfast``
+        # tree by climbing the ontology's ancestors. The stop condition
+        # is the enclosing *project* boundary (a directory containing
+        # ``.git``), NOT a fixed ancestor depth. A fixed depth cap is a
+        # blunt instrument: too deep and a scratch yaml climbs into a
+        # broad multi-project workspace (e.g. ``D:\repos``) and grabs an
+        # unrelated OpenFAST clone; too shallow and a deeply-nested
+        # ontology never reaches its own turbine root, silently
+        # downgrading an industry-grade run to screening (Codex P1). The
+        # project boundary resolves both: a deeply-nested ontology still
+        # finds ``OpenFAST`` at any depth *within* its turbine repo,
+        # while the walk stops at the repo root rather than ascending
+        # into the workspace above it. A generous numeric backstop bounds
+        # the walk for a loose yaml that sits in no project at all.
+        for anc in list(yaml_path.parents)[:8]:
             if (anc / "OpenFAST").is_dir() or (anc / "openfast").is_dir():
                 turbine_root = anc
                 break
+            if (anc / ".git").exists():
+                break        # project root reached without an OpenFAST tree
 
     if turbine_root is None:
         return WindioDiscovery(yaml=yaml_path)
