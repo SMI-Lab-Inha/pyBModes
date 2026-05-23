@@ -24,9 +24,13 @@ existing model (the new platform fields default to the previous behaviour).
   hydro/mooring reference relative to the tower axis) now carry `hydro_M` /
   `hydro_K` / `mooring_K` horizontally to the tower base as well, so a
   genuinely off-axis floater (e.g. a tower on an off-centre column) can be
-  modelled consistently. Defaults are `0.0` — every standard on-axis deck is
-  byte-identical. The `check_model` large-CM-offset warning stands down when
-  `ref_x` / `ref_y` are set (intentional off-axis modelling).
+  modelled consistently. Settable on a hand-built `PlatformSupport` and
+  round-tripped through the `.bmi` text format (an off-axis `ref_msl_xyz`
+  line, mirroring `cm_pform_xyz`); ElastoDyn decks reference the platform on
+  the tower axis (there is no `PtfmRefxt` / `PtfmRefyt` field), so the deck
+  ingestion path is unaffected. Defaults are `0.0` — every standard on-axis
+  deck is byte-identical. The `check_model` large-CM-offset warning stands
+  down when `ref_x` / `ref_y` are set (intentional off-axis modelling).
 
 - **`PlatformSupport.tower_base_z` — intuitive `draft` alias (#100).** A
   positive-up accessor for the tower-base elevation above MSL

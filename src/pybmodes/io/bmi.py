@@ -720,6 +720,8 @@ def _read_platform_common_tail(
     r: _LineReader,
 ) -> tuple[
     float,
+    float,
+    float,
     np.ndarray,
     np.ndarray,
     np.ndarray,
@@ -729,7 +731,7 @@ def _read_platform_common_tail(
     np.ndarray,
 ]:
     """Read the shared hydrodynamic/mooring/distributed-data tail of a platform block."""
-    ref_msl = _parse_float(r.read_var())
+    ref_msl, ref_x, ref_y = _read_ref_msl_line(r)
 
     r.read_com()
     hydro_M = _read_square_matrix(r, 6)
@@ -758,7 +760,8 @@ def _read_platform_common_tail(
     r.read_com()
     z_distr_k, distr_k = _read_optional_row_array_pair(r)
 
-    return ref_msl, hydro_M, hydro_K, mooring_K, z_distr_m, distr_m, z_distr_k, distr_k
+    return (ref_msl, ref_x, ref_y, hydro_M, hydro_K, mooring_K,
+            z_distr_m, distr_m, z_distr_k, distr_k)
 
 
 def _read_platform_inertia(r: _LineReader, mass_pform: float) -> np.ndarray:
@@ -808,6 +811,31 @@ def _read_cm_pform_line(r: _LineReader) -> tuple[float, float, float]:
     return cm_pform, cm_pform_x, cm_pform_y
 
 
+def _read_ref_msl_line(r: _LineReader) -> tuple[float, float, float]:
+    """Read the ``ref_msl`` line, returning ``(ref_msl, ref_x, ref_y)``.
+
+    Mirrors :func:`_read_cm_pform_line`. Legacy form
+    ``<ref_msl>  ref_msl : <comment>`` → the label stops the leading-float
+    run, so ``ref_x = ref_y = 0`` (every standard on-axis deck). Off-axis
+    form ``<ref_msl> <ref_x> <ref_y>  ref_msl : <comment>`` → all three
+    (the hydro/mooring reference horizontal offset, issue #100). The
+    offsets are an (x, y) pair: the leading numeric run must be 1 or 3.
+    """
+    nums = _leading_floats(r.read_line_tokens())
+    if len(nums) not in (1, 3):
+        raise ValueError(
+            "Malformed BMI platform block: the ref_msl line must have "
+            "exactly 1 leading number (on-axis: <ref_msl>) or 3 (off-axis: "
+            "<ref_msl> <ref_x> <ref_y>); got "
+            f"{len(nums)}: {nums!r}. The horizontal reference offsets are an "
+            "(x, y) pair — supply both or neither."
+        )
+    ref_msl = nums[0]
+    ref_x = nums[1] if len(nums) == 3 else 0.0
+    ref_y = nums[2] if len(nums) == 3 else 0.0
+    return ref_msl, ref_x, ref_y
+
+
 def _parse_platform_legacy(r: _LineReader) -> PlatformSupport:
     """Parse the legacy offshore platform block (`tow_support == 2`)."""
     draft = _parse_float(r.read_var())
@@ -817,6 +845,8 @@ def _parse_platform_legacy(r: _LineReader) -> PlatformSupport:
     i_mat = _read_platform_inertia(r, mass_pform)
     (
         ref_msl,
+        ref_x,
+        ref_y,
         hydro_M,
         hydro_K,
         mooring_K,
@@ -841,6 +871,8 @@ def _parse_platform_legacy(r: _LineReader) -> PlatformSupport:
         distr_k=distr_k,
         cm_pform_x=cm_pform_x,
         cm_pform_y=cm_pform_y,
+        ref_x=ref_x,
+        ref_y=ref_y,
     )
 
 
@@ -853,6 +885,8 @@ def _parse_platform_extended(r: _LineReader) -> PlatformSupport:
     i_mat = _read_platform_inertia(r, mass_pform)
     (
         ref_msl,
+        ref_x,
+        ref_y,
         hydro_M,
         hydro_K,
         mooring_K,
@@ -881,4 +915,6 @@ def _parse_platform_extended(r: _LineReader) -> PlatformSupport:
         wires=wires,
         cm_pform_x=cm_pform_x,
         cm_pform_y=cm_pform_y,
+        ref_x=ref_x,
+        ref_y=ref_y,
     )

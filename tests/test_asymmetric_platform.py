@@ -383,6 +383,34 @@ def test_hand_authored_asymmetric_bmi_roundtrips(tmp_path, cm_x, cm_y) -> None:
     assert back.support.cm_pform_y == pytest.approx(cm_y, abs=1e-6)
 
 
+@pytest.mark.parametrize("ref_x,ref_y", [(6.5, -3.25), (0.0, 4.0), (-7.0, 0.0)])
+def test_hand_authored_ref_offset_bmi_roundtrips(tmp_path, ref_x, ref_y) -> None:
+    """Emit → re-parse: a hand-authored .bmi preserves the hydro/mooring
+    reference horizontal offset ``ref_x`` / ``ref_y`` through the extended
+    ``ref_msl_xyz`` line (issue #100), so off-axis support is available on
+    the file-ingestion path, not only via a hand-built dataclass."""
+    from pybmodes.io.bmi import read_bmi
+
+    ps = dataclasses.replace(_platform(0.0, 0.0), ref_x=ref_x, ref_y=ref_y)
+    bmi_path = _write_floating_bmi(tmp_path, ps, "refoff")
+    back = read_bmi(bmi_path)
+    assert back.support.ref_x == pytest.approx(ref_x, abs=1e-6)
+    assert back.support.ref_y == pytest.approx(ref_y, abs=1e-6)
+
+
+def test_on_axis_ref_emits_legacy_single_value_line(tmp_path) -> None:
+    """An on-axis platform (ref_x = ref_y = 0) emits the legacy
+    single-value ref_msl line — byte-identical to every existing deck."""
+    bmi_path = _write_floating_bmi(tmp_path, _platform(0.0, 0.0), "onaxis")
+    ref_lines = [
+        ln for ln in bmi_path.read_text().splitlines()
+        if "ref_msl" in ln
+    ]
+    assert len(ref_lines) == 1
+    toks = ref_lines[0].split()
+    assert toks[1].startswith("ref_msl")          # single value, then label
+
+
 def test_hand_authored_asymmetric_bmi_changes_spectrum(tmp_path) -> None:
     """End-to-end through the public .bmi path: the parsed horizontal
     CM offset reaches the solver and shifts the rigid-body spectrum
