@@ -141,7 +141,10 @@ def _align_degenerate_rigid_pairs(
     to handle. The input is not mutated; a fresh copy is returned.
     """
     out = base.copy()
-    n = out.shape[1]
+    # Walk only pairs covered by BOTH a column and a frequency, so a
+    # caller passing fewer frequencies than columns can't index past the
+    # end of ``freqs`` (defense-in-depth for the guard in the caller).
+    n = min(out.shape[1], int(np.asarray(freqs).shape[0]))
     i = 0
     while i < n - 1:
         denom = max(abs(float(freqs[i])), abs(float(freqs[i + 1])), 1e-12)
@@ -238,12 +241,16 @@ def classify_platform_modes(
     # Resolve symmetric-platform degeneracies first: rotate surge≈sway
     # and roll≈pitch pairs onto axis-aligned directions so the labelling
     # doesn't depend on which (equally valid) rotation the eigensolver
-    # happened to return inside the degenerate eigenspace.
+    # happened to return inside the degenerate eigenspace. Only run when
+    # ``frequencies`` actually covers the rigid block — a caller passing a
+    # truncated frequency array (e.g. an externally-built mode subset)
+    # would otherwise index past its end (Codex P2); in that case skip the
+    # alignment and let the global assignment carry the labelling.
     work = base[:, :n_rigid].astype(float, copy=True)
     if frequencies is not None:
-        work = _align_degenerate_rigid_pairs(
-            work, np.asarray(frequencies, dtype=float)[:n_rigid], Mp
-        )
+        freqs = np.asarray(frequencies, dtype=float)
+        if freqs.shape[0] >= n_rigid:
+            work = _align_degenerate_rigid_pairs(work, freqs[:n_rigid], Mp)
 
     # Per-DOF modal-kinetic-energy fractions for each rigid-body
     # candidate, in platform-DOF order: score[m, k] is the fraction of

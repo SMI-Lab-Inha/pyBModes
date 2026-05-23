@@ -407,6 +407,26 @@ def _check_support_conditioning(bmi, out: list[ModelWarning]) -> None:
             ))
 
 
+def _is_floating(bmi) -> bool:
+    """True only for a genuine free-free *floating* model: a
+    ``PlatformSupport`` **and** ``hub_conn == 2``.
+
+    The ``hub_conn`` clause is load-bearing. A fixed-bottom monopile deck
+    (``hub_conn == 1``) may still carry a ``PlatformSupport`` block — the
+    bundled monopile samples emit an all-zero ``tow_support = 1`` block for
+    layout compatibility with ``CS_Monopile.bmi`` (zero hydro / mooring /
+    inertia, no soil flexibility). The floating-readiness gates below
+    (added mass, restoring, platform inertia, CM offset) must NOT fire on
+    those valid fixed-bottom models — only the free-free floating path
+    (``hub_conn == 2``), which is also where the solver actually assembles
+    the platform DOFs (issue #95 / Codex P1).
+    """
+    from pybmodes.io.bmi import PlatformSupport
+
+    return isinstance(bmi.support, PlatformSupport) and \
+        getattr(bmi, "hub_conn", None) == 2
+
+
 def _check_platform_cm_offset(bmi, out: list[ModelWarning]) -> None:
     """Flag an implausibly large horizontal platform CM offset.
 
@@ -420,9 +440,7 @@ def _check_platform_cm_offset(bmi, out: list[ModelWarning]) -> None:
     mislabels the modes (issue #95). Emitted as WARN, not ERROR — a
     genuinely large offset is physically representable, just unusual.
     """
-    from pybmodes.io.bmi import PlatformSupport
-
-    if not isinstance(bmi.support, PlatformSupport):
+    if not _is_floating(bmi):
         return
     sup = bmi.support
     cm_x = float(getattr(sup, "cm_pform_x", 0.0) or 0.0)
@@ -484,9 +502,7 @@ def _check_platform_inertia_physical(bmi, out: list[ModelWarning]) -> None:
     ``i_matrix`` (or a non-positive ``mass_pform``) is a transcription
     error that produces meaningless rigid-body modes. ERROR severity.
     """
-    from pybmodes.io.bmi import PlatformSupport
-
-    if not isinstance(bmi.support, PlatformSupport):
+    if not _is_floating(bmi):
         return
     sup = bmi.support
     i_mat = np.asarray(sup.i_matrix, dtype=float)
@@ -528,9 +544,7 @@ def _check_added_mass_present(bmi, out: list[ModelWarning]) -> None:
     assembling a PlatformSupport (issue #95). WARN severity (a zero
     added mass is occasionally a deliberate screening simplification).
     """
-    from pybmodes.io.bmi import PlatformSupport
-
-    if not isinstance(bmi.support, PlatformSupport):
+    if not _is_floating(bmi):
         return
     h_m = np.asarray(bmi.support.hydro_M, dtype=float)
     has_added_mass = bool(h_m.size and np.any(np.isfinite(h_m) & (h_m != 0.0)))
@@ -556,9 +570,7 @@ def _check_restoring_present(bmi, out: list[ModelWarning]) -> None:
     a non-physical "free body in vacuum" rather than a station-kept
     floater. WARN severity (the solve still completes, just meaningless).
     """
-    from pybmodes.io.bmi import PlatformSupport
-
-    if not isinstance(bmi.support, PlatformSupport):
+    if not _is_floating(bmi):
         return
     sup = bmi.support
     any_restoring = False
