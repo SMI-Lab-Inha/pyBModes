@@ -78,6 +78,24 @@ def test_load_windio_doc_rejects_malformed_yaml(tmp_path: pathlib.Path) -> None:
     assert _load_windio_doc(p) is None
 
 
+def test_load_windio_doc_propagates_missing_pyyaml(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Codex P2: when PyYAML is absent the ModuleNotFoundError (with its
+    install hint) must propagate, not be swallowed into a misleading
+    "no ontology found". Simulated by making _require_yaml raise."""
+    import pybmodes.io.windio as wio
+    from pybmodes.workflows.windio import _load_windio_doc
+
+    def _boom() -> object:
+        raise ModuleNotFoundError("install pybmodes[windio]")
+
+    monkeypatch.setattr(wio, "_require_yaml", _boom)
+    p = _write(tmp_path / "ok.yaml", "name: x\ncomponents: {tower: {}}\n")
+    with pytest.raises(ModuleNotFoundError, match="windio"):
+        _load_windio_doc(p)
+
+
 # ---------------------------------------------------------------------------
 # Items 2 / 5 — report completeness stamp + ignored-physics row
 # ---------------------------------------------------------------------------

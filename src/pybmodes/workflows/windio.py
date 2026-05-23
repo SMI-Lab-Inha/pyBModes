@@ -168,11 +168,17 @@ def _load_windio_doc(path: pathlib.Path) -> dict | None:
     """
     from pybmodes.io.windio import _dup_anchor_loader, _require_yaml
 
+    # Resolve PyYAML OUTSIDE the try so a missing-``[windio]``-extra
+    # ModuleNotFoundError propagates with its actionable install hint
+    # (Codex P2). Only a YAML parse error or a file-read error means
+    # "this candidate isn't a usable ontology" and maps to ``None``;
+    # swallowing the import error here would surface later as a
+    # misleading "no WindIO ontology .yaml found".
+    yaml = _require_yaml()
     try:
-        yaml = _require_yaml()
         with path.open("r", encoding="utf-8") as fh:
             doc = yaml.load(fh, Loader=_dup_anchor_loader(yaml))
-    except Exception:
+    except (OSError, yaml.YAMLError):
         return None
     if not isinstance(doc, dict):
         return None
