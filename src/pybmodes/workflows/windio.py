@@ -178,7 +178,12 @@ def _load_windio_doc(path: pathlib.Path) -> dict | None:
     try:
         with path.open("r", encoding="utf-8") as fh:
             doc = yaml.load(fh, Loader=_dup_anchor_loader(yaml))
-    except (OSError, yaml.YAMLError):
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        # A read error, a non-UTF-8 file, or unparseable YAML all mean
+        # "this candidate isn't a usable ontology" → skip it. Catching
+        # UnicodeDecodeError (a ValueError, not an OSError) keeps one bad
+        # sidecar yaml from aborting a whole directory scan (Codex P2).
+        # The missing-PyYAML error is still raised above.
         return None
     if not isinstance(doc, dict):
         return None

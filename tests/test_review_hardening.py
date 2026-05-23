@@ -78,6 +78,34 @@ def test_load_windio_doc_rejects_malformed_yaml(tmp_path: pathlib.Path) -> None:
     assert _load_windio_doc(p) is None
 
 
+def test_load_windio_doc_skips_non_utf8_file(tmp_path: pathlib.Path) -> None:
+    """A non-UTF-8 yaml maps to None rather than raising
+    UnicodeDecodeError out of the filter (which would abort a whole
+    directory scan over one bad sidecar) (Codex P2)."""
+    pytest.importorskip("yaml")
+    from pybmodes.workflows.windio import _load_windio_doc
+
+    p = tmp_path / "latin1.yaml"
+    p.write_bytes("name: caf\xe9\ncomponents: {}\n".encode("latin-1"))
+    assert _load_windio_doc(p) is None
+
+
+def test_discover_skips_bad_sidecar_and_finds_valid_ontology(
+    tmp_path: pathlib.Path,
+) -> None:
+    """One unreadable / non-UTF-8 sidecar yaml in a directory must not
+    stop discovery from selecting a valid ontology in the same tree."""
+    pytest.importorskip("yaml")
+    from pybmodes.workflows.windio import discover_windio_inputs
+
+    (tmp_path / "bad.yaml").write_bytes(
+        "components: {tower: caf\xe9}\n".encode("latin-1")
+    )
+    _write(tmp_path / "good.yaml", "name: ok\ncomponents:\n  tower: {}\n")
+    disc = discover_windio_inputs(tmp_path)
+    assert disc.yaml.name == "good.yaml"
+
+
 def test_load_windio_doc_propagates_missing_pyyaml(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
