@@ -346,27 +346,43 @@ def plot_campbell(
         right_labels.append((f"{_pretty(_nm)} ({f:.3g} Hz)", f, xmax,
                              C_PLAT))
 
+    # Where the label column sits depends on who owns the figure:
+    #
+    # * We own it → reserve a right margin and place labels *outside* the
+    #   axes (a clean column past the right spine).
+    # * Caller supplied the Axes (subplots / gridspec) → we must NOT touch
+    #   their layout, and there's no reserved margin, so outside-the-axes
+    #   text would be clipped off the canvas. Place labels just *inside*
+    #   the right edge instead, so they stay visible in embedded use
+    #   (Codex review P2 — a regression vs the old inline labels).
+    if owns_fig:
+        x_anchor = xmax * 1.02          # leader endpoint, outside the axes
+        x_text = x_anchor + 0.012 * xmax
+        ha = "left"
+    else:
+        x_anchor = xmax                 # leader endpoint, on the right spine
+        x_text = xmax - 0.012 * xmax    # text reads leftwards, inside
+        ha = "right"
+
     # De-overlap the *label* y-positions in axes-fraction space (works
     # for linear and log axes alike); the lines themselves don't move —
     # only the text is nudged, with a leader back to the true height.
     right_labels.sort(key=lambda e: e[1])
     _min_gap_fr = 0.042
     _prev_fr = -1.0
-    x_lab = xmax * 1.02
     for text, yline, xend, col in right_labels:
         fr = _to_frac(yline)
         fr = min(max(fr, _prev_fr + _min_gap_fr), 1.0)
         _prev_fr = fr
         ly = _from_frac(fr)
-        ax.plot([xend, x_lab], [yline, ly], color=col, linewidth=0.6,
-                alpha=0.55, zorder=2, clip_on=False)   # leader to margin
-        ax.text(x_lab + 0.012 * xmax, ly, text, color=col, fontsize=8.0,
-                ha="left", va="center", zorder=5, clip_on=False)
+        ax.plot([xend, x_anchor], [yline, ly], color=col, linewidth=0.6,
+                alpha=0.55, zorder=2, clip_on=False)   # leader
+        ax.text(x_text, ly, text, color=col, fontsize=8.0,
+                ha=ha, va="center", zorder=5, clip_on=False)
 
     # Reserve room in the right margin for the label column (only when
-    # this function owns the figure; a caller-supplied Axes keeps its
-    # own layout — ``savefig(bbox_inches="tight")`` will include the
-    # labels via ``clip_on=False``).
+    # this function owns the figure; a caller-supplied Axes keeps its own
+    # layout and gets the inside-the-edge placement above).
     if owns_fig:
         fig.subplots_adjust(right=0.74)
 

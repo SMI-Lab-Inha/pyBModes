@@ -61,7 +61,7 @@ existing model (the new platform fields default to the previous behaviour).
   conventions guide to the table and dropped the stale "if the URL 404s" note.
   Also added an *Updating to a new release* section to the install guide
   (`pip install --upgrade pybmodes`, version check, pinning, source-checkout
-  refresh).
+  refresh, and the conda-environment upgrade path).
 
 ## [1.12.1] — 2026-05-23
 
