@@ -52,9 +52,8 @@ existing model (the new platform fields default to the previous behaviour).
 ### Fixed
 
 - **Documentation build.** Switched the Sphinx theme from `furo` (which was
-  failing to provision on the docs builder) to the bundled default
-  (`alabaster`), dropping the `furo` docs dependency, and added a Read the Docs
-  status badge to the README.
+  failing to provision on the docs builder) to `sphinx_rtd_theme` (the Read the
+  Docs theme), and added a Read the Docs status badge to the README.
 - **README documentation links.** Repointed the documentation table and inline
   links from the (not-yet-imported, 404ing) Read the Docs URLs to the
   GitHub-rendered source under `docs/`, so they resolve today; added the new
