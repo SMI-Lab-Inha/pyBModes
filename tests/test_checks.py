@@ -415,6 +415,28 @@ class TestCheckModel:
                 if w.location in ("bmi.support.i_matrix", "bmi.support.mass_pform")]
         assert hits == []
 
+    def test_floating_gates_skip_fixed_bottom_with_platform_block(self) -> None:
+        """Codex P1: a fixed-bottom monopile (hub_conn=1) may carry an
+        all-zero PlatformSupport by layout convention (the bundled
+        monopile samples do, for CS_Monopile compatibility). The
+        floating-readiness gates key on hub_conn==2 and must NOT fire on
+        such a valid fixed-bottom deck, even though it has a
+        PlatformSupport with zero hydro / mooring / inertia."""
+        tower = self._build_cm_offset_tower(cm_x=0.0)
+        tower._bmi.hub_conn = 1                       # fixed-bottom monopile
+        z = np.zeros((6, 6))
+        tower._bmi.support = dataclasses.replace(
+            tower._bmi.support,
+            hydro_M=z.copy(), hydro_K=z.copy(), mooring_K=z.copy(),
+            i_matrix=z.copy(), mass_pform=0.0,
+        )
+        floating = [
+            w for w in check_model(tower)
+            if any(loc in w.location for loc in (
+                "hydro_M", "mooring_K", "i_matrix", "mass_pform", "cm_pform"))
+        ]
+        assert floating == [], floating
+
 
 # ---------------------------------------------------------------------------
 # Auto-run integration on Tower.run / RotatingBlade.run

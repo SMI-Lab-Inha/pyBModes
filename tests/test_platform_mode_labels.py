@@ -199,6 +199,23 @@ def test_classifier_resolves_degenerate_pair_basis() -> None:
     assert {labels[0], labels[1]} == {"surge", "sway"}
 
 
+def test_classifier_truncated_frequencies_no_crash() -> None:
+    """Codex P2: a frequencies array shorter than the rigid-body block
+    (e.g. an externally-built mode subset) must not index past its end —
+    the degeneracy alignment is skipped and the global assignment still
+    labels the modes."""
+    nselt = 4
+    n_modes = 8
+    ev = _one_dof_eigvecs(nselt, 1, n_modes)        # mode 0 = pure surge
+    active = active_dof_indices(nselt, hub_conn=2)
+    # Only two frequencies for an 8-mode / 6-rigid problem.
+    labels = classify_platform_modes(
+        ev, active, nselt, np.eye(6), frequencies=np.array([0.01, 0.02]),
+    )
+    assert labels[0] == "surge"
+    assert all(lbl is None for lbl in labels[1:])
+
+
 def test_mode_labels_roundtrip_npz_json(tmp_path) -> None:
     """mode_labels (with None entries) round-trips through both
     serialisers."""
