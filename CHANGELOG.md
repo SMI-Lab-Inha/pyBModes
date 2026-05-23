@@ -8,6 +8,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.13.0] — 2026-05-23
+
+Off-axis floating support (#100), a clearer Campbell diagram (#57), and a
+docs-build fix. Additive and backward-compatible; no numerical change to any
+existing model (the new platform fields default to the previous behaviour).
+
+### Added
+
+- **`PlatformSupport.ref_x` / `ref_y` — off-axis hydrodynamics & mooring
+  (#100).** The rigid-arm transform previously applied the horizontal arm only
+  to the structural inertia (`cm_pform_x` / `cm_pform_y`); the added-mass,
+  hydrostatic and mooring matrices were assumed referenced on the tower axis.
+  `ref_x` / `ref_y` (the `PtfmRefxt` / `PtfmRefyt` horizontal position of the
+  hydro/mooring reference relative to the tower axis) now carry `hydro_M` /
+  `hydro_K` / `mooring_K` horizontally to the tower base as well, so a
+  genuinely off-axis floater (e.g. a tower on an off-centre column) can be
+  modelled consistently. Defaults are `0.0` — every standard on-axis deck is
+  byte-identical. The `check_model` large-CM-offset warning stands down when
+  `ref_x` / `ref_y` are set (intentional off-axis modelling).
+
+- **`PlatformSupport.tower_base_z` — intuitive `draft` alias (#100).** A
+  positive-up accessor for the tower-base elevation above MSL
+  (`tower_base_z == -draft`). `draft` keeps its BModes-inherited signed
+  (negative-up) spelling for format fidelity, but reads as a naval-architecture
+  misnomer; `tower_base_z` lets you set "tower base 15 m above MSL" as `15`.
+
+### Changed
+
+- **Campbell diagram: right-margin frequency labels + per-line dashing
+  (#57).** Every structural mode's name + frequency now sits in a clean,
+  de-overlapped column down the right edge (with a thin leader from each line's
+  right end), instead of scattered inline along the curves — much easier to
+  read for a FOWT whose modes cluster. Same-family lines get distinct dashes
+  within their colour band so adjacent lines can be told apart. Family colours,
+  the four-key legend, per-rev rays and the operating-speed shading are
+  unchanged.
+
+### Fixed
+
+- **Documentation build.** Switched the Sphinx theme from `furo` (which was
+  failing to provision on the docs builder) to the bundled default
+  (`alabaster`), dropping the `furo` docs dependency, and added a Read the Docs
+  status badge to the README.
+- **README documentation links.** Repointed the documentation table and inline
+  links from the (not-yet-imported, 404ing) Read the Docs URLs to the
+  GitHub-rendered source under `docs/`, so they resolve today; added the new
+  conventions guide to the table and dropped the stale "if the URL 404s" note.
+
 ## [1.12.1] — 2026-05-23
 
 Documentation release — clarifies the reference-frame conventions that were
