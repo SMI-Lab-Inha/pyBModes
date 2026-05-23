@@ -207,7 +207,7 @@ def discover_windio_inputs(
     :meth:`pybmodes.models.Tower.from_windio_floating`).
 
     Auto-discovery is scoped to a bona-fide *turbine root*: the
-    directory the user passed, or the nearest ancestor (≤ 4 levels
+    directory the user passed, or the nearest ancestor (≤ 3 levels
     up from the yaml) that owns an ``OpenFAST`` / ``openfast`` tree.
     A bare yaml in some scratch directory yields no decks (→ the
     labelled screening preview). Candidate ontologies are confirmed by
@@ -236,7 +236,11 @@ def discover_windio_inputs(
     if path.is_dir():
         turbine_root = path
     else:
-        for anc in list(yaml_path.parents)[:4]:
+        # Keep discovery scoped to the turbine layout itself. Climbing
+        # farther reaches broad workspace parents such as ``D:\repos``
+        # that may contain unrelated OpenFAST clones, turning a scratch
+        # yaml into a wrong-turbine deck-backed solve.
+        for anc in list(yaml_path.parents)[:3]:
             if (anc / "OpenFAST").is_dir() or (anc / "openfast").is_dir():
                 turbine_root = anc
                 break
