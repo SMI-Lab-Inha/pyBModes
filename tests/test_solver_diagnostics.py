@@ -62,16 +62,36 @@ def test_general_path_flagged_for_asymmetric_stiffness() -> None:
     assert diag.symmetric is False
 
 
-def test_too_few_modes_warns_and_records_count() -> None:
-    """When the general path can recover fewer valid modes than asked
-    for, the shortfall is both warned and recorded (mode-count
-    guarantee). A 2x2 system cannot yield 5 positive real modes."""
-    k = _tridiag(2)
+def test_general_path_shortfall_warns_and_records_count() -> None:
+    """When the general (non-symmetric) path recovers fewer valid modes
+    than requested, the shortfall is both warned and recorded. An
+    asymmetric K with a negative eigenvalue yields only one positive-real
+    mode, so a request for two falls short."""
+    k = np.array([[1.0, 2.0], [0.0, -1.0]])   # asymmetric, eigvals 1 and -1
     m = np.eye(2)
     with pytest.warns(RuntimeWarning, match="recovered only"):
+        _, _, diag = solve_modes(k, m, n_modes=2, return_diagnostics=True)
+    assert diag.path == "dense_general"
+    assert diag.n_requested == 2
+    assert diag.n_returned < 2
+
+
+def test_symmetric_truncation_does_not_warn() -> None:
+    """Codex P2: asking for more modes than a symmetric system has DOFs
+    is benign — the dense symmetric path truncates to min(n_modes, ngd)
+    and must NOT emit the 'defective eigenproblem' warning (which would
+    mislead and would fail warnings-as-errors callers). The shortfall is
+    still recorded in the diagnostics."""
+    import warnings as _w
+
+    k = _tridiag(2)
+    m = np.eye(2)
+    with _w.catch_warnings():
+        _w.simplefilter("error", RuntimeWarning)   # any RuntimeWarning fails
         _, _, diag = solve_modes(k, m, n_modes=5, return_diagnostics=True)
+    assert diag.path == "dense_symmetric"
     assert diag.n_requested == 5
-    assert diag.n_returned <= 2
+    assert diag.n_returned == 2                     # truncated, recorded
 
 
 _LAND_TOWER = (

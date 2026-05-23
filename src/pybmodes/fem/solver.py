@@ -227,14 +227,26 @@ def solve_modes(
     # positive eigenvalues, so it can return fewer modes than requested.
     # Surface that rather than letting it pass silently (a downstream
     # broadcast would otherwise fail with an opaque shape error).
+    #
+    # Gate the warning to the general path only (Codex P2). The dense
+    # symmetric path also returns fewer than ``n_modes`` when the request
+    # simply exceeds the available DOFs (it truncates to
+    # ``min(n_modes, ngd)``), which is a benign "asked for more modes than
+    # the system has" case, not a defective eigenproblem — warning there
+    # would mislead, and would fail callers that treat warnings as errors.
     n_returned = int(eigvecs.shape[1])
-    if n_modes is not None and n_returned < n_modes:
+    if (
+        path == "dense_general"
+        and n_modes is not None
+        and n_returned < n_modes
+    ):
         warnings.warn(
             f"solve_modes recovered only {n_returned} of the requested "
-            f"{n_modes} modes via the {path} path. The eigenproblem is "
-            f"likely near-degenerate or defective (a non-symmetric "
-            f"PlatformSupport block can do this); the missing modes had "
-            f"complex or non-positive eigenvalues and were filtered out.",
+            f"{n_modes} modes via the general (non-symmetric) eig path. "
+            f"The eigenproblem is likely near-degenerate or defective (a "
+            f"non-symmetric PlatformSupport block can do this); the "
+            f"missing modes had complex or non-positive eigenvalues and "
+            f"were filtered out.",
             RuntimeWarning,
             stacklevel=2,
         )
