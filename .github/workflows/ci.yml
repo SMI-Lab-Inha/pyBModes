@@ -36,9 +36,17 @@ jobs:
         # provided via a custom workflow run) still fails the build,
         # unlike the old ``continue-on-error: true`` which silently
         # swallowed real failures.
+        #
+        # ``--no-cov`` disables the coverage gate for this step: the
+        # integration marker collects only a subset (and nothing at all
+        # on a runner without the upstream data), whose coverage is far
+        # below the ``fail_under`` floor. The comprehensive coverage gate
+        # belongs to the default step above; gating this subset would
+        # turn the "no data present" case into a spurious exit 1 instead
+        # of the tolerated exit 5.
         run: |
           set +e
-          pytest --tb=short -m integration
+          pytest --tb=short -m integration --no-cov
           rc=$?
           set -e
           if [ "$rc" -eq 0 ] || [ "$rc" -eq 5 ]; then exit 0; fi

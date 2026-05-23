@@ -127,7 +127,10 @@ testpaths = ["tests"]
 # core solver / parser / workflow path fails the run, without being so
 # tight that an integration-only addition (those paths only run under
 # the ``integration`` marker) trips it. Raise the floor as coverage
-# climbs; never lower it without justification.
+# climbs; never lower it without justification. The floor gates the
+# default (and full) run; a deliberate *subset* run such as
+# ``pytest -m integration`` on its own covers little, so pass
+# ``--no-cov`` for those (CI does this on its integration step).
 addopts = """\
     -v \
     -m 'not integration' \
