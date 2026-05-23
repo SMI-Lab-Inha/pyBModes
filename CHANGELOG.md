@@ -65,7 +65,13 @@ pre-solve checks now raise by default), everything else additive.
   ``"floating_platform:"``. A yaml that merely mentioned those words was
   wrongly accepted and a valid ontology whose key sat past the scanned
   window was missed. It now parses each candidate as YAML and checks the
-  structure (a ``components`` mapping, a ``floating_platform`` key).
+  structure (a ``components`` mapping, a ``floating_platform`` key). The
+  parse keeps the missing-PyYAML install hint instead of swallowing it,
+  skips a non-UTF-8 sidecar yaml rather than aborting a directory scan
+  over it, and scopes companion-deck discovery to the enclosing project
+  (``.git``) boundary so a deeply-nested ontology still resolves its
+  industry-grade decks without the walk climbing into a broader
+  multi-project workspace.
 - **BMI parser errors are now a first-class diagnostic.** The
   line-oriented ``.bmi`` reader raised bare ``ValueError`` / ``IndexError``
   / ``EOFError`` with no file or line context on a truncated array, an
@@ -87,6 +93,12 @@ pre-solve checks now raise by default), everything else additive.
   package root. The supported surface is ``CampbellResult`` /
   ``campbell_sweep`` / ``plot_campbell``; internal helpers are imported
   from their sub-modules.
+
+### Docs
+
+- The README documentation table and inline references now link to the
+  rendered Read the Docs pages instead of the raw ``docs/*.rst`` source
+  files.
 
 ## [1.13.1] — 2026-05-23
 
