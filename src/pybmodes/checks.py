@@ -74,6 +74,7 @@ for a floating system — it is not, the way it is for a land tower
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Union
 
@@ -82,12 +83,46 @@ import numpy as np
 from pybmodes.options import DEFAULT_CHECK_OPTIONS as _CHECK_OPTIONS
 
 if TYPE_CHECKING:
+    from pybmodes.io.bmi import BMIFile, PlatformSupport
     from pybmodes.io.sec_props import SectionProperties
     from pybmodes.models.blade import RotatingBlade
     from pybmodes.models.tower import Tower
 
 
 Severity = Literal["INFO", "WARN", "ERROR"]
+
+# How :meth:`Tower.run` / :meth:`RotatingBlade.run` treat ERROR-severity
+# findings from the auto-run pre-solve checks. ``"raise"`` (the default,
+# 1.14.0) fails closed on non-physical input; ``"warn"`` restores the
+# pre-1.14.0 behaviour of routing every finding through ``UserWarning``
+# and continuing into the solve.
+OnError = Literal["raise", "warn"]
+
+
+class ModelValidationError(ValueError):
+    """Raised by ``.run()`` when the pre-solve checks find ERROR-severity,
+    non-physical input and ``on_error="raise"`` (the default).
+
+    Inherits :class:`ValueError` so existing ``except ValueError`` callers
+    keep catching it. The offending findings are on :attr:`findings`.
+
+    Attributes
+    ----------
+    findings : list of :class:`ModelWarning`
+        The ERROR-severity findings that triggered the fail-closed path.
+        WARN / INFO findings are not collected here (those never raise).
+    """
+
+    def __init__(self, findings: list[ModelWarning]):
+        self.findings = list(findings)
+        body = "; ".join(str(f) for f in self.findings)
+        super().__init__(
+            f"check_model found {len(self.findings)} ERROR-severity "
+            f"finding(s) on non-physical input. Fix the model, or pass "
+            f"on_error='warn' to downgrade these to warnings, or "
+            f"check_model=False to skip the pre-solve checks entirely. "
+            f"Findings: {body}"
+        )
 
 
 @dataclass(frozen=True)
@@ -322,7 +357,7 @@ def _check_ei_ratio(sp: SectionProperties, out: list[ModelWarning]) -> None:
 
 
 def _check_rna_vs_tower_mass(
-    bmi, sp: SectionProperties, out: list[ModelWarning]
+    bmi: BMIFile, sp: SectionProperties, out: list[ModelWarning]
 ) -> None:
     if bmi.beam_type != 2:
         return
@@ -349,7 +384,7 @@ def _check_rna_vs_tower_mass(
         ))
 
 
-def _check_support_conditioning(bmi, out: list[ModelWarning]) -> None:
+def _check_support_conditioning(bmi: BMIFile, out: list[ModelWarning]) -> None:
     from pybmodes.io.bmi import PlatformSupport
 
     if not isinstance(bmi.support, PlatformSupport):
@@ -407,9 +442,10 @@ def _check_support_conditioning(bmi, out: list[ModelWarning]) -> None:
             ))
 
 
-def _is_floating(bmi) -> bool:
-    """True only for a genuine free-free *floating* model: a
-    ``PlatformSupport`` **and** ``hub_conn == 2``.
+def _platform_support(bmi: BMIFile) -> PlatformSupport | None:
+    """Return the :class:`PlatformSupport` for a genuine free-free
+    *floating* model (a ``PlatformSupport`` **and** ``hub_conn == 2``),
+    or ``None`` otherwise.
 
     The ``hub_conn`` clause is load-bearing. A fixed-bottom monopile deck
     (``hub_conn == 1``) may still carry a ``PlatformSupport`` block — the
@@ -420,14 +456,20 @@ def _is_floating(bmi) -> bool:
     those valid fixed-bottom models — only the free-free floating path
     (``hub_conn == 2``), which is also where the solver actually assembles
     the platform DOFs (issue #95 / Codex P1).
+
+    Returning the narrowed support (rather than a bool) lets the callers
+    use it directly without a second ``isinstance`` and keeps the strict
+    type-checker happy across the call boundary.
     """
     from pybmodes.io.bmi import PlatformSupport
 
-    return isinstance(bmi.support, PlatformSupport) and \
-        getattr(bmi, "hub_conn", None) == 2
+    sup = bmi.support
+    if isinstance(sup, PlatformSupport) and getattr(bmi, "hub_conn", None) == 2:
+        return sup
+    return None
 
 
-def _check_platform_cm_offset(bmi, out: list[ModelWarning]) -> None:
+def _check_platform_cm_offset(bmi: BMIFile, out: list[ModelWarning]) -> None:
     """Flag an implausibly large horizontal platform CM offset.
 
     ``cm_pform_x`` / ``cm_pform_y`` are the platform CM offset *from the
@@ -445,9 +487,9 @@ def _check_platform_cm_offset(bmi, out: list[ModelWarning]) -> None:
     modelling an off-axis floater (issue #100), in which case a large
     ``cm_pform_x`` / ``cm_pform_y`` is consistent rather than a leak.
     """
-    if not _is_floating(bmi):
+    sup = _platform_support(bmi)
+    if sup is None:
         return
-    sup = bmi.support
     # Intentional off-axis modelling: the caller has referenced the
     # hydro/mooring matrices off the tower axis too, so a large CM offset
     # is expected, not a coordinate-leak symptom.
@@ -504,7 +546,7 @@ _FLOATING_FIX_HINT = (
 )
 
 
-def _check_platform_inertia_physical(bmi, out: list[ModelWarning]) -> None:
+def _check_platform_inertia_physical(bmi: BMIFile, out: list[ModelWarning]) -> None:
     """Flag a non-physical platform inertia (zero / negative mass or
     diagonal moment of inertia).
 
@@ -513,9 +555,9 @@ def _check_platform_inertia_physical(bmi, out: list[ModelWarning]) -> None:
     ``i_matrix`` (or a non-positive ``mass_pform``) is a transcription
     error that produces meaningless rigid-body modes. ERROR severity.
     """
-    if not _is_floating(bmi):
+    sup = _platform_support(bmi)
+    if sup is None:
         return
-    sup = bmi.support
     i_mat = np.asarray(sup.i_matrix, dtype=float)
     mass = float(getattr(sup, "mass_pform", 0.0) or 0.0)
     if mass <= 0.0 and i_mat.size and i_mat.ndim == 2 \
@@ -544,7 +586,7 @@ def _check_platform_inertia_physical(bmi, out: list[ModelWarning]) -> None:
             ))
 
 
-def _check_added_mass_present(bmi, out: list[ModelWarning]) -> None:
+def _check_added_mass_present(bmi: BMIFile, out: list[ModelWarning]) -> None:
     """Warn when a floating model carries no hydrodynamic added mass.
 
     ``hydro_M`` (the infinite-frequency added-mass matrix ``A_inf``) is
@@ -555,9 +597,10 @@ def _check_added_mass_present(bmi, out: list[ModelWarning]) -> None:
     assembling a PlatformSupport (issue #95). WARN severity (a zero
     added mass is occasionally a deliberate screening simplification).
     """
-    if not _is_floating(bmi):
+    sup = _platform_support(bmi)
+    if sup is None:
         return
-    h_m = np.asarray(bmi.support.hydro_M, dtype=float)
+    h_m = np.asarray(sup.hydro_M, dtype=float)
     has_added_mass = bool(h_m.size and np.any(np.isfinite(h_m) & (h_m != 0.0)))
     if not has_added_mass:
         out.append(ModelWarning(
@@ -571,7 +614,7 @@ def _check_added_mass_present(bmi, out: list[ModelWarning]) -> None:
         ))
 
 
-def _check_restoring_present(bmi, out: list[ModelWarning]) -> None:
+def _check_restoring_present(bmi: BMIFile, out: list[ModelWarning]) -> None:
     """Warn when a floating model has no restoring at all.
 
     A floating platform's rigid-body modes are set by hydrostatic
@@ -581,9 +624,9 @@ def _check_restoring_present(bmi, out: list[ModelWarning]) -> None:
     a non-physical "free body in vacuum" rather than a station-kept
     floater. WARN severity (the solve still completes, just meaningless).
     """
-    if not _is_floating(bmi):
+    sup = _platform_support(bmi)
+    if sup is None:
         return
-    sup = bmi.support
     any_restoring = False
     for mat in (sup.hydro_K, sup.mooring_K):
         arr = np.asarray(mat, dtype=float)
@@ -604,7 +647,7 @@ def _check_restoring_present(bmi, out: list[ModelWarning]) -> None:
 
 
 def _check_n_modes_vs_dof(
-    bmi, n_modes: int, out: list[ModelWarning]
+    bmi: BMIFile, n_modes: int, out: list[ModelWarning]
 ) -> None:
     # Use the FEM's *exact* post-constraint solvable DOF count rather
     # than a hand-rolled per-node estimate. The element carries 9 DOFs
@@ -627,7 +670,7 @@ def _check_n_modes_vs_dof(
         ))
 
 
-def _check_polyfit_conditioning(bmi, out: list[ModelWarning]) -> None:
+def _check_polyfit_conditioning(bmi: BMIFile, out: list[ModelWarning]) -> None:
     el_loc = np.asarray(bmi.el_loc, dtype=float)
     if el_loc.size < 6:
         return  # not enough rows to even fit a 5-coefficient polynomial
@@ -661,3 +704,49 @@ def _check_polyfit_conditioning(bmi, out: list[ModelWarning]) -> None:
             f"larger coefficient shifts than the mode shapes warrant.",
             "bmi.el_loc",
         ))
+
+
+# ---------------------------------------------------------------------------
+# Auto-run routing for ``.run()``
+# ---------------------------------------------------------------------------
+
+def apply_findings(
+    model: _Model,
+    *,
+    n_modes: int | None,
+    on_error: OnError = "raise",
+    stacklevel: int = 2,
+) -> None:
+    """Run :func:`check_model` and route the findings for a ``.run()`` call.
+
+    Shared by :meth:`Tower.run` and :meth:`RotatingBlade.run`. INFO
+    findings are dropped (contextual, not actionable on the solve path).
+    WARN findings always go through :class:`UserWarning`. ERROR findings
+    are non-physical input, so they **fail closed** by default
+    (``on_error="raise"`` raises :class:`ModelValidationError`); pass
+    ``on_error="warn"`` to downgrade them to warnings and continue, the
+    pre-1.14.0 behaviour.
+
+    Parameters
+    ----------
+    model : the ``Tower`` / ``RotatingBlade`` being solved.
+    n_modes : forwarded to :func:`check_model` for the DOF-count gate.
+    on_error : ``"raise"`` (default, fail closed on ERROR) or ``"warn"``.
+    stacklevel : forwarded to :func:`warnings.warn` so the warning points
+        at the user's ``.run()`` call site.
+    """
+    if on_error not in ("raise", "warn"):
+        raise ValueError(
+            f"on_error must be 'raise' or 'warn'; got {on_error!r}"
+        )
+    findings = check_model(model, n_modes=n_modes)
+    errors = [f for f in findings if f.severity == "ERROR"]
+    warns = [f for f in findings if f.severity == "WARN"]
+    if errors and on_error == "raise":
+        # Fail closed before the solver sees non-physical input. The
+        # WARN findings ride along in the message context via the
+        # ERROR list only; they are not separately emitted here because
+        # the raise short-circuits the solve anyway.
+        raise ModelValidationError(errors)
+    for f in (*warns, *errors):
+        warnings.warn(str(f), UserWarning, stacklevel=stacklevel + 1)

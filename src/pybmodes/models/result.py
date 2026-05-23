@@ -20,11 +20,14 @@ from __future__ import annotations
 import json
 import pathlib
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from pybmodes.fem.normalize import NodeModeShape
+
+if TYPE_CHECKING:
+    from pybmodes.fem.solver import SolverDiagnostics
 
 
 @dataclass
@@ -64,23 +67,38 @@ class ModalResult:
         the pre-1.3.0 positional constructor ABI is preserved (see the
         field-order note below); included in the saved archive only
         when set, like ``participation`` / ``fit_residuals``.
+    ignored_physics : tuple of short labels naming any parsed-but-not-
+        modelled physics the solve silently dropped, e.g.
+        ``"distributed added mass (distr_m)"``. Empty when the model was
+        solved at full fidelity. Lets a downstream consumer of a saved
+        result see that it is an approximation rather than guess. Added
+        1.14.0; persisted when non-empty.
+    diagnostics : optional :class:`~pybmodes.fem.solver.SolverDiagnostics`
+        for the solve that produced this result (path taken, sparse-to-
+        dense fallback, mode-count guarantee, per-mode residuals,
+        mass-matrix conditioning). Attached by :func:`run_fem`; **not**
+        serialised (it describes the live solve run, not the persistent
+        result data) and excluded from equality. Added 1.14.0.
     """
 
     # NOTE: field order is the positional constructor ABI for this
-    # semver-frozen 1.x public class. ``mode_labels`` (added 1.3.0)
-    # MUST stay LAST — appended after ``metadata`` — so the historical
+    # semver-frozen 1.x public class. New optional fields are appended
+    # at the END (after ``metadata`` / ``mode_labels``) so the historical
     # positional signature
     # ``ModalResult(frequencies, shapes, participation, fit_residuals,
-    # metadata)`` is preserved. Inserting it before ``metadata`` would
-    # silently bind a positional metadata dict to ``mode_labels`` for
+    # metadata)`` is preserved. Inserting before ``metadata`` would
+    # silently bind a positional metadata dict to the wrong field for
     # existing callers (a backward-compat break in a minor release).
-    # Any future optional field goes at the end too.
     frequencies: np.ndarray
     shapes: list[NodeModeShape]
     participation: np.ndarray | None = None
     fit_residuals: dict[str, float] | None = None
     metadata: dict[str, Any] | None = field(default=None)
     mode_labels: list[str | None] | None = None
+    ignored_physics: tuple[str, ...] = ()
+    # Transient solve telemetry — excluded from equality and from both
+    # serialisers (it is about the run, not the persisted result).
+    diagnostics: SolverDiagnostics | None = field(default=None, compare=False)
 
     # ------------------------------------------------------------------
     # Shared integrity check
@@ -252,6 +270,12 @@ class ModalResult:
                 ["" if x is None else str(x) for x in self.mode_labels],
                 dtype=np.str_,
             )
+        if self.ignored_physics:
+            # Fixed-width Unicode array (pickle-free). Persisted only when
+            # non-empty so a full-fidelity result's archive is unchanged.
+            kwargs["ignored_physics"] = np.array(
+                [str(x) for x in self.ignored_physics], dtype=np.str_,
+            )
         # Length consistency was verified by ``_validate_lengths()`` at
         # the top of this method (shared with ``to_json``).
         # The numpy stub for savez_compressed mis-types **kwargs as a
@@ -303,6 +327,11 @@ class ModalResult:
                     None if not v else str(v)
                     for v in npz["mode_labels"].tolist()
                 ]
+            ignored_physics: tuple[str, ...] = ()
+            if "ignored_physics" in npz.files:
+                ignored_physics = tuple(
+                    str(v) for v in npz["ignored_physics"].tolist()
+                )
 
         # Validate on ingest: a corrupt / hand-edited archive with
         # ragged per-mode arrays must fail with a clear message, not
@@ -336,6 +365,7 @@ class ModalResult:
             fit_residuals=fit_residuals,
             mode_labels=mode_labels,
             metadata=metadata,
+            ignored_physics=ignored_physics,
         )
         # Validate on ingest, not only on export: a corrupt / hand-
         # edited archive must fail loudly at load(), not silently
@@ -394,6 +424,7 @@ class ModalResult:
                 [None if x is None else str(x) for x in self.mode_labels]
                 if self.mode_labels is not None else None
             ),
+            "ignored_physics": list(self.ignored_physics),
         }
         # No ``default=str``: every value above is constructed as a
         # JSON-native type (float / int / str / list / dict / None) and
@@ -461,6 +492,7 @@ class ModalResult:
             fit_residuals=fit_residuals,
             mode_labels=mode_labels,
             metadata=payload.get("metadata"),
+            ignored_physics=tuple(payload.get("ignored_physics", ())),
         )
         inst._validate_lengths()       # validate on ingest, not only export
         return inst

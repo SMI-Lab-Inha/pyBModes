@@ -28,6 +28,7 @@ from pybmodes.models._pipeline import run_fem
 from pybmodes.models.result import ModalResult
 
 if TYPE_CHECKING:
+    from pybmodes.checks import OnError
     from pybmodes.elastodyn.validate import ValidationResult
 
 _log = logging.getLogger(__name__)
@@ -246,7 +247,8 @@ class RotatingBlade:
         return obj
 
     def run(
-        self, n_modes: int = 20, *, check_model: bool = True
+        self, n_modes: int = 20, *, check_model: bool = True,
+        on_error: OnError = "raise",
     ) -> ModalResult:
         """Solve the eigenvalue problem and return frequencies + mode shapes.
 
@@ -254,18 +256,24 @@ class RotatingBlade:
         ----------
         n_modes : number of modes to extract (must be >= 1; default 20).
         check_model : run :func:`pybmodes.checks.check_model` before the
-            solve (default ``True``). WARN and ERROR findings are
-            emitted as ``UserWarning``; INFO findings are silent (call
+            solve (default ``True``). INFO findings are silent (call
             ``pybmodes.checks.check_model(model)`` explicitly to see
             those). Pass ``check_model=False`` to skip the pre-solve
             checks for scripted callers that have already validated
             their inputs.
+        on_error : how ERROR-severity findings are handled when
+            ``check_model`` runs (default ``"raise"``, 1.14.0). ERROR
+            findings flag non-physical input, so the solve **fails
+            closed** by raising
+            :class:`pybmodes.checks.ModelValidationError` rather than
+            feeding the eigensolver garbage. Pass ``on_error="warn"`` to
+            downgrade ERROR findings to ``UserWarning`` and continue, the
+            pre-1.14.0 behaviour. WARN findings always emit as
+            ``UserWarning`` regardless.
         """
         if not isinstance(n_modes, int) or n_modes < 1:
             raise ValueError(f"n_modes must be a positive integer; got {n_modes!r}")
         if check_model:
-            from pybmodes.checks import check_model as _check_model
-            for w in _check_model(self, n_modes=n_modes):
-                if w.severity != "INFO":
-                    warnings.warn(str(w), UserWarning, stacklevel=2)
+            from pybmodes.checks import apply_findings
+            apply_findings(self, n_modes=n_modes, on_error=on_error)
         return run_fem(self._bmi, n_modes=n_modes, sp=self._sp)

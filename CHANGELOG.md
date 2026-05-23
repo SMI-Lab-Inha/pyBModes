@@ -8,6 +8,86 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.14.0] — 2026-05-23
+
+An engineering-hardening pass that makes the library fail closed on
+non-physical input, surface what it could not model, and report the
+numerical health of every solve. One behaviour change (ERROR-severity
+pre-solve checks now raise by default), everything else additive.
+
+### Changed
+
+- **Pre-solve ERROR findings now fail closed.** ``Tower.run`` and
+  ``RotatingBlade.run`` previously routed every ``check_model`` finding,
+  including ERROR-severity ones (NaN section properties, non-positive
+  mass, a malformed support matrix), through ``UserWarning`` and then
+  fed the eigensolver the non-physical input anyway. They now raise
+  ``pybmodes.checks.ModelValidationError`` (a ``ValueError`` subclass)
+  on any ERROR finding. The new ``on_error`` keyword controls this.
+  ``on_error="raise"`` is the default. Pass ``on_error="warn"`` to
+  restore the pre-1.14.0 warn-and-continue behaviour, or
+  ``check_model=False`` to skip the checks entirely. WARN findings still
+  emit as ``UserWarning`` unchanged. This only affects models that were
+  already producing meaningless output, so it is a safety hardening
+  rather than a feature removal.
+
+### Added
+
+- **``ModalResult.diagnostics`` (``SolverDiagnostics``).** Every solve
+  now carries a numerical-health record. It names the path taken
+  (``dense_symmetric`` / ``dense_general`` / ``sparse_shift_invert``),
+  whether the sparse path silently fell back to dense (and why), the
+  mode-count guarantee (requested vs returned), the per-mode
+  backward-error residuals ``||K x - λ M x|| / ||K x||``, and a
+  mass-matrix conditioning estimate. The general path also emits a
+  ``RuntimeWarning`` when it recovers fewer valid modes than requested
+  rather than letting a downstream broadcast fail opaquely. Telemetry
+  about the run, so it is excluded from equality and not serialised.
+- **``ModalResult.ignored_physics``.** A tuple naming any
+  parsed-but-not-modelled physics the solve dropped, so a result is
+  honest about its fidelity rather than silently approximate.
+  Distributed hydrodynamic added mass (``distr_m``) is read from the BMI
+  but not yet assembled into the mass matrix, so a model carrying it now
+  reports ``"distributed added mass (distr_m)"`` here (and the bundled
+  report shows it). Persisted when non-empty.
+- **Report completeness stamp.** ``generate_report`` accepts a
+  ``status`` argument rendered at the top of the Model summary section,
+  and ``run_windio`` sets it to ``"complete"``, ``"partial"`` (a result
+  the workflow normally produces was skipped) or ``"screening"`` (a
+  floating run without the seakeeping decks). ``WindioResult`` carries
+  the same value as ``report_status``.
+
+### Fixed
+
+- **WindIO input discovery is now a structured parse, not a text scan.**
+  ``discover_windio_inputs`` chose its ontology yaml and detected a
+  floating platform by searching the file text for ``"components:"`` and
+  ``"floating_platform:"``. A yaml that merely mentioned those words was
+  wrongly accepted and a valid ontology whose key sat past the scanned
+  window was missed. It now parses each candidate as YAML and checks the
+  structure (a ``components`` mapping, a ``floating_platform`` key).
+- **BMI parser errors are now a first-class diagnostic.** The
+  line-oriented ``.bmi`` reader raised bare ``ValueError`` / ``IndexError``
+  / ``EOFError`` with no file or line context on a truncated array, an
+  empty value line or an early end of file. It now raises
+  ``pybmodes.io.errors.BMIParseError`` carrying the file, the 1-based
+  line, the offending line text and the section it sits in.
+  ``BMIParseError`` subclasses ``ValueError`` so existing
+  ``except ValueError`` callers are unaffected.
+
+### Internal
+
+- The static-typing ratchet gained ``pybmodes.checks``,
+  ``pybmodes.coords``, ``pybmodes.io.errors`` and
+  ``pybmodes.workflows._base`` (verified clean under the strict mypy
+  flags).
+- An enforced coverage floor (``fail_under = 85``) now gates the test
+  run, replacing the previous informational-only coverage report.
+- ``pybmodes.campbell`` no longer re-exports its private helpers at the
+  package root. The supported surface is ``CampbellResult`` /
+  ``campbell_sweep`` / ``plot_campbell``; internal helpers are imported
+  from their sub-modules.
+
 ## [1.13.1] — 2026-05-23
 
 A Campbell-diagram labelling fix for floating turbines, fuller bending-mode

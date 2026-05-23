@@ -442,7 +442,7 @@ class TestStateRestoration:
         """Build the model the same way ``campbell_sweep`` does, capture
         the original ``rot_rpm``, run the sweep, and assert the BMI's
         ``rot_rpm`` matches the original to bit-precision."""
-        from pybmodes.campbell import _load_models
+        from pybmodes.campbell._models import _load_models
 
         blade, _ = _load_models(NREL5MW_DECK, None)
         assert blade is not None, "NREL 5MW deck must yield a blade model"
@@ -458,7 +458,7 @@ class TestStateRestoration:
         # final state we need to run the sweep on a model we hold the
         # reference to directly. Re-run the inner sweep helper on the
         # blade we already have.
-        from pybmodes.campbell import _solve_blade_sweep
+        from pybmodes.campbell._sweep import _solve_blade_sweep
 
         _solve_blade_sweep(
             blade, np.array([0.0, 6.0, 12.1]), n_modes=4, track_by_mac=True,
@@ -472,7 +472,8 @@ class TestStateRestoration:
         """Even when the inner solve raises, the try/finally must still
         restore ``bbmi.rot_rpm``. Trigger an exception by passing an
         invalid n_modes count and verify the BMI is left clean."""
-        from pybmodes.campbell import _load_models, _solve_blade_sweep
+        from pybmodes.campbell._models import _load_models
+        from pybmodes.campbell._sweep import _solve_blade_sweep
 
         blade, _ = _load_models(NREL5MW_DECK, None)
         assert blade is not None
@@ -517,7 +518,6 @@ def test_campbell_tower_too_few_modes_raises_diagnostic(
     than letting ``np.broadcast_to`` fail with a cryptic shape error.
     Mirrors the existing defensive guard on the blade path.
     """
-    from pybmodes import campbell as cb
     from pybmodes.campbell import _sweep as cb_sweep
 
     requested = 4
@@ -531,9 +531,7 @@ def test_campbell_tower_too_few_modes_raises_diagnostic(
         )
 
     # Patch ``run_fem`` at its actual lookup site inside the sweep
-    # sub-module (post-Phase-3-C1 split). The ``cb`` alias is kept so
-    # the test reads as "monkeypatch the symbol the campbell sub-
-    # package uses".
+    # sub-module (post-Phase-3-C1 split).
     monkeypatch.setattr(cb_sweep, "run_fem", fake_run_fem)
 
     # _solve_tower_once takes (tower, n_modes, n_steps) — pass a
@@ -548,7 +546,7 @@ def test_campbell_tower_too_few_modes_raises_diagnostic(
         support: object | None = None
 
     with pytest.raises(RuntimeError, match="too few|only \\d+ of"):
-        cb._solve_tower_once((_StubBMI(), None), requested, n_steps=5)
+        cb_sweep._solve_tower_once((_StubBMI(), None), requested, n_steps=5)
 
 
 # ---------------------------------------------------------------------------
