@@ -74,6 +74,7 @@ The user guide takes it from there:
    quickstart
    theory
    data_sources
+   conventions
    units
    limitations
    validation

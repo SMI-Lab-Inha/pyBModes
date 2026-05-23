@@ -8,6 +8,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Coordinate-systems / conventions documentation.** A new
+  `docs/conventions.rst` guide precisely defines — for *every* model type
+  (land, monopile, floating, blade) — the single origin (tower base), axis
+  directions, the 6-DOF order, the boundary conditions (`hub_conn`), the
+  tower-top/RNA frame, and (for floaters) the MSL vertical datum with the
+  exact sign of `draft` / `cm_pform` / `ref_msl`, the horizontal
+  `cm_pform_x`/`cm_pform_y` arm (inertia-only) and the static-equilibrium
+  assumption — with a worked OC3 Hywind example and a common-pitfalls list.
+  The `PlatformSupport`, `TipMassProps` and `BMIFile` dataclasses gained full
+  field-level docstrings carrying the same conventions. Notably documents that
+  the `draft` field is the **signed tower-base elevation relative to MSL
+  (negative = above)** — a name inherited from the BModes `.bmi` format, *not*
+  the naval-architecture draft.
+
 ## [1.12.0] — 2026-05-23
 
 Domain-aware input validation (#102): construction-layer guards that catch the

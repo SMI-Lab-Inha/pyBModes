@@ -36,7 +36,28 @@ import numpy as np
 
 @dataclass
 class TipMassProps:
-    """Mass and inertia of the blade tip or tower-top concentrated mass."""
+    """Mass and inertia of the blade tip or tower-top concentrated mass.
+
+    Lumps the rotor-nacelle assembly (RNA) at the tower top, or a tip
+    mass at the blade tip. Offsets are in the span-end **section frame**:
+    ``z`` along the span (positive toward / beyond the top), the
+    transverse axis aligned with the lateral/sway direction. See
+    :doc:`/conventions`.
+
+    Attributes
+    ----------
+    mass : float
+        Concentrated mass, kg. Omitting the RNA (mass = 0) on a tower
+        makes the 1st fore-aft frequency ~10–30 % too high.
+    cm_offset : float
+        CM offset **transverse** to the span (along the tip-section axis
+        aligned with lateral/sway), metres.
+    cm_axial : float
+        CM offset **along the span (z)**, metres — how far the lumped CM
+        sits beyond the span end (e.g. the RNA CM above the tower top).
+    ixx, iyy, izz, ixy, izx, iyz : float
+        Mass moments / products of inertia about the CM, kg·m².
+    """
 
     mass: float        # kg
     cm_offset: float   # m  (transverse, along tip-section y-axis)
@@ -78,7 +99,70 @@ class TensionWireSupport:
 
 @dataclass
 class PlatformSupport:
-    """Offshore floating-platform or monopile support."""
+    """Offshore floating-platform or monopile support.
+
+    All quantities follow the conventions in
+    :doc:`/conventions` — read that page if anything below is unclear.
+    The **single origin is the tower base**; the **vertical datum is
+    mean sea level (MSL, z = 0)**; the 6×6 matrices use **OpenFAST DOF
+    order** (surge, sway, heave, roll, pitch, yaw — see
+    :mod:`pybmodes.coords`).
+
+    Attributes
+    ----------
+    draft : float
+        Signed elevation of the **tower base** relative to MSL, in
+        metres, **negative = above MSL** (a tower base 15 m above the
+        waterline is ``draft = -15``).
+
+        .. note::
+
+           Despite the name, this is **not** the naval-architecture
+           draft (the keel depth below the waterline). The field name is
+           inherited verbatim from the BModes ``.bmi`` platform block;
+           here it means "tower-base z relative to MSL, negative up".
+           pyBmodes forms the CM→tower-base vertical lever internally as
+           ``cm_pform - draft``, so the base elevation enters the maths
+           exactly once — do **not** also add it to ``cm_pform`` /
+           ``ref_msl``.
+    cm_pform : float
+        Platform centre-of-mass depth **below MSL**, metres, positive
+        downward. The vertical reference of ``i_matrix``.
+    mass_pform : float
+        Platform (substructure) mass, kg.
+    i_matrix : np.ndarray
+        Platform 6×6 rigid-body inertia (kg, kg·m²) about the platform
+        CM, in OpenFAST DOF order. Transferred to the tower base by the
+        rigid-arm transform using ``cm_pform`` (vertical) and
+        ``cm_pform_x`` / ``cm_pform_y`` (horizontal).
+    ref_msl : float
+        Depth **below MSL** of the reference point for the hydro and
+        mooring matrices, metres, positive downward (the WAMIT/HydroDyn
+        ``PtfmRefzt``; usually 0, i.e. at the waterline). This reference
+        is assumed to lie **on the tower axis** (``PtfmRefxt =
+        PtfmRefyt = 0``); ``hydro_*`` / ``mooring_K`` receive **no**
+        horizontal arm (see ``cm_pform_x``).
+    hydro_M : np.ndarray
+        Infinite-frequency hydrodynamic added mass ``A_inf``, 6×6, about
+        the ``ref_msl`` reference, OpenFAST DOF order.
+    hydro_K : np.ndarray
+        Hydrostatic restoring ``C_hst``, 6×6, about the ``ref_msl``
+        reference. May be (legitimately) negative-definite in
+        roll/pitch for an unstable spar stabilised by mooring.
+    mooring_K : np.ndarray
+        Linearised mooring stiffness, 6×6, about the ``ref_msl``
+        reference, OpenFAST DOF order.
+    distr_m_z, distr_m : np.ndarray
+        Optional distributed added mass vs depth (Morison), if used.
+    distr_k_z, distr_k : np.ndarray
+        Optional distributed Winkler soil/foundation stiffness vs depth
+        (the ``hub_conn = 3`` soft-monopile path).
+    wires : TensionWireSupport | None
+        Optional guy-wire support.
+    cm_pform_x, cm_pform_y : float
+        Horizontal offset of the platform CM **from the tower axis**
+        (see the inline note below).
+    """
 
     draft: float
     cm_pform: float
@@ -114,7 +198,38 @@ class PlatformSupport:
 
 @dataclass
 class BMIFile:
-    """All parameters parsed from a .bmi main input file."""
+    """All parameters parsed from a .bmi main input file.
+
+    See :doc:`/conventions` for the coordinate system, origin (tower
+    base) and boundary-condition definitions.
+
+    Key fields
+    ----------
+    beam_type : int
+        ``1`` = blade (rotating), ``2`` = tower.
+    radius : float
+        Span length of the finite-element beam, metres — the blade
+        ``radius`` or the flexible tower length (``TowerHt -
+        TowerBsHt``). The beam runs from base (``z = 0``) to this length;
+        the *absolute* base elevation is conveyed separately (via the
+        ``PlatformSupport.draft`` for a floater).
+    hub_rad : float
+        Hub radius (blade root radial offset from the rotation axis), m.
+    hub_conn : int
+        Base boundary condition: ``1`` cantilever (clamped), ``2``
+        free-free floating (reactions from ``support``), ``3`` soft
+        monopile (lateral + rocking free), ``4`` pinned-free (bending
+        slopes free). See the ``hub_conn`` table in :doc:`/conventions`.
+    rot_rpm, precone : float
+        Rotor speed (rpm) and coning angle (deg) for a rotating blade.
+    tip_mass : TipMassProps
+        Tower-top RNA / blade-tip lumped mass.
+    tow_support : int
+        ``0`` none / wires-only, ``1`` inline platform block, normalised
+        to a ``PlatformSupport`` by the parser.
+    support : TensionWireSupport | PlatformSupport | None
+        The offshore platform or guy-wire support, when present.
+    """
 
     title: str
     echo: bool
