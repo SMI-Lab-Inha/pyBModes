@@ -55,6 +55,28 @@ cd pyBModes
 pip install -e ".[dev,plots]"
 ```
 
+### Updating to a new release
+
+New versions are published to PyPI (see the [releases](https://github.com/SMI-Lab-Inha/pyBModes/releases) and the [changelog](CHANGELOG.md)). To upgrade an existing install to the latest release:
+
+```bash
+pip install --upgrade pybmodes        # add the same extras you use, e.g. -U "pybmodes[plots,windio]"
+```
+
+Check the installed version, and pin one if you need reproducibility:
+
+```bash
+python -c "import pybmodes; print(pybmodes.__version__)"
+pip install "pybmodes==1.13.0"        # install / pin a specific release
+```
+
+For a source checkout, pull and reinstall:
+
+```bash
+git pull
+pip install -e ".[dev,plots]"         # picks up new dependencies too
+```
+
 Take care that **`pybmodes` is a different project from `pyModeS`** (an ADS-B / Mode-S decoder). The PyPI name is `pybmodes` (lowercase, no S); double-check the package name + the GitHub `SMI-Lab-Inha/pyBModes` repo URL before installing.
 
 See [`docs/installation.rst`](docs/installation.rst) for the full Windows + conda quickstart and the optional-extras matrix (`[plots]`, `[windio]`, `[notebook]`, `[docs]`).

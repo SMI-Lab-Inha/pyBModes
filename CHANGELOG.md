@@ -59,6 +59,9 @@ existing model (the new platform fields default to the previous behaviour).
   links from the (not-yet-imported, 404ing) Read the Docs URLs to the
   GitHub-rendered source under `docs/`, so they resolve today; added the new
   conventions guide to the table and dropped the stale "if the URL 404s" note.
+  Also added an *Updating to a new release* section to the install guide
+  (`pip install --upgrade pybmodes`, version check, pinning, source-checkout
+  refresh).
 
 ## [1.12.1] — 2026-05-23
 
