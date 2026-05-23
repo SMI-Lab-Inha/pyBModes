@@ -137,6 +137,20 @@ class TestBMIParserNegativePaths:
         assert err.context == "0.0  0.25  0.5"
         assert "discretisation" in str(err)        # section context
 
+    def test_empty_bmi_reports_1_based_line(
+        self, tmp_path: pathlib.Path,
+    ) -> None:
+        """An empty .bmi must still report a 1-based line (>= 1), not the
+        line 0 a naive ``len(lines) - 1`` fallback produces (Codex P3)."""
+        from pybmodes.io.bmi import read_bmi
+        from pybmodes.io.errors import BMIParseError
+
+        path = tmp_path / "empty.bmi"
+        path.write_text("", encoding="utf-8")
+        with pytest.raises(BMIParseError) as exc:
+            read_bmi(path)
+        assert exc.value.line is not None and exc.value.line >= 1
+
     def test_bmi_sec_props_path_normalises_backslashes(
         self, tmp_path: pathlib.Path,
     ) -> None:

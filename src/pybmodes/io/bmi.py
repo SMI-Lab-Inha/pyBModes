@@ -385,10 +385,14 @@ class _LineReader:
         if 0 <= idx < len(self._lines):
             ctx = self._lines[idx].strip() or "(blank line)"
         where = f" in the {self._section} block" if self._section else ""
+        # 1-based for humans, and never below 1. An empty file makes the
+        # EOF callers pass line_index = len(lines) - 1 = -1, which would
+        # otherwise report line 0 and break the 1-based contract
+        # (Codex P3).
         return BMIParseError(
             message=f"{message}{where}.",
             file=self._source_file,
-            line=idx + 1,                    # 1-based for humans
+            line=max(idx + 1, 1),
             context=ctx,
         )
 
