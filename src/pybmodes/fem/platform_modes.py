@@ -95,13 +95,31 @@ _DOMINANCE_THRESHOLD = 0.6
 _N_RIGID = 6
 
 # Two rigid-body modes whose relative frequency gap is below this are
-# treated as a degenerate pair: on a (bi)symmetric platform surge≈sway
+# treated as a (near-)degenerate pair and rotated onto axis-aligned
+# directions before labelling. On a (bi)symmetric platform surge≈sway
 # and roll≈pitch share an eigenvalue, so the eigensolver returns an
 # arbitrary rotation of that 2-D eigenspace (non-deterministic across
-# BLAS thread orderings — the same hazard commit-fixed for the FA/SS
-# tower pair). Matches ``_DEGENERATE_FREQ_RTOL`` in
-# ``pybmodes.elastodyn.params``.
-_DEGENERATE_FREQ_RTOL = 1e-4
+# BLAS thread orderings, the same hazard commit-fixed for the FA/SS
+# tower pair).
+#
+# The window is deliberately wider than the FA/SS resolver's strict
+# ``1e-4``. A real floater's surge/sway (and roll/pitch) pair is rarely
+# exactly degenerate, because a slightly asymmetric mooring or hull
+# splits it by a fraction of a percent. The eigensolver still hands back
+# a rotated/mixed basis for such a near-degenerate pair, and that mix
+# varies run to run. With the old ``1e-4`` window those pairs fell
+# through un-aligned, dropped below the dominance gate, and were left
+# ``None`` in one solve while a sister solve (mode-shape plot vs Campbell
+# sweep) happened to get a cleaner basis and named them. That was the
+# asymmetric FOWT divergence where the report said surge/sway and the
+# Campbell said 1st tower (issue #57). 2 % comfortably covers a
+# near-degenerate pair while staying far below the gap to the next
+# rigid-body DOF (typically tens of percent). Over-widening is
+# self-protecting, because the rotation is accepted only when it cleanly
+# separates the pair onto two different dominant platform DOFs (see
+# ``_align_degenerate_rigid_pairs``), so a genuinely distinct close pair
+# is rotated by ~0° and left as-is.
+_DEGENERATE_FREQ_RTOL = 2e-2
 
 
 def _platform_dof_energy(b: np.ndarray, Mp: np.ndarray) -> np.ndarray:

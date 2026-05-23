@@ -314,18 +314,19 @@ def plot_environmental_spectra(
                     f"{order}P Constraint",
                 ))
 
-    # Tower natural-frequency reference lines.
+    # Tower natural-frequency reference lines. (Labels spelled out in
+    # full as bending modes, matching the Campbell diagram convention.)
     if tower_ss_hz is not None:
         ax.axvline(tower_ss_hz, color="k", ls="--", lw=1.6, zorder=5)
         legend.append((
             Line2D([0], [0], color="k", ls="--", lw=1.6),
-            "Tower, 1st Side-Side",
+            "Tower, 1st Side-to-Side Bending",
         ))
     if tower_fa_hz is not None:
         ax.axvline(tower_fa_hz, color="k", ls="-", lw=1.6, zorder=5)
         legend.append((
             Line2D([0], [0], color="k", ls="-", lw=1.6),
-            "Tower, 1st Fore-Aft",
+            "Tower, 1st Fore-Aft Bending",
         ))
 
     # Normalised environmental spectra.

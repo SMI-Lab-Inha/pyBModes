@@ -160,17 +160,30 @@ def plot_campbell(
     n_blade = result.n_blade_modes
     n_tower = result.n_tower_modes
 
+    from pybmodes.campbell._classify import _COUPLED_PLATFORM_LABEL
     from pybmodes.fem.platform_modes import _PLATFORM_DOF_NAMES
 
     plat_name_set = set(_PLATFORM_DOF_NAMES)
-    # Split tower columns into flexible-tower vs rigid-body platform.
+    # Split tower columns into flexible-tower (black) vs rigid-body
+    # platform (red). A named platform DOF (surge through yaw) and the
+    # coupled-platform sentinel both belong to the Platform family, and a
+    # ``None`` label defensively falls into that sentinel too, so a
+    # rigid-body mode the FEM left unclassified is never drawn as a
+    # flexible tower line. Named DOFs are deduped and degeneracy-merged;
+    # coupled modes are kept verbatim (each is a distinct physical mode).
     flex_modes: list[tuple[str, float]] = []
     plat_pairs: list[tuple[str, float]] = []
+    plat_coupled: list[tuple[str, float]] = []
     for k in range(n_blade, n_blade + n_tower):
         f = float(result.frequencies[0, k])
         lbl = result.labels[k]
+        if lbl is None:
+            lbl = _COUPLED_PLATFORM_LABEL
         if lbl in plat_name_set:
             plat_pairs.append((lbl, f))
+        elif lbl == _COUPLED_PLATFORM_LABEL:
+            if np.isfinite(f) and f > 0.0:
+                plat_coupled.append((lbl, f))
         else:
             flex_modes.append((lbl.replace("tower ", ""), f))
     if platform_modes:
@@ -194,6 +207,11 @@ def plot_campbell(
             plat_merged[-1] = (f"{pn}/{nm}", 0.5 * (pf + f))
         else:
             plat_merged.append((nm, f))
+    # Coupled or unclassified rigid-body modes join the Platform family
+    # without dedup or degeneracy-merge, because their shared generic
+    # label would otherwise collapse several distinct modes into one.
+    plat_merged.extend(plat_coupled)
+    plat_merged.sort(key=lambda t: t[1])
 
     # Operating-speed-range shading: the *window itself* is grey,
     # outside stays white (behind everything).
@@ -320,10 +338,11 @@ def plot_campbell(
     # thin leader from the line's right end to its label. This reads far
     # more clearly than labels scattered inline along the curves —
     # especially for a FOWT whose modes cluster in a narrow band.
-    # Engineering terms are spelled out for the figure (the terse tokens
-    # in CampbellResult.labels stay as-is for CSV / API).
-    _pretty_tok = {"flap": "flapwise", "edge": "edgewise",
-                   "FA": "Fore-Aft", "SS": "Side-to-Side"}
+    # Engineering terms are spelled out in full for the figure. These are
+    # bending modes, so the figure says "flapwise bending" and so on. The
+    # terse tokens in CampbellResult.labels stay as-is for CSV and API.
+    _pretty_tok = {"flap": "flapwise bending", "edge": "edgewise bending",
+                   "FA": "fore-aft bending", "SS": "side-to-side bending"}
 
     def _pretty(name: str) -> str:
         return " ".join(_pretty_tok.get(t, t) for t in name.split(" "))

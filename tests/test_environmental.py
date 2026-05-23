@@ -107,8 +107,8 @@ def test_plot_environmental_spectra_structure() -> None:
     assert len(ax.lines) >= 2 + 2  # 2 tower vlines + wind + wave curves
     leg = ax.get_legend()
     txt = {t.get_text() for t in leg.get_texts()}
-    assert {"1P Design", "3P Design", "Tower, 1st Fore-Aft",
-            "Tower, 1st Side-Side", "Waves, JONSWAP Spec.",
+    assert {"1P Design", "3P Design", "Tower, 1st Fore-Aft Bending",
+            "Tower, 1st Side-to-Side Bending", "Waves, JONSWAP Spec.",
             "Wind, Kaimal Spec."} <= txt
     plt.close(fig)
 

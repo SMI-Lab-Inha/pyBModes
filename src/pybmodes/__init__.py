@@ -182,7 +182,9 @@ from pybmodes.options import CheckOptions, FitOptions, SolverOptions
 try:
     __version__ = version("pybmodes")
 except PackageNotFoundError:
-    __version__ = "1.13.0"
+    # Fallback for an uninstalled source tree (no package metadata).
+    # Keep in step with ``pyproject.toml`` ``[project] version``.
+    __version__ = "1.13.1"
 
 __all__ = [
     "CheckOptions",

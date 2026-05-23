@@ -8,6 +8,73 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.13.1] — 2026-05-23
+
+A Campbell-diagram labelling fix for floating turbines, fuller bending-mode
+names on both engineering figures, and a docs-update section. No numerical
+change to any model. This is figure and label text only.
+
+### Fixed
+
+- **Campbell diagram mislabelled floating-platform rigid-body modes as
+  flexible tower bending modes.** On a floating turbine the Campbell sweep
+  could name a low-frequency rigid-body mode (surge or sway at roughly
+  0.01 Hz) `"1st tower FA"` or `"1st tower SS"`, the same name a roughly
+  0.5 Hz flexible bending mode carries. So a user reading "1st tower
+  fore-aft" off the diagram (for example to feed
+  `plot_environmental_spectra`) got the platform frequency instead of the
+  bending frequency. The mode-shape plots and reports happened to read a
+  cleaner eigenbasis. There were three root causes, all fixed.
+
+  - **Near-degenerate rigid-body pairs were not recognised as
+    degenerate.** A real floater's surge/sway (and roll/pitch) pair is
+    rarely exactly degenerate, because a slightly asymmetric mooring or
+    hull splits it by a fraction of a percent. The eigensolver still
+    returns it in an arbitrary rotated or mixed basis, and that mix varies
+    run to run. The platform classifier's degeneracy window
+    (`_DEGENERATE_FREQ_RTOL`) was a strict `1e-4`, so a sub-percent split
+    fell through un-aligned, the mixed pair dropped below the dominance
+    gate, and it was left unnamed in one solve while a sister solve named
+    it (the mode-shape plot versus the Campbell sweep). The window is
+    widened to `2e-2`, so a near-degenerate pair is rotated onto its
+    platform axes and named deterministically, and the report, mode-shape
+    plot and Campbell now agree. Over-widening is self-protecting, because
+    the rotation is accepted only when it cleanly separates the pair onto
+    two different dominant DOFs, so a genuinely distinct close pair is
+    left as-is.
+  - The Campbell tower path solved only `n_tower_modes` modes, so when
+    `n_tower_modes` was below 6 (the default is 4) the classifier's
+    rigid-block assignment was truncated and could leave surge or sway
+    unnamed. The floating tower is now always classified over the full
+    six-mode rigid block, then sliced back to `n_tower_modes`, so the
+    Campbell labels match a direct `Tower(...).run().mode_labels`
+    regardless of how many tower modes are requested.
+  - The Campbell fallback that names modes the classifier still leaves
+    `None` had no rigid-versus-flexible distinction. A `None` mode inside
+    the rigid-body block is now labelled as a coupled platform mode (and
+    drawn in the red **Platform** family on the diagram), never as
+    flexible `"Nth tower FA/SS"`. Only a `None` mode beyond the rigid
+    block gets the participation-derived flexible name. Verified across
+    all eleven bundled reference turbines (land, monopile and floating).
+
+### Changed
+
+- **Bending-mode names spelled out in full on both engineering figures.**
+  The Campbell diagram and `plot_environmental_spectra` now label modes
+  `"flapwise bending"`, `"edgewise bending"`, `"fore-aft bending"` and
+  `"side-to-side bending"`. The environmental diagram's tower lines were
+  also unified from `"Side-Side"` to `"Side-to-Side"`. This is figure text
+  only, and `CampbellResult.labels` keeps the terse `"1st flap"` and
+  `"1st tower FA"` tokens for CSV and API stability.
+
+### Docs
+
+- Installation guide gained an **"Updating to a new release"** section,
+  including how to upgrade a conda-environment install (it is a `pip`
+  operation inside the env, and `conda update` does not apply). Fixed a
+  stale `furo` reference in the optional-extras table (the docs theme is
+  `sphinx-rtd-theme`).
+
 ## [1.13.0] — 2026-05-23
 
 Off-axis floating support (#100), a clearer Campbell diagram (#57), and a

@@ -538,12 +538,109 @@ def test_campbell_tower_too_few_modes_raises_diagnostic(
 
     # _solve_tower_once takes (tower, n_modes, n_steps) — pass a
     # placeholder pair for the tower since fake_run_fem ignores both.
+    # ``hub_conn`` / ``support`` are read to decide whether to classify
+    # over the full rigid block (floating only); a cantilever stub keeps
+    # ``n_solve == requested`` so the too-few-modes guard fires.
     @dataclasses.dataclass
     class _StubBMI:
         rot_rpm: float = 0.0
+        hub_conn: int = 1
+        support: object | None = None
 
     with pytest.raises(RuntimeError, match="too few|only \\d+ of"):
         cb._solve_tower_once((_StubBMI(), None), requested, n_steps=5)
+
+
+# ---------------------------------------------------------------------------
+# Floating tower-label fallback: a rigid-body mode the FEM classifier
+# left unnamed must NOT be relabelled as a flexible bending mode — the
+# asymmetric-FOWT report-vs-Campbell divergence (surge/sway shown as
+# "1st tower" modes).
+# ---------------------------------------------------------------------------
+
+def test_coupled_rigid_mode_is_platform_not_flexible() -> None:
+    """A ``None`` inside the rigid-body block (a strongly-coupled
+    surge/pitch pair the classifier declined to attribute) becomes the
+    coupled-platform sentinel, never ``"1st tower FA/SS"``; the ordinal
+    for the real flexible modes is unaffected."""
+    from pybmodes.campbell._classify import (
+        _COUPLED_PLATFORM_LABEL,
+        _label_tower_modes_with_overrides,
+    )
+
+    # 6 rigid (sway at index 1 unnamed) + 2 flexible bending modes.
+    part = np.tile(np.array([0.8, 0.15, 0.05]), (8, 1))
+    part[7] = np.array([0.15, 0.8, 0.05])     # SS-dominant flexible mode
+    mode_labels = ["surge", None, "heave", "roll", "pitch", "yaw",
+                   None, None]
+
+    out = _label_tower_modes_with_overrides(part, mode_labels)
+    assert out[1] == _COUPLED_PLATFORM_LABEL
+    assert "tower" not in out[1]
+    # Flexible modes beyond the rigid block keep their bending names and
+    # the ordinal starts at 1 (the coupled rigid mode did not consume it).
+    assert out[6] == "1st tower FA"
+    assert out[7] == "1st tower SS"
+
+
+def test_cantilever_tower_labels_unchanged_no_platform_sentinel() -> None:
+    """A non-floating tower (``mode_labels=None``) keeps the pure
+    participation-argmax naming — no rigid block, no platform sentinel."""
+    from pybmodes.campbell._classify import (
+        _COUPLED_PLATFORM_LABEL,
+        _label_tower_modes_with_overrides,
+    )
+
+    part = np.tile(np.array([0.8, 0.15, 0.05]), (4, 1))
+    out = _label_tower_modes_with_overrides(part, None)
+    assert all("tower" in c for c in out)
+    assert _COUPLED_PLATFORM_LABEL not in out
+
+
+def test_plot_coupled_platform_mode_drawn_in_platform_family() -> None:
+    """A coupled / ``None`` rigid-body label is routed to the red
+    Platform family on the diagram (and never crashes the family split),
+    so a ~0.01 Hz rigid-body mode is never drawn as a black flexible
+    tower line."""
+    pytest.importorskip("matplotlib")
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgb
+
+    from pybmodes.campbell import plot_campbell
+    from pybmodes.campbell._classify import _COUPLED_PLATFORM_LABEL
+
+    n_steps = 5
+    omega = np.linspace(0.0, 15.0, n_steps)
+    cols = 6
+    f = np.empty((n_steps, cols))
+    f[:, 0] = np.linspace(0.66, 0.70, n_steps)        # 1st flap
+    # Three named rigid modes + one coupled + one None rigid mode.
+    for j, v in enumerate([0.0081, 0.0324, 0.0394]):
+        f[:, 1 + j] = v
+    f[:, 4] = 0.012                                    # coupled (unnamed)
+    f[:, 5] = 0.05                                     # None (defensive)
+    parts = np.full((n_steps, cols, 3), 1.0 / 3.0)
+    res = CampbellResult(
+        omega_rpm=omega, frequencies=f,
+        labels=["1st flap", "surge", "heave", "roll",
+                _COUPLED_PLATFORM_LABEL, None],
+        participation=parts, n_blade_modes=1, n_tower_modes=5,
+        mac_to_previous=np.full((n_steps, cols), np.nan),
+    )
+    fig = plot_campbell(res)                            # must not raise
+    ax = fig.axes[0]
+    # Platform family key present; no flexible-tower line invented for
+    # the coupled / None rigid modes.
+    assert "Platform" in _legend_texts(ax)
+    joined = " | ".join(_texts(ax))
+    assert "tower" not in joined.lower()
+    # The coupled mode is drawn red (Platform), not black (Tower).
+    red_lines = [ln for ln in ax.lines
+                 if np.allclose(to_rgb(ln.get_color()), _C_PLAT, atol=1e-3)]
+    assert red_lines
+    plt.close(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -663,10 +760,11 @@ def test_plot_campbell_default_orders_1_3_6_9_inline_no_2P() -> None:
 
 
 def test_plot_campbell_structural_labels_spelled_out_with_hz() -> None:
-    """Issue #54: mode names are spelled out (flapwise / edgewise /
-    Fore-Aft / Side-to-Side) with the frequency in brackets, in the
-    figure only — CampbellResult.labels keeps the terse tokens for
-    CSV / API. Blade green, tower black."""
+    """Issue #54: mode names are spelled out in full as bending modes
+    (flapwise bending / edgewise bending / fore-aft bending /
+    side-to-side bending) with the frequency in brackets, in the figure
+    only — CampbellResult.labels keeps the terse tokens for CSV / API.
+    Blade green, tower black."""
     pytest.importorskip("matplotlib")
     import matplotlib
     matplotlib.use("Agg")
@@ -679,8 +777,8 @@ def test_plot_campbell_structural_labels_spelled_out_with_hz() -> None:
     fig = plot_campbell(res)
     ax = fig.axes[0]
     joined = " | ".join(_texts(ax))
-    for stem in ("1st flapwise (", "1st edgewise (",
-                 "1st Fore-Aft (", "1st Side-to-Side ("):
+    for stem in ("1st flapwise bending (", "1st edgewise bending (",
+                 "1st fore-aft bending (", "1st side-to-side bending ("):
         assert stem in joined, stem
     assert "Hz)" in joined
     assert "1st flap " not in joined and " FA " not in joined
@@ -690,8 +788,8 @@ def test_plot_campbell_structural_labels_spelled_out_with_hz() -> None:
     def _col(sub):
         return next(to_rgb(t.get_color()) for t in ax.texts
                     if sub in t.get_text())
-    assert np.allclose(_col("flapwise"), _C_BLADE, atol=1e-3)
-    assert np.allclose(_col("Fore-Aft"), _C_TOWER, atol=1e-3)
+    assert np.allclose(_col("flapwise bending"), _C_BLADE, atol=1e-3)
+    assert np.allclose(_col("fore-aft bending"), _C_TOWER, atol=1e-3)
     plt.close(fig)
 
 
@@ -847,8 +945,8 @@ def test_plot_campbell_labels_in_right_margin() -> None:
     rpm_max = float(rpm.max())
     pat = re.compile(r"^(.*?) \((\d+(?:\.\d+)?)\s*Hz\)$")
     # Blade labels read the swept-end (rpm_max) frequency.
-    expected_end = {"1st flapwise": float(flap[-1]),
-                    "1st edgewise": float(edge[-1])}
+    expected_end = {"1st flapwise bending": float(flap[-1]),
+                    "1st edgewise bending": float(edge[-1])}
     seen: set[str] = set()
     for t in ax.texts:
         m = pat.match(t.get_text())
