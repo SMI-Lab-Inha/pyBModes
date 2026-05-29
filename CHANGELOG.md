@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.15.0] — 2026-05-29
+
+Two additive features on the soft-monopile and floating coupling
+story. New geotechnical building block for soil-pile interaction at
+a soft monopile foundation, plus a diagnostic that reconciles
+pyBmodes-generated ElastoDyn polynomial coefficients against the
+coupled-system frequency an OpenFAST linearisation reports. No
+behaviour change on any existing model path; the new entry points
+are purely additive.
+
 ### Added
 
 - **`pybmodes.MudlineFoundation`** computes the coupled-spring soil-pile
