@@ -506,10 +506,20 @@ class Tower:
         Notes
         -----
         For ElastoDyn polynomial-coefficient generation use the standard
-        cantilever :meth:`Tower.from_elastodyn` instead — the polynomial
+        cantilever :meth:`Tower.from_elastodyn` instead. The polynomial
         ansatz lives in a clamped-base frame regardless of platform
-        configuration (see ``cases/ECOSYSTEM_FINDING.md``). This method
-        is for coupled-frequency prediction only.
+        configuration, and the audit trail (OpenFAST source-code line
+        citations) is recorded in
+        ``src/pybmodes/_examples/reference_decks/FLOATING_CASES.md`` and
+        ``cases/ECOSYSTEM_FINDING.md``. This method is for
+        coupled-frequency prediction only.
+
+        To reconcile pyBmodes-generated polynomial coefficients against
+        an OpenFAST linearisation frequency on the same deck (the
+        polynomial encodes the cantilever 1st FA, OpenFAST linearisation
+        reports the coupled 1st FA, and they can differ by 20-30
+        percent on floating platforms), call
+        :func:`pybmodes.elastodyn.report_floating_frequency_gap`.
         """
         import numpy as np
 

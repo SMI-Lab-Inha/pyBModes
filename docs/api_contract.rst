@@ -155,6 +155,36 @@ Polynomial fitting + validation
 - :func:`pybmodes.elastodyn.patch_dat`
 - :func:`pybmodes.elastodyn.validate_dat_coefficients`
 
+Floating coupled-vs-cantilever diagnostic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- :func:`pybmodes.elastodyn.report_floating_frequency_gap` runs a
+  cantilever and a coupled solve on the same floating deck and
+  returns the gap between the polynomial-basis 1st FA / SS and the
+  coupled-system 1st FA / SS that an OpenFAST linearisation will
+  report. Useful for reconciling pyBmodes-generated polynomial
+  coefficients against linearisation output without re-deriving
+  the cantilever-vs-coupled architecture.
+- :class:`pybmodes.elastodyn.FloatingFrequencyGap` carries the
+  four frequencies plus ``gap_fa_1_pct`` / ``gap_ss_1_pct``
+  properties and a ``format_report()`` rendering.
+
+Soil-pile interaction
+^^^^^^^^^^^^^^^^^^^^^
+
+- :class:`pybmodes.MudlineFoundation` carries the three coupled
+  mudline springs ``K_hh`` / ``K_hr`` / ``K_rr`` and the
+  pile-behaviour / soil-profile / formula discriminators.
+  Classmethod ``from_soil_properties(pile_diameter,
+  pile_length_embedded, pile_EI, soil_E, soil_nu=0.3,
+  soil_profile="homogeneous", pile_behaviour="auto",
+  formula="shadlou")`` applies Randolph (1981) classification and
+  dispatches to Shadlou and Bhattacharya (2016) per Yu and Amdahl
+  (2023) Table 1 or to Psaroudakis et al. (2021) per Yu Eq 25.
+  ``as_mooring_K()`` returns a 6 x 6 block in OpenFAST DOF order
+  that drops straight into ``PlatformSupport.mooring_K`` of a
+  ``hub_conn = 3`` BMI.
+
 Pre-solve sanity + comparison
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

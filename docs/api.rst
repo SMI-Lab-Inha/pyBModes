@@ -115,6 +115,10 @@ Polynomial fitting + ElastoDyn helpers
    :members:
    :show-inheritance:
 
+.. automodule:: pybmodes.elastodyn.diagnostics
+   :members:
+   :show-inheritance:
+
 Campbell
 --------
 
@@ -160,6 +164,13 @@ Mooring
 -------
 
 .. automodule:: pybmodes.mooring
+   :members:
+   :show-inheritance:
+
+Soil-pile interaction
+---------------------
+
+.. automodule:: pybmodes.foundation
    :members:
    :show-inheritance:
 

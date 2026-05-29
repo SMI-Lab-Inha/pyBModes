@@ -104,6 +104,50 @@ on the ``CS_Monopile.bmi`` reference deck pattern, use
 ``Tower(bmi_path)`` with the corresponding ``hub_conn = 3``
 distributed soil-stiffness BMI.
 
+Soft monopile via closed-form mudline springs
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When you have pile geometry and soil properties but no
+pre-computed mudline stiffness deck, :class:`pybmodes.MudlineFoundation`
+computes the three coupled springs ``K_hh``, ``K_hr``, ``K_rr``
+from Shadlou and Bhattacharya (2016) (Yu and Amdahl 2023 Table 1)
+or Psaroudakis et al. (2021) (Yu Eq 25) and emits a 6x6 block
+that drops into ``PlatformSupport.mooring_K`` of a
+``hub_conn = 3`` BMI:
+
+.. code-block:: python
+
+   from pybmodes import MudlineFoundation
+   import math
+
+   D_P = 9.0          # pile outer diameter, m
+   t_P = 0.110        # pile wall thickness, m
+   L_P = 42.0         # embedded pile length, m
+   E_steel = 210e9    # steel Young's modulus, Pa
+   I_P = math.pi / 64.0 * (D_P**4 - (D_P - 2.0 * t_P) ** 4)
+
+   f = MudlineFoundation.from_soil_properties(
+       pile_diameter=D_P,
+       pile_length_embedded=L_P,
+       pile_EI=E_steel * I_P,
+       soil_E=30e6,
+       soil_nu=0.3,
+       soil_profile="homogeneous",
+       pile_behaviour="auto",   # Randolph (1981) classifier
+       formula="shadlou",
+   )
+
+   K6 = f.as_mooring_K()        # 6 x 6 in OpenFAST DOF order
+
+.. note::
+
+   ``MudlineFoundation`` affects the coupled-system frequency only.
+   ElastoDyn polynomial generation continues to use the cantilever
+   path (``Tower.from_elastodyn``) regardless of soil flexibility,
+   for the same architectural reason floating decks use the
+   cantilever basis. See :doc:`limitations` for the source-code
+   citations.
+
 Floating decks with mooring + hydro
 -----------------------------------
 
@@ -133,6 +177,41 @@ mass-weighted eigenvector).
    one. ElastoDyn's polynomial ansatz can only express
    clamped-base modes — see :doc:`theory` for the source-code
    audit and :doc:`limitations` for the consequence.
+
+To reconcile the polynomial-basis cantilever frequency against
+the coupled-system frequency an OpenFAST linearisation will
+report on the same deck, call
+:func:`pybmodes.elastodyn.report_floating_frequency_gap`:
+
+.. code-block:: python
+
+   from pybmodes.elastodyn import report_floating_frequency_gap
+
+   gap = report_floating_frequency_gap(
+       "NRELOffshrBsline5MW_OC3Hywind_ElastoDyn.dat",
+       "NRELOffshrBsline5MW_OC3Hywind_MoorDyn.dat",
+       "NRELOffshrBsline5MW_OC3Hywind_HydroDyn.dat",
+   )
+   print(gap.format_report())
+
+Sample output on the OC3 Hywind spar (numbers depend on the
+deck):
+
+.. code-block:: text
+
+   Cantilever 1st FA: 0.396 Hz (ElastoDyn polynomial basis)
+   Coupled 1st FA:    0.490 Hz (actual floating system frequency)
+   Gap: +23.9% (platform restoring shifts apparent tower bending)
+
+   Cantilever 1st SS: 0.396 Hz
+   Coupled 1st SS:    0.489 Hz
+   Gap: +23.5%
+
+The 20-30 percent gap on a typical floating platform is expected,
+not a bug. The polynomial encodes the cantilever modal basis
+ElastoDyn integrates internally; the coupled solve is what
+OpenFAST linearisation reports with platform 6-DOF, mooring, and
+hydrostatic restoring all engaged.
 
 Campbell diagrams
 -----------------

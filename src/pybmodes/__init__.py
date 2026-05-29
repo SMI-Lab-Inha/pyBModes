@@ -35,7 +35,12 @@ minor releases.
         ValidationResult,
         CoeffBlockResult,           # tower blocks carry fa/ss/torsion
                                     # participation + rejected_modes
+        FloatingFrequencyGap,        # cantilever-vs-coupled tower
+                                     # bending frequency reconciler
+        report_floating_frequency_gap,
     )
+    from pybmodes import MudlineFoundation   # soft-monopile mudline
+                                              # coupled-spring SSI
     from pybmodes.fitting   import PolyFitResult, fit_mode_shape
     from pybmodes.campbell  import (
         CampbellResult,             # save / load / to_csv
@@ -135,9 +140,9 @@ surge / sway / heave / roll / pitch / yaw — for a free-free model;
 
 Known limitations of the 1.0 surface:
 
-- ``pybmodes.mooring`` is catenary-only quasi-static — no seabed
+- ``pybmodes.mooring`` is catenary-only quasi-static. No seabed
   friction (``CB > 0``), no sloped seabed, no U-shape lines, no
-  time-domain dynamics, no line drag / added mass.
+  time-domain dynamics, no line drag or added mass.
 - ``pybmodes.io.WamitReader`` extracts ``A_inf`` (infinite-frequency
   added mass), ``A_0`` (zero-frequency), and ``C_hst`` (hydrostatic
   restoring); finite-period frequency-dependent ``A(ω)`` / ``B(ω)``
@@ -146,7 +151,18 @@ Known limitations of the 1.0 surface:
   BMI for coupled-frequency prediction; ElastoDyn polynomial-
   coefficient generation continues to use the cantilever
   ``Tower.from_elastodyn`` regardless of platform configuration (see
-  ``cases/ECOSYSTEM_FINDING.md`` for the source-code citation).
+  ``cases/ECOSYSTEM_FINDING.md`` and
+  ``src/pybmodes/_examples/reference_decks/FLOATING_CASES.md`` for
+  the source-code citations). Use
+  :func:`pybmodes.elastodyn.report_floating_frequency_gap` to
+  reconcile the polynomial-basis cantilever frequency against the
+  coupled-system frequency an OpenFAST linearisation will report.
+- :class:`pybmodes.MudlineFoundation` computes the mudline coupled-
+  spring stiffness for a soft monopile (Yu and Amdahl 2023) and
+  emits a 6x6 block that drops into ``PlatformSupport.mooring_K``
+  for a ``hub_conn = 3`` BMI. The mudline stiffness affects the
+  coupled-system frequency only; ElastoDyn polynomial generation
+  remains on the cantilever path regardless of soil flexibility.
 - ``BMIFile.support.distr_m`` (distributed hydrodynamic added mass
   per unit tower length) is parsed by ``pybmodes.io.bmi.read_bmi``
   but NOT wired into the FEM mass matrix; ``distr_k`` (distributed
@@ -177,6 +193,7 @@ from importlib.metadata import PackageNotFoundError, version
 # every numerical threshold in one place. Future PRs will accept
 # instances on ``Tower.run()`` / ``RotatingBlade.run()`` /
 # ``check_model()`` for per-call override.
+from pybmodes.foundation import MudlineFoundation
 from pybmodes.options import CheckOptions, FitOptions, SolverOptions
 
 try:
@@ -189,6 +206,7 @@ except PackageNotFoundError:
 __all__ = [
     "CheckOptions",
     "FitOptions",
+    "MudlineFoundation",
     "SolverOptions",
     "__version__",
 ]

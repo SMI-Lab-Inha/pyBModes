@@ -79,6 +79,21 @@ platform), use ``Tower.from_elastodyn_with_mooring(...)``.
 That's a different workflow from polynomial generation; the
 two coexist by design.
 
+To reconcile the polynomial-basis cantilever frequency against
+the coupled-system frequency an OpenFAST linearisation will
+report on the same deck (the gap is typically 20-30 percent on
+a floating platform and is expected rather than a bug), call
+:func:`pybmodes.elastodyn.report_floating_frequency_gap`. It
+runs both solves on the supplied deck and returns a
+:class:`~pybmodes.elastodyn.FloatingFrequencyGap` with the
+cantilever and coupled 1st FA / SS frequencies plus a
+``format_report()`` rendering suitable for stdout or a log.
+The audit trail for the rejected projection-method
+polynomial-generation proposal (which would have introduced
+a Rayleigh-quotient bias on ``FreqTFA`` and double-counted
+platform restoring) is recorded in
+``src/pybmodes/_examples/reference_decks/FLOATING_CASES.md``.
+
 Floating-platform fidelity
 --------------------------
 
@@ -203,7 +218,7 @@ below the Allen 2020 free-decay value (Table 11). This is
 **expected and not a bug** — the two answer different
 questions:
 
-- **Allen's free-decay :math:`f_d`** measures the dominant
+- **Allen's free-decay** :math:`f_d` measures the dominant
   period observed in a single-DOF excitation of pitch with
   the other DOFs damped out by nonlinear drag; close to the
   uncoupled diagonal estimate (0.0364 Hz).
@@ -232,12 +247,35 @@ use ``CS_Monopile.bmi`` (``hub_conn = 3`` with populated
 ``mooring_K`` and distributed Winkler ``distr_k``) — bundled
 at ``sample_inputs/reference_turbines/02_nrel5mw_oc3monopile/``.
 
+When you have pile geometry and soil properties but no
+pre-computed mudline stiffness deck,
+:class:`pybmodes.MudlineFoundation` synthesises the three
+coupled springs (``K_hh``, ``K_hr``, ``K_rr``) from
+Shadlou and Bhattacharya (2016) per Yu and Amdahl (2023)
+Table 1 (covers homogeneous, parabolic, and linear soil
+profiles for both flexible and rigid piles) or from Psaroudakis
+et al. (2021) per Yu Eq 25 (homogeneous soil only). The
+:meth:`~pybmodes.MudlineFoundation.as_mooring_K` accessor
+returns a 6 x 6 block in OpenFAST DOF order that drops into
+``PlatformSupport.mooring_K`` of a ``hub_conn = 3`` BMI.
+Reproduces the Yu and Amdahl (2023) Table 9 DTU 10 MW anchors
+to within 3 percent on K_hh, K_hr, K_rr for both flexible and
+rigid reference cases.
+
+The mudline stiffness affects the coupled-system frequency
+only; ElastoDyn polynomial generation continues to use the
+cantilever path (``Tower.from_elastodyn``) regardless of soil
+flexibility — the same architectural reason the floating-
+polynomial section above documents.
+
 What this is *not*
 ------------------
 
 - **Not a multi-body dynamics solver.** Use OpenFAST +
   ElastoDyn for time-domain simulation.
-- **Not a CFD code.** Hydrodynamics come in as 6 × 6 matrices
+- **Not a aeroelastic modal analysis tool.** Use OpenFAST linearisation 
+  and modal analysis for linearised modes at the operating point.
+- **Not a CFD or Potential flow code.** Hydrodynamics come in as 6 × 6 matrices
   from WAMIT / HydroDyn potential-flow output.
 - **Not a structural design tool.** The supported workflow is
   *analysis of a defined structure*, not *optimisation of one*.

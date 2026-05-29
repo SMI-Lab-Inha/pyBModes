@@ -159,7 +159,13 @@ Monopile (fixed-bottom)
   stiffer than a soil-included reference.
 * **Soil-flexible alternative:** ``hub_conn = 3`` with a distributed
   Winkler foundation (``distr_k``) and/or a populated ``mooring_K`` for
-  the soil springs (the ``CS_Monopile.bmi`` pattern).
+  the soil springs (the ``CS_Monopile.bmi`` pattern). When you have
+  pile geometry and soil properties but no pre-computed mudline
+  stiffness, :class:`pybmodes.MudlineFoundation` synthesises the three
+  coupled mudline springs (``K_hh``, ``K_hr``, ``K_rr``) from
+  Shadlou and Bhattacharya (2016) or Psaroudakis et al. (2021) per
+  Yu and Amdahl (2023) and emits a 6 x 6 block that drops into
+  ``PlatformSupport.mooring_K``.
 * The two segments meet at the **transition piece**; each keeps its own
   wall schedule and steel grade.
 
