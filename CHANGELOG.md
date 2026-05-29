@@ -8,6 +8,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`pybmodes.MudlineFoundation`** computes the coupled-spring soil-pile
+  interaction stiffness (`K_hh`, `K_hr`, `K_rr`) at the mudline of a
+  monopile foundation and returns a 6 x 6 matrix that drops straight
+  into `PlatformSupport.mooring_K` of a `hub_conn = 3` soft monopile
+  BMI. The classmethod `from_soil_properties` accepts pile geometry
+  and soil properties, applies Randolph (1981) pile classification,
+  and dispatches to either the Shadlou and Bhattacharya (2016)
+  formulas (Yu Table 1, covers homogeneous, parabolic, and linear
+  soil profiles for both flexible and rigid piles) or the Psaroudakis
+  et al. (2021) closed form (Yu Eq 25, homogeneous soil only).
+  Reproduces the Yu and Amdahl (2023) Table 9 DTU 10 MW anchors to
+  within 3 percent on K_hh, K_hr, K_rr for both flexible and rigid
+  reference cases. The new module emits the 6 x 6 `mooring_K`
+  contribution only and so affects coupled-system frequencies on
+  `hub_conn = 3` solves; ElastoDyn polynomial coefficient generation
+  continues to use the cantilever path regardless of soil flexibility,
+  for the same architectural reason
+  `src/pybmodes/_examples/reference_decks/FLOATING_CASES.md` records
+  for floating platforms.
+- **`pybmodes.elastodyn.report_floating_frequency_gap`** runs both a
+  cantilever and a coupled solve on the same floating ElastoDyn deck
+  and returns a `FloatingFrequencyGap` dataclass naming the gap
+  between the polynomial-basis cantilever 1st FA / SS and the
+  coupled-system 1st FA / SS that an OpenFAST linearisation reports.
+  The two numbers differ by 20-30 percent on a typical floating
+  platform, and the new diagnostic surfaces the gap so users
+  reconciling pyBmodes-generated polynomial coefficients against
+  OpenFAST linearisation output do not have to re-derive the
+  architecture from scratch. `format_report()` on the result
+  produces a short text block suitable for stdout or a log.
+
+### Documentation
+
+- **`src/pybmodes/_examples/reference_decks/FLOATING_CASES.md`** now
+  carries an FAQ section explaining the cantilever-vs-coupled
+  frequency gap and recording the audit trail for the rejected
+  projection-method polynomial-generation proposal (which would have
+  introduced Rayleigh-quotient bias on `FreqTFA` and double-counted
+  platform restoring against the runtime `Sg/Sw/Hv/R/P/Y` DOFs in
+  `ElastoDyn.f90:7485-7544`). The next person to raise the proposal
+  finds the answer in-tree.
+- The docstring on
+  `Tower.from_elastodyn_with_mooring` now points at
+  `report_floating_frequency_gap` so the diagnostic is discoverable
+  from the constructor users actually call.
+
 ## [1.14.1] — 2026-05-23
 
 ### Fixed

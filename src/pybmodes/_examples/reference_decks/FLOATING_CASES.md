@@ -123,6 +123,111 @@ Each deck is built by `scripts/build_reference_decks.py` using the
 cantilever path documented above; the validator passes on all four
 tower coefficient blocks after patching.
 
+## FAQ — why does my OpenFAST linearisation report a different frequency than pyBmodes?
+
+This is the question that keeps coming back. The short answer is
+"by design, here is the gap". The long answer is what the table
+above tries to say.
+
+A floating ElastoDyn deck has **two** natural tower bending
+frequencies. They differ by 20-30 percent on a typical floating
+platform, and the gap is not a bug.
+
+- **Cantilever 1st FA / SS** is the modal basis ElastoDyn uses
+  internally. The polynomial blocks `TwFAM1Sh` / `TwSSM1Sh` (and the
+  higher-order partners) describe the *cantilever* mode shape because
+  the `SHP` ansatz at `ElastoDyn.f90:2486-2495` algebraically forces
+  `SHP(0) = SHP'(0) = 0`. ElastoDyn's `Coeff` subroutine
+  (`ElastoDyn.f90:5141-5267`) integrates a modal mass that adds the
+  tip-end `TwrTpMass` to the spanwise integral of `rho_A` weighted
+  by the squared mode shape, and a modal stiffness that integrates
+  `EI` weighted by the squared mode curvature plus the `KTFAGrav`
+  destiffening term, with **no** platform / hydro / mooring
+  contributions. At runtime the augmented system row for `q_TFA1`
+  (`ElastoDyn.f90:8426-8445`) carries only the elastic and damping
+  restoring `-KTFA q - CTFA qdot`, with no `phi(tip)` weighted
+  platform-stiffness coupling, so the polynomial really does describe
+  an uncoupled cantilever tower.
+- **Coupled 1st FA / SS** is what an OpenFAST linearisation reports
+  when platform 6-DOF, mooring restoring, and hydrostatic restoring
+  are all engaged. Platform restoring can shift the apparent tower
+  bending frequency substantially (typically stiffening it on a spar
+  with negative pitch hydrostatic, softening it on a TLP, varying on
+  a semi). This is also what pyBmodes'
+  `Tower.from_elastodyn_with_mooring(...).run(...)` produces.
+
+The two numbers answer different questions. The cantilever number is
+what ElastoDyn's internal modal eigenvalue equation evaluates to and
+is the right reference for "is my polynomial block consistent with
+my structural blocks?". The coupled number is the actual eigenfrequency
+of the closed-loop floating system and is the right reference for "what
+frequency will I see in my time-domain output and in my linearisation
+table?".
+
+To surface the gap directly, call:
+
+```python
+from pybmodes.elastodyn import report_floating_frequency_gap
+
+gap = report_floating_frequency_gap(
+    "NRELOffshrBsline5MW_OC3Hywind_ElastoDyn.dat",
+    "NRELOffshrBsline5MW_OC3Hywind_MoorDyn.dat",
+    "NRELOffshrBsline5MW_OC3Hywind_HydroDyn.dat",
+)
+print(gap.format_report())
+```
+
+Sample output (illustrative; the exact numbers depend on the deck):
+
+```text
+Cantilever 1st FA: 0.385 Hz (ElastoDyn polynomial basis)
+Coupled 1st FA:    0.493 Hz (actual floating system frequency)
+Gap: +28.1% (platform restoring shifts apparent tower bending)
+
+Cantilever 1st SS: 0.385 Hz
+Coupled 1st SS:    0.493 Hz
+Gap: +28.1%
+```
+
+### What about generating polynomials *from* the coupled solve?
+
+A previous proposal (dropped) was to fit ElastoDyn polynomial
+coefficients to the coupled eigenvector after subtracting the root
+tangent line, i.e. `phi_elastic(x) = phi(x) - phi(0) - phi'(0) * x`.
+The proposal would have made `SHP(0) = SHP'(0) = 0` hold by
+construction.
+
+This was reviewed against the OpenFAST source and rejected on three
+grounds.
+
+1. **Wrong identification.** The transformation `phi(x) - phi(0) -
+   phi'(0) * x` is BModes' Improved Direct Method, not the Projection
+   Method (which is a 2-D rotation by `-atan(slope * scale)`).
+   pyBmodes already applies the Improved Direct Method byte-identically
+   inside every tower polynomial fit, at
+   `pybmodes.elastodyn.params._remove_root_rigid_motion`.
+2. **Rayleigh-quotient bias.** ElastoDyn computes the tower bending
+   frequency as the square root of the modal stiffness over the modal
+   mass, evaluating both integrals from the polynomial mode shape.
+   The cantilever shape is the variational minimiser of that Rayleigh
+   quotient subject to `SHP(0) = SHP'(0) = 0`. A projected coupled
+   shape does **not** minimise it, so feeding the projected polynomial
+   would shift `FreqTFA` away from the cantilever optimum without
+   landing on the coupled-system frequency either.
+3. **Double-counting platform restoring.** The projected coupled
+   eigenvector carries platform-restoring information in its interior
+   curvature. ElastoDyn then re-applies platform restoring at runtime
+   through the independent `Sg/Sw/Hv/R/P/Y` DOFs in the kinematic
+   rigid-body sum (`ElastoDyn.f90:7485-7544`). The result is the same
+   class of double-counting flagged in `cases/ECOSYSTEM_FINDING.md`
+   for the WISDEM free-free path.
+
+If you want to surface the coupled-vs-cantilever gap to users, use
+the diagnostic above. If you want to attack the true BModes
+Projection Method gap (the 2-D rotation), that is a separate scoped
+piece of work and would not move the needle on OC3 Hywind because
+the existing coupled-vs-BModes-JJ match is already 0.0003 percent.
+
 ## Citations
 
 - Jonkman, J., Butterfield, S., Musial, W., & Scott, G. (2009).

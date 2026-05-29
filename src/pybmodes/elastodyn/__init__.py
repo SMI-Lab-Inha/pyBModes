@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pybmodes.elastodyn.diagnostics import (
+    FloatingFrequencyGap,
+    report_floating_frequency_gap,
+)
 from pybmodes.elastodyn.params import (
     BladeElastoDynParams,
     TowerElastoDynParams,
@@ -32,6 +36,7 @@ from pybmodes.elastodyn.writer import patch_dat
 __all__ = [
     "BladeElastoDynParams",
     "CoeffBlockResult",
+    "FloatingFrequencyGap",
     "TowerElastoDynParams",
     "TowerFamilyMemberReport",
     "TowerSelectionReport",
@@ -40,5 +45,6 @@ __all__ = [
     "compute_tower_params",
     "compute_tower_params_report",
     "patch_dat",
+    "report_floating_frequency_gap",
     "validate_dat_coefficients",
 ]
