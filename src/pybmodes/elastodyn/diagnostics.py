@@ -131,25 +131,59 @@ def report_floating_frequency_gap(
     )
 
 
-_RIGID_BODY_FLOOR_HZ = 0.2
-"""Tower-bending lower-frequency floor for the rigid-body filter.
+_ELASTIC_TIP_RATIO_FLOOR = 0.3
+"""Minimum ratio of elastic tip displacement to raw tip displacement.
 
-Any unlabelled mode whose frequency lies below this floor is assumed
-to be a platform rigid-body mode the classifier could not attribute
-to a single DOF. The platform 6-DOF rigid-body modes on a realistic
-floating wind turbine sit at 0.005 to 0.15 Hz; the 1st tower bending
-pair sits at 0.3 Hz or higher (the OC3 Hywind cantilever-vs-coupled
-gap of around 25 percent stiffens, never softens, the apparent tower
-bending). The 0.2 Hz floor sits comfortably above the rigid-body
-band and well below any realistic 1st tower bending frequency.
+After the affine root-tangent subtraction (the Improved Direct Method
+already used inside :func:`compute_tower_params_report` and
+:func:`pybmodes.elastodyn.params._remove_root_rigid_motion`), the
+residual tip displacement of a pure rigid-body mode is zero up to
+numerical noise. A pure tower bending mode in a clamped-base frame
+satisfies phi(0) = phi'(0) = 0 already, so the subtraction does
+nothing and the elastic tip equals the raw tip. Mixed coupled modes
+fall between the two extremes.
+
+The 0.3 floor separates the two regimes cleanly. On the canonical
+OC3 Hywind coupled solve, labelled rigid-body modes report ratios at
+or below 0.007 (numerical noise) and the 1st FA / SS tower bending
+pair reports ratios at 1.64 (the platform pitch motion opposes the
+elastic tip swing, so the elastic component is larger than the raw
+tip). Tower bending modes from the 2nd FA pair up through the 4th
+pair report ratios from 0.69 to 4.57. The 0.3 floor sits well below
+any of the tower band and well above the rigid-body band.
 """
+
+
+def _has_tower_bending_content(shape) -> bool:
+    """Return ``True`` when the mode shape's flap or lag axis carries
+    significant tower bending content after the affine root-tangent
+    subtraction. Used to distinguish coupled rigid-body modes
+    (negligible elastic content) from tower bending modes regardless
+    of frequency. Robust to a TLP-class stiff platform where a
+    rigid-body frequency can sit above the spar-class 0.2 Hz band.
+    """
+    from pybmodes.elastodyn.params import _remove_root_rigid_motion
+
+    for disp, slope in (
+        (shape.flap_disp, shape.flap_slope),
+        (shape.lag_disp, shape.lag_slope),
+    ):
+        raw_tip = abs(float(disp[-1]))
+        if raw_tip < 1.0e-12:
+            continue
+        elastic_tip = abs(float(_remove_root_rigid_motion(
+            shape.span_loc, disp, slope,
+        )[-1]))
+        if elastic_tip >= _ELASTIC_TIP_RATIO_FLOOR * raw_tip:
+            return True
+    return False
 
 
 def _drop_rigid_body_shapes(modal):
     """Filter out platform rigid-body modes from a floating modal result.
 
-    On a free-base ``hub_conn = 2`` solve the pipeline tags rigid-body
-    modes with ``mode_labels`` entries naming the DOF
+    On a free-base ``hub_conn = 2`` solve the pipeline tags most
+    rigid-body modes with ``mode_labels`` entries naming the DOF
     (``"surge"`` / ``"sway"`` / ``"heave"`` / ``"roll"`` / ``"pitch"``
     / ``"yaw"``). The tower-family classifier inside
     :func:`compute_tower_params_report` picks the lowest-frequency
@@ -157,20 +191,22 @@ def _drop_rigid_body_shapes(modal):
     coupled OC3 Hywind solve (~0.008 Hz), so labelled rigid-body
     shapes have to be removed before classification.
 
-    :func:`pybmodes.fem.platform_modes.classify_platform_modes` may
-    leave a strongly-coupled or rotated rigid-body pair tagged
-    ``None``, in which case a pure label-based filter forwards those
-    candidates into the tower-family classifier and the diagnostic
-    could land on a low-frequency platform mode as the coupled 1st FA.
-    The filter therefore additionally drops any unlabelled mode whose
-    frequency lies below ``_RIGID_BODY_FLOOR_HZ`` (0.2 Hz). The
-    rigid-body band on any realistic floating wind turbine sits at
-    0.005 to 0.15 Hz, well below this floor; the 1st tower bending
-    pair sits well above it, so this second cut catches the unlabelled
-    rigid-body case Codex flagged on PR #114 without trimming any real
-    tower mode. The eigensolver's asymmetric path on a soft-pitch spar
-    such as OC3 Hywind drops some rigid-body modes from the returned
-    spectrum, so we cannot rely on an index-based cut alone.
+    :func:`pybmodes.fem.platform_modes.classify_platform_modes` is
+    allowed to leave a strongly-coupled or rotated rigid-body pair
+    tagged ``None``. A pure label-based filter would then forward
+    those candidates into the tower-family classifier and the
+    diagnostic could land on a platform mode as the coupled 1st FA.
+    A frequency-floor cut catches the spar-class case (rigid-body
+    modes below the 1st tower bending) but does not catch a
+    TLP-class corner case (a stiff-platform rigid-body mode sitting
+    above 0.2 Hz could still be unlabelled). The filter therefore
+    keeps only the unlabelled modes whose shape content is
+    *recognisably tower bending* via :func:`_has_tower_bending_content`,
+    which compares the elastic tip displacement after the affine
+    root-tangent subtraction against the raw tip displacement. This
+    is the same projection :func:`_tower_candidate` already applies
+    before polynomial fitting, so it does not introduce a new physics
+    assumption.
 
     On a cantilever solve ``mode_labels`` is ``None`` and the input is
     returned unchanged.
@@ -179,12 +215,11 @@ def _drop_rigid_body_shapes(modal):
 
     if modal.mode_labels is None:
         return modal
-    n = len(modal.shapes)
     indices = [
         i
-        for i in range(n)
+        for i, shape in enumerate(modal.shapes)
         if modal.mode_labels[i] is None
-        and float(modal.frequencies[i]) > _RIGID_BODY_FLOOR_HZ
+        and _has_tower_bending_content(shape)
     ]
     if not indices:
         return modal
