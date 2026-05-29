@@ -137,6 +137,28 @@ that drops into ``PlatformSupport.mooring_K`` of a
        formula="shadlou",
    )
 
+The ergonomic wiring uses
+:meth:`~pybmodes.models.Tower.attach_mudline_foundation` to swap a
+clamped monopile model to the ``hub_conn = 3`` soft-monopile path
+without hand-building a ``PlatformSupport``:
+
+.. code-block:: python
+
+   from pybmodes.models import Tower
+
+   tower = Tower.from_windio_with_monopile(
+       "IEA-15-240-RWT.yaml", tip_mass=991000.0,
+   )
+   tower.attach_mudline_foundation(f)        # mutates BMI to hub_conn = 3
+   modal = tower.run(n_modes=4)
+
+If you only need the 6 x 6 stiffness block to compose with an
+existing ``PlatformSupport`` you have already built (the
+``CS_Monopile.bmi`` deck pattern, say), the raw matrix is also
+available:
+
+.. code-block:: python
+
    K6 = f.as_mooring_K()        # 6 x 6 in OpenFAST DOF order
 
 .. note::

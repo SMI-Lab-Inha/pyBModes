@@ -8,6 +8,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.15.1] — 2026-05-30
+
+A focused ergonomic patch addressing the only piece of feedback on
+1.15.0. Adds a one-call wiring from `MudlineFoundation` into a
+clamped monopile model so users can convert a `from_windio_with_monopile`
+or `from_elastodyn_with_subdyn` tower to the `hub_conn = 3` soft
+monopile path without hand-building a `PlatformSupport` or mutating
+private BMI fields. Closes #117 and partially addresses #118 (the
+ergonomic half; distributed Winkler distribution along the embedded
+length stays as a separate scope).
+
+### Added
+
+- **`Tower.attach_mudline_foundation(foundation)`** wires a
+  `pybmodes.MudlineFoundation` into the tower's BMI in one call.
+  Creates a fresh `PlatformSupport` carrying the foundation's 6 x 6
+  `mooring_K` block (with zero hydro, zero platform inertia, and
+  empty distributed arrays), sets `tow_support = 1`, and flips
+  `hub_conn` to `3`. Returns `self` for chaining, so the canonical
+  pattern is one expression: `Tower.from_windio_with_monopile(yaml,
+  tip_mass=rna).attach_mudline_foundation(foundation).run(n_modes=4)`.
+  Refuses to wire onto a free-base floating model (`hub_conn = 2`)
+  or a pinned-free cable model (`hub_conn = 4`) with a clear
+  `ValueError`. The mudline stiffness affects the coupled-system
+  frequency only; ElastoDyn polynomial coefficient generation
+  continues to use the cantilever path regardless of soil
+  flexibility, the same architectural reason
+  `src/pybmodes/_examples/reference_decks/FLOATING_CASES.md` records
+  for floating platforms.
+
+### Documentation
+
+- Quickstart's soft-monopile recipe now demonstrates the canonical
+  `Tower.from_windio_with_monopile(...).attach_mudline_foundation(f)`
+  pattern as the primary path, with `as_mooring_K()` kept as the
+  compose-it-yourself option for callers wiring into an existing
+  `PlatformSupport` (the `CS_Monopile.bmi` deck pattern).
+
 ## [1.15.0] — 2026-05-29
 
 Two additive features on the soft-monopile and floating coupling

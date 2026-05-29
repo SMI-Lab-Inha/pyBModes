@@ -389,3 +389,123 @@ def test_dataclass_fields_preserved() -> None:
     assert f.pile_behaviour == "flexible"
     assert f.pile_behavior == "flexible"
     assert f.formula == "shadlou"
+
+
+# -----------------------------------------------------------------------------
+# Tower.attach_mudline_foundation
+# -----------------------------------------------------------------------------
+
+
+def _synthetic_monopile_tower():
+    """Build a small uniform-tube tower for the attach-method tests."""
+    from pybmodes.models import Tower
+
+    station_grid = np.linspace(0.0, 80.0, 9)
+    outer_diameter = np.full_like(station_grid, 6.0)
+    wall_thickness = np.full_like(station_grid, 0.05)
+    return Tower.from_geometry(
+        station_grid=station_grid,
+        outer_diameter=outer_diameter,
+        wall_thickness=wall_thickness,
+        flexible_length=80.0,
+        tip_mass=350000.0,
+        hub_conn=1,
+    )
+
+
+def _default_foundation() -> MudlineFoundation:
+    return MudlineFoundation.from_soil_properties(
+        **_default_geometry(),
+        pile_behaviour="flexible",
+    )
+
+
+def test_attach_mudline_foundation_flips_hub_conn_to_three() -> None:
+    """A clamped tower becomes a soft monopile after the attach call."""
+    tower = _synthetic_monopile_tower()
+    foundation = _default_foundation()
+    assert tower._bmi.hub_conn == 1
+    assert tower._bmi.support is None
+
+    returned = tower.attach_mudline_foundation(foundation)
+
+    assert returned is tower
+    assert tower._bmi.hub_conn == 3
+    assert tower._bmi.tow_support == 1
+
+
+def test_attach_mudline_foundation_writes_mooring_K() -> None:
+    """The foundation's 6 x 6 mooring_K lands on the new PlatformSupport."""
+    from pybmodes.io.bmi import PlatformSupport
+
+    tower = _synthetic_monopile_tower()
+    foundation = _default_foundation()
+    expected = foundation.as_mooring_K()
+
+    tower.attach_mudline_foundation(foundation)
+
+    assert isinstance(tower._bmi.support, PlatformSupport)
+    np.testing.assert_array_equal(tower._bmi.support.mooring_K, expected)
+
+
+def test_attach_mudline_foundation_zeroes_other_platform_blocks() -> None:
+    """Hydro and inertia stay at zero; distributed arrays stay empty."""
+    tower = _synthetic_monopile_tower()
+    foundation = _default_foundation()
+    tower.attach_mudline_foundation(foundation)
+    s = tower._bmi.support
+
+    np.testing.assert_array_equal(s.i_matrix, np.zeros((6, 6)))
+    np.testing.assert_array_equal(s.hydro_M, np.zeros((6, 6)))
+    np.testing.assert_array_equal(s.hydro_K, np.zeros((6, 6)))
+    assert s.mass_pform == 0.0
+    assert s.cm_pform == 0.0
+    assert s.draft == 0.0
+    assert s.distr_m.size == 0
+    assert s.distr_k.size == 0
+
+
+def test_attach_mudline_foundation_supports_chaining() -> None:
+    """``attach_mudline_foundation`` returns self and chains with ``.run``."""
+    tower = _synthetic_monopile_tower()
+    foundation = _default_foundation()
+    result = tower.attach_mudline_foundation(foundation).run(
+        n_modes=4, check_model=False,
+    )
+    assert result.frequencies.shape == (4,)
+    assert np.all(np.isfinite(result.frequencies))
+    assert np.all(result.frequencies > 0.0)
+
+
+def test_attach_mudline_foundation_softens_first_frequency_vs_clamped() -> None:
+    """The same tower with soil flexibility lands below the clamped baseline.
+
+    A finite mudline stiffness can only relax the lateral / rocking
+    boundary condition vs the rigid clamp, so the soft-monopile 1st
+    fore-aft frequency must come out lower than the clamped one.
+    """
+    clamped = _synthetic_monopile_tower().run(n_modes=4, check_model=False)
+    soft = (
+        _synthetic_monopile_tower()
+        .attach_mudline_foundation(_default_foundation())
+        .run(n_modes=4, check_model=False)
+    )
+    assert soft.frequencies[0] < clamped.frequencies[0]
+
+
+def test_attach_mudline_foundation_rejects_floating_model() -> None:
+    """A free-base floating tower (``hub_conn = 2``) is refused."""
+    tower = _synthetic_monopile_tower()
+    tower._bmi.hub_conn = 2
+
+    with pytest.raises(ValueError, match="hub_conn = 2"):
+        tower.attach_mudline_foundation(_default_foundation())
+
+
+def test_attach_mudline_foundation_rejects_pinned_free_model() -> None:
+    """A pinned-free cable model (``hub_conn = 4``) is refused."""
+    tower = _synthetic_monopile_tower()
+    tower._bmi.hub_conn = 4
+
+    with pytest.raises(ValueError, match="hub_conn = 4"):
+        tower.attach_mudline_foundation(_default_foundation())

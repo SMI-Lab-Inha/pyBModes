@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 
     from pybmodes.checks import OnError
     from pybmodes.elastodyn.validate import ValidationResult
+    from pybmodes.foundation import MudlineFoundation
     from pybmodes.io.bmi import PlatformSupport, TipMassProps
 
 
@@ -1073,6 +1074,74 @@ class Tower:
         obj._bmi = bmi
         obj._sp = sp
         return obj
+
+    def attach_mudline_foundation(
+        self, foundation: MudlineFoundation,
+    ) -> Tower:
+        """Attach a mudline coupled-spring soil foundation to a clamped
+        monopile model and switch the boundary condition to
+        ``hub_conn = 3`` (soft monopile, axial + torsion clamped,
+        lateral + rocking free).
+
+        Wires the foundation's 6 x 6 ``mooring_K`` block into a fresh
+        :class:`~pybmodes.io.bmi.PlatformSupport` carrying zero hydro
+        and zero platform inertia, sets ``tow_support = 1`` (inline
+        platform block) and flips ``hub_conn`` to ``3``. The tower's
+        section properties and tip mass are preserved. Returns ``self``
+        for chaining.
+
+        Use this to convert a rigid-clamped monopile model built via
+        :meth:`from_windio_with_monopile`, :meth:`from_elastodyn_with_subdyn`,
+        or any other ``hub_conn = 1`` constructor into a soft monopile
+        with the soil-pile interaction computed from
+        :class:`pybmodes.MudlineFoundation`. The mudline stiffness
+        affects the coupled-system frequency only; ElastoDyn polynomial
+        coefficient generation continues to use the cantilever path
+        regardless of soil flexibility, for the same architectural
+        reason
+        ``src/pybmodes/_examples/reference_decks/FLOATING_CASES.md``
+        records for floating platforms.
+
+        Raises ``ValueError`` if the tower already carries a free-base
+        floating model (``hub_conn = 2``) or a pinned-free cable BC
+        (``hub_conn = 4``). Replaces any existing ``support`` on the
+        BMI; use a fresh ``Tower.from_*`` build if you need to preserve
+        a pre-existing support block.
+        """
+        import numpy as np
+
+        from pybmodes.io.bmi import PlatformSupport
+
+        if self._bmi.hub_conn == 2:
+            raise ValueError(
+                "Cannot attach a mudline foundation to a free-base "
+                "floating model (hub_conn = 2). MudlineFoundation is "
+                "for soft monopiles; floating platforms use HydroDyn + "
+                "MoorDyn through Tower.from_elastodyn_with_mooring."
+            )
+        if self._bmi.hub_conn == 4:
+            raise ValueError(
+                "Cannot attach a mudline foundation to a pinned-free "
+                "cable model (hub_conn = 4); the BC has no lateral "
+                "spring DOF to wire the mudline stiffness into."
+            )
+        self._bmi.support = PlatformSupport(
+            draft=0.0,
+            cm_pform=0.0,
+            mass_pform=0.0,
+            i_matrix=np.zeros((6, 6)),
+            ref_msl=0.0,
+            hydro_M=np.zeros((6, 6)),
+            hydro_K=np.zeros((6, 6)),
+            mooring_K=foundation.as_mooring_K(),
+            distr_m_z=np.zeros(0),
+            distr_m=np.zeros(0),
+            distr_k_z=np.zeros(0),
+            distr_k=np.zeros(0),
+        )
+        self._bmi.tow_support = 1
+        self._bmi.hub_conn = 3
+        return self
 
     def run(
         self, n_modes: int = 20, *, check_model: bool = True,
