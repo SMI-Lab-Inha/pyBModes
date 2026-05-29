@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import pathlib
 
+import numpy as np
 import pytest
 
 from pybmodes.elastodyn import (
     FloatingFrequencyGap,
     report_floating_frequency_gap,
 )
+from pybmodes.elastodyn.diagnostics import _drop_rigid_body_shapes
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -88,6 +90,152 @@ def test_format_report_signed_gap_prefix() -> None:
         coupled_ss_1=0.4,
     )
     assert "-20.0%" in gap_down.format_report()
+
+
+def test_drop_rigid_body_drops_unlabelled_platform_modes() -> None:
+    """Regression for the Codex P2 finding on PR #114.
+
+    ``classify_platform_modes`` can leave a strongly-coupled or
+    rotated rigid-body pair tagged ``None``. The label-based filter
+    forwarded those candidates into the tower-family classifier and
+    the diagnostic could have landed on a low-frequency platform mode
+    as the coupled 1st FA / SS.
+
+    Synthesises a ten-mode ``ModalResult`` where two of the six
+    rigid-body slots carry ``None`` (the bug condition Codex flagged),
+    then asserts the filter still drops them via the frequency-floor
+    cut at 0.2 Hz.
+    """
+    from pybmodes.models.result import ModalResult
+
+    frequencies = np.array([
+        0.008,
+        0.008,
+        0.032,
+        0.039,
+        0.039,
+        0.120,
+        0.482,
+        0.491,
+        1.570,
+        1.598,
+    ])
+    shapes = [f"shape_{i}" for i in range(10)]
+    mode_labels = [
+        "surge",
+        "sway",
+        "yaw",
+        "pitch",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    ]
+    modal = ModalResult(
+        frequencies=frequencies,
+        shapes=shapes,
+        mode_labels=mode_labels,
+    )
+
+    filtered = _drop_rigid_body_shapes(modal)
+
+    assert len(filtered.shapes) == 4
+    assert list(filtered.frequencies) == [0.482, 0.491, 1.570, 1.598]
+    assert filtered.shapes == ["shape_6", "shape_7", "shape_8", "shape_9"]
+
+
+def test_drop_rigid_body_keeps_unlabelled_mode_above_floor() -> None:
+    """Unlabelled tower modes above the 0.2 Hz floor are preserved.
+
+    Mirrors the actual OC3 Hywind shape (asymmetric platform support
+    leaves the eigensolver returning four labelled rigid-body modes
+    rather than six; the 1st tower FA / SS at 0.49 Hz must not be
+    dropped just because their label is ``None``).
+    """
+    from pybmodes.models.result import ModalResult
+
+    frequencies = np.array([
+        0.0081,
+        0.0081,
+        0.0324,
+        0.0412,
+        0.4887,
+        0.4903,
+        2.9639,
+        3.4724,
+    ])
+    shapes = [f"shape_{i}" for i in range(8)]
+    mode_labels = [
+        "surge",
+        "sway",
+        "heave",
+        "yaw",
+        None,
+        None,
+        None,
+        None,
+    ]
+    modal = ModalResult(
+        frequencies=frequencies,
+        shapes=shapes,
+        mode_labels=mode_labels,
+    )
+
+    filtered = _drop_rigid_body_shapes(modal)
+
+    assert filtered.shapes == [
+        "shape_4", "shape_5", "shape_6", "shape_7",
+    ]
+
+
+def test_drop_rigid_body_drops_labelled_mode_above_floor() -> None:
+    """Labelled rigid-body modes are dropped even above the 0.2 Hz floor.
+
+    Defensive guard for a stiff platform (such as a TLP) where one of
+    the six rigid-body frequencies could overlap with the 1st tower
+    bending pair. As long as ``classify_platform_modes`` tags the
+    rigid-body mode with a label, the filter excludes it regardless
+    of frequency.
+    """
+    from pybmodes.models.result import ModalResult
+
+    frequencies = np.array([0.05, 0.05, 0.06, 0.10, 0.10, 0.40, 0.42, 0.48])
+    shapes = [f"shape_{i}" for i in range(8)]
+    mode_labels = [
+        "surge",
+        "sway",
+        "yaw",
+        "roll",
+        "pitch",
+        "heave",   # the labelled rigid-body mode that sits in the tower-bending band
+        None,
+        None,
+    ]
+    modal = ModalResult(
+        frequencies=frequencies,
+        shapes=shapes,
+        mode_labels=mode_labels,
+    )
+
+    filtered = _drop_rigid_body_shapes(modal)
+
+    assert filtered.shapes == ["shape_6", "shape_7"]
+
+
+def test_drop_rigid_body_passes_through_cantilever_solve() -> None:
+    """A cantilever modal result has ``mode_labels = None`` and is unchanged."""
+    from pybmodes.models.result import ModalResult
+
+    frequencies = np.array([0.4, 0.4, 1.5, 1.5])
+    shapes = [f"shape_{i}" for i in range(4)]
+    modal = ModalResult(
+        frequencies=frequencies,
+        shapes=shapes,
+        mode_labels=None,
+    )
+    assert _drop_rigid_body_shapes(modal) is modal
 
 
 @pytest.mark.integration

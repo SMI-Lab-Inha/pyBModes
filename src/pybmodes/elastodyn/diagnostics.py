@@ -131,18 +131,46 @@ def report_floating_frequency_gap(
     )
 
 
+_RIGID_BODY_FLOOR_HZ = 0.2
+"""Tower-bending lower-frequency floor for the rigid-body filter.
+
+Any unlabelled mode whose frequency lies below this floor is assumed
+to be a platform rigid-body mode the classifier could not attribute
+to a single DOF. The platform 6-DOF rigid-body modes on a realistic
+floating wind turbine sit at 0.005 to 0.15 Hz; the 1st tower bending
+pair sits at 0.3 Hz or higher (the OC3 Hywind cantilever-vs-coupled
+gap of around 25 percent stiffens, never softens, the apparent tower
+bending). The 0.2 Hz floor sits comfortably above the rigid-body
+band and well below any realistic 1st tower bending frequency.
+"""
+
+
 def _drop_rigid_body_shapes(modal):
     """Filter out platform rigid-body modes from a floating modal result.
 
-    On a free-base ``hub_conn = 2`` solve the pipeline tags the six
-    platform rigid-body modes with ``mode_labels`` entries naming the
-    DOF (``"surge"`` / ``"sway"`` / ``"heave"`` / ``"roll"`` /
-    ``"pitch"`` / ``"yaw"``). Tower-bending modes carry ``None``. The
-    tower-family classifier inside
+    On a free-base ``hub_conn = 2`` solve the pipeline tags rigid-body
+    modes with ``mode_labels`` entries naming the DOF
+    (``"surge"`` / ``"sway"`` / ``"heave"`` / ``"roll"`` / ``"pitch"``
+    / ``"yaw"``). The tower-family classifier inside
     :func:`compute_tower_params_report` picks the lowest-frequency
     FA-dominated candidate and would otherwise land on surge for the
-    coupled OC3 Hywind solve (~0.008 Hz), so the rigid-body shapes
-    have to be removed before classification.
+    coupled OC3 Hywind solve (~0.008 Hz), so labelled rigid-body
+    shapes have to be removed before classification.
+
+    :func:`pybmodes.fem.platform_modes.classify_platform_modes` may
+    leave a strongly-coupled or rotated rigid-body pair tagged
+    ``None``, in which case a pure label-based filter forwards those
+    candidates into the tower-family classifier and the diagnostic
+    could land on a low-frequency platform mode as the coupled 1st FA.
+    The filter therefore additionally drops any unlabelled mode whose
+    frequency lies below ``_RIGID_BODY_FLOOR_HZ`` (0.2 Hz). The
+    rigid-body band on any realistic floating wind turbine sits at
+    0.005 to 0.15 Hz, well below this floor; the 1st tower bending
+    pair sits well above it, so this second cut catches the unlabelled
+    rigid-body case Codex flagged on PR #114 without trimming any real
+    tower mode. The eigensolver's asymmetric path on a soft-pitch spar
+    such as OC3 Hywind drops some rigid-body modes from the returned
+    spectrum, so we cannot rely on an index-based cut alone.
 
     On a cantilever solve ``mode_labels`` is ``None`` and the input is
     returned unchanged.
@@ -151,16 +179,17 @@ def _drop_rigid_body_shapes(modal):
 
     if modal.mode_labels is None:
         return modal
-    keep = [
-        (i, shape)
-        for i, (shape, label) in enumerate(zip(modal.shapes, modal.mode_labels))
-        if label is None
+    n = len(modal.shapes)
+    indices = [
+        i
+        for i in range(n)
+        if modal.mode_labels[i] is None
+        and float(modal.frequencies[i]) > _RIGID_BODY_FLOOR_HZ
     ]
-    if not keep:
+    if not indices:
         return modal
-    indices = [i for i, _ in keep]
     return ModalResult(
         frequencies=modal.frequencies[indices],
-        shapes=[s for _, s in keep],
+        shapes=[modal.shapes[i] for i in indices],
         mode_labels=None,
     )
