@@ -32,6 +32,27 @@ To pin a specific release in a requirements file or a
    pybmodes ~=1.9         # latest 1.9.x, blocks 2.x
    pybmodes >=1.9,<2      # 1.9+ but never a major bump
 
+From conda-forge
+----------------
+
+``pybmodes`` is also packaged on `conda-forge
+<https://anaconda.org/conda-forge/pybmodes>`_:
+
+.. code-block:: bash
+
+   conda install -c conda-forge pybmodes
+
+This pulls the runtime core (``numpy``, ``scipy``) and the
+``pybmodes`` CLI, exactly like the PyPI wheel. The pip-style
+extras (``[plots]``, ``[windio]``, ...) are a pip concept and have
+no conda equivalent, so for the optional features add the matching
+conda-forge packages alongside it, ``matplotlib`` for
+``pybmodes.plots`` and ``pyyaml`` for the WindIO path.
+
+.. code-block:: bash
+
+   conda install -c conda-forge pybmodes matplotlib pyyaml
+
 From source (editable)
 ----------------------
 
@@ -155,9 +176,26 @@ picked up too.
 Inside a conda environment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-pyBmodes is not on conda-forge, so it is installed with ``pip`` inside
-the conda env. Upgrading is therefore a ``pip`` operation rather than a
-``conda update``. Activate the env first, then upgrade with pip.
+pyBmodes is on conda-forge, so inside a conda env you can install and
+upgrade it with conda directly.
+
+.. code-block:: bash
+
+   conda install -c conda-forge pybmodes   # install
+   conda update  -c conda-forge pybmodes   # upgrade
+   python -c "import pybmodes; print(pybmodes.__version__)"
+
+.. note::
+
+   The conda-forge package ships the runtime core only. For the
+   optional features add the matching conda-forge packages
+   (``matplotlib`` for ``pybmodes.plots``, ``pyyaml`` for the WindIO
+   path), since the pip-style extras have no conda equivalent.
+
+If you installed pyBmodes with ``pip`` inside a conda env instead of
+from conda-forge, keep upgrading it with ``pip``, not ``conda update``,
+so the two package managers don't both try to manage it. Activate the
+env first, then upgrade with pip.
 
 .. code-block:: bash
 
@@ -167,12 +205,13 @@ the conda env. Upgrading is therefore a ``pip`` operation rather than a
 
 .. note::
 
-   ``conda update pybmodes`` will not work, because conda doesn't know
-   the package (pip installed it). If you're unsure which env has it,
-   ``conda env list`` shows every env and ``pip show pybmodes`` confirms
-   the version installed in the currently active one. For a source
-   checkout living in a conda env, ``git pull`` then re-run the editable
-   ``pip install -e ".[dev,plots]"`` with the env active.
+   A ``pip``-installed pyBmodes won't respond to ``conda update
+   pybmodes``, because conda doesn't track a pip-installed package. If
+   you're unsure which env has it, ``conda env list`` shows every env and
+   ``pip show pybmodes`` confirms the version installed in the currently
+   active one. For a source checkout living in a conda env, ``git pull``
+   then re-run the editable ``pip install -e ".[dev,plots]"`` with the env
+   active.
 
 Verifying the install
 ---------------------

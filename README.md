@@ -3,6 +3,7 @@
 [![CI](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/ci.yml/badge.svg)](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/ci.yml)
 [![Validation](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/validation.yml/badge.svg)](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/validation.yml)
 [![Docs](https://readthedocs.org/projects/pybmodes/badge/?version=latest)](https://pybmodes.readthedocs.io/en/latest/)
+[![conda-forge](https://img.shields.io/conda/vn/conda-forge/pybmodes.svg)](https://anaconda.org/conda-forge/pybmodes)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 
@@ -16,7 +17,7 @@ Full documentation is published on [Read the Docs](https://pybmodes.readthedocs.
 
 | Page | What's there |
 | --- | --- |
-| [Installation](https://pybmodes.readthedocs.io/en/latest/installation.html) | PyPI / source install, extras matrix, Windows + conda quickstart, troubleshooting |
+| [Installation](https://pybmodes.readthedocs.io/en/latest/installation.html) | PyPI / conda-forge / source install, extras matrix, Windows + conda quickstart, troubleshooting |
 | [Quickstart](https://pybmodes.readthedocs.io/en/latest/quickstart.html) | Nine worked recipes — synthetic tower, OpenFAST deck, monopile + SubDyn, floating coupled, Campbell sweep, WindIO one-click, MAC, batch, persistence |
 | [Theory](https://pybmodes.readthedocs.io/en/latest/theory.html) | Eigenproblem maths, 15-DOF beam element, four boundary conditions, polynomial ansatz, solver dispatch, citable references |
 | [Data sources](https://pybmodes.readthedocs.io/en/latest/data_sources.html) | Every input format — BModes `.bmi`, ElastoDyn / SubDyn / HydroDyn / MoorDyn `.dat`, WAMIT `.1` / `.hst`, WindIO `.yaml` — with snippet examples |
@@ -43,8 +44,16 @@ python -m http.server -d docs/_build/html
 
 ## Install
 
+From PyPI:
+
 ```bash
 pip install pybmodes
+```
+
+Or from conda-forge:
+
+```bash
+conda install -c conda-forge pybmodes
 ```
 
 That installs the runtime core (`numpy` + `scipy`). Add an extra for optional features — `[plots]`, `[windio]`, `[notebook]`, `[docs]` (matrix below). For a source / editable checkout (contributors, or tracking `master`):
@@ -77,9 +86,22 @@ git pull
 pip install -e ".[dev,plots]"         # picks up new dependencies too
 ```
 
-**Using a conda environment?** pyBmodes is installed with `pip` *inside* the
-conda env (it's not on conda-forge), so activate the env first, then upgrade
-with pip — don't use `conda update`:
+**Using a conda environment?** pyBmodes is on conda-forge, so you can install
+and upgrade it with conda directly:
+
+```bash
+conda install -c conda-forge pybmodes   # install
+conda update  -c conda-forge pybmodes   # upgrade
+```
+
+The conda-forge package carries the runtime core (`numpy` + `scipy`). For the
+optional features, add the matching conda-forge packages alongside it
+(`matplotlib` for `pybmodes.plots`, `pyyaml` for the WindIO path), since the
+pip-style `[plots]` / `[windio]` extras are a pip concept.
+
+If you'd rather pip-install into a conda env instead, activate the env first
+and upgrade with `pip install --upgrade pybmodes` (not `conda update`) so conda
+and pip don't both try to manage the package:
 
 ```bash
 conda activate pybmodes               # the env you installed it into

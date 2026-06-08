@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **conda-forge availability.** pyBmodes is now packaged on
+  conda-forge, so `conda install -c conda-forge pybmodes` works
+  alongside `pip install pybmodes`. The feedstock builds the noarch
+  package from each PyPI sdist, so the conda channel tracks PyPI
+  releases. The README and installation guide cover the conda path
+  and how to add the optional dependencies (`matplotlib`, `pyyaml`)
+  that the pip extras would otherwise pull in.
+
 ## [1.15.1] — 2026-05-30
 
 A focused ergonomic patch addressing the only piece of feedback on
