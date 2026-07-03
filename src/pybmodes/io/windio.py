@@ -699,7 +699,18 @@ def _positive_mass(value: Any, what: str) -> float:
 
 
 def _finite_vector(value: Any, n: int, what: str) -> np.ndarray:
-    """Coerce ``value`` to a finite length-``n`` 1-D array, else raise."""
+    """Coerce ``value`` to a finite length-``n`` 1-D array, else raise.
+
+    Rejects bool entries (which ``np.asarray(..., dtype=float)`` would
+    otherwise coerce to 0.0 / 1.0) so a stray YAML ``true`` / ``false`` in
+    a vector field fails like the scalar fields rather than corrupting the
+    CM / inertia.
+    """
+    if np.asarray(value).dtype == bool or (
+        isinstance(value, (list, tuple))
+        and any(isinstance(x, bool) for x in value)
+    ):
+        raise ValueError(f"{what} entries must be numbers, not bools; got {value!r}.")
     arr = np.asarray(value, dtype=float)
     if arr.shape != (n,):
         raise ValueError(f"{what} must be a {n}-vector; got shape {arr.shape}.")
@@ -709,14 +720,26 @@ def _finite_vector(value: Any, n: int, what: str) -> np.ndarray:
 
 
 def _sym_tensor_from_6vec(vec: Any, what: str) -> np.ndarray:
-    """Build a symmetric 3x3 inertia tensor from a WindIO 6-vector.
+    """Build a symmetric 3x3 inertia tensor from a WindIO inertia vector.
 
-    WindIO orders the vector ``[Ixx, Iyy, Izz, Ixy, Ixz, Iyz]``; the
-    returned tensor is ``[[Ixx, Ixy, Ixz], [Ixy, Iyy, Iyz], [Ixz, Iyz,
-    Izz]]``. Every entry must be finite.
+    Accepts the full ``[Ixx, Iyy, Izz, Ixy, Ixz, Iyz]`` 6-vector or the
+    diagonal ``[Ixx, Iyy, Izz]`` triplet (products of inertia taken as
+    zero) some ontologies use. The returned tensor is
+    ``[[Ixx, Ixy, Ixz], [Ixy, Iyy, Iyz], [Ixz, Iyz, Izz]]``; every entry
+    must be finite.
     """
-    arr = _finite_vector(vec, 6, f"{what} inertia")
-    ixx, iyy, izz, ixy, ixz, iyz = (float(v) for v in arr)
+    size = np.asarray(vec).size
+    if size not in (3, 6):
+        raise ValueError(
+            f"{what} inertia must be a 3-vector [Ixx, Iyy, Izz] (diagonal) or "
+            f"a 6-vector [Ixx, Iyy, Izz, Ixy, Ixz, Iyz]; got {size} value(s)."
+        )
+    arr = _finite_vector(vec, int(size), f"{what} inertia")
+    if size == 3:
+        ixx, iyy, izz = (float(v) for v in arr)
+        ixy = ixz = iyz = 0.0
+    else:
+        ixx, iyy, izz, ixy, ixz, iyz = (float(v) for v in arr)
     return np.array(
         [[ixx, ixy, ixz], [ixy, iyy, iyz], [ixz, iyz, izz]], dtype=float
     )

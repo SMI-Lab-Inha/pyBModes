@@ -105,6 +105,26 @@ def test_rna_assembly_matches_hand_computation(tmp_path: pathlib.Path) -> None:
     assert rna.iyz == pytest.approx(0.0, abs=1e-6)
 
 
+def test_rna_diagonal_inertia_accepted(tmp_path: pathlib.Path) -> None:
+    """A diagonal 3-vector system_inertia [Ixx, Iyy, Izz] is accepted as a
+    diagonal tensor, matching the equivalent zero-product 6-vector (Codex
+    review #82)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    diag = _base_ontology()
+    diag["components"]["hub"]["elastic_properties_mb"]["system_inertia"] = [
+        2.0e6, 1.0e6, 1.0e6,
+    ]
+    diag["components"]["nacelle"]["drivetrain"]["elastic_properties_mb"][
+        "system_inertia"
+    ] = [1.0e7, 1.2e7, 1.3e7]
+    d = read_windio_rna(_write(diag, tmp_path, "diag.yaml"))
+    base = read_windio_rna(_write(_base_ontology(), tmp_path, "full.yaml"))
+    for attr in ("mass", "cm_axial", "ixx", "iyy", "izz", "izx", "ixy", "iyz"):
+        assert getattr(d, attr) == pytest.approx(getattr(base, attr), abs=1e-6)
+
+
 def test_rna_orientation_sign_flips_izx(tmp_path: pathlib.Path) -> None:
     """Downwind rotor flips the rotor-apex x-sign, flipping its izx cross
     term while mass, CM and the sign-independent inertias are unchanged.
@@ -273,10 +293,19 @@ def test_rna_input_hardening(tmp_path: pathlib.Path) -> None:
             "elastic_properties_mb"].__setitem__(
                 "system_center_mass", [1.0, 2.0]))
 
-    # Malformed inertia (not a 6-vector).
+    # Malformed inertia (neither a 3- nor 6-vector).
     with pytest.raises(ValueError, match="inertia"):
         _run(lambda o: o["components"]["hub"]["elastic_properties_mb"]
-             .__setitem__("system_inertia", [1.0, 2.0, 3.0]))
+             .__setitem__("system_inertia", [1.0, 2.0, 3.0, 4.0]))
+
+    # Bool entries in vector fields must be rejected, not coerced to 0/1.
+    with pytest.raises(ValueError, match="not bools"):
+        _run(lambda o: o["components"]["nacelle"]["drivetrain"][
+            "elastic_properties_mb"].__setitem__(
+                "system_center_mass", [True, 0.0, 3.0]))
+    with pytest.raises(ValueError, match="not bools"):
+        _run(lambda o: o["components"]["hub"]["elastic_properties_mb"]
+             .__setitem__("system_inertia", [True, 1.0, 1.0]))
 
     # Bad blade count / orientation / non-finite geometry.
     with pytest.raises(ValueError, match="number_of_blades"):
