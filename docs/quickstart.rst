@@ -148,9 +148,26 @@ without hand-building a ``PlatformSupport``:
 
    tower = Tower.from_windio_with_monopile(
        "IEA-15-240-RWT.yaml", tip_mass=991000.0,
+       water_depth=30.0,     # clamp at the seabed, not the embedded pile tip
    )
    tower.attach_mudline_foundation(f)        # mutates BMI to hub_conn = 3
    modal = tower.run(n_modes=4)
+
+.. note::
+
+   Pass ``water_depth`` whenever the monopile ``reference_axis.z`` runs
+   below the seabed (IEA-15: axis -75 -> +15 m, mudline at -30 m). It
+   clamps the cantilever at the mudline and drops the embedded pile; omit
+   it and that length is modelled as a free cantilever, dropping the
+   frequency well below reference (issue #121). It also auto-reads
+   ``environment.water_depth`` from the ontology when present.
+
+   On an IEA-22-class ontology that carries the hub and nacelle
+   ``elastic_properties_mb`` blocks, ``lumped_rna_cal=True`` derives the
+   tower-top RNA (hub + nacelle + blades) automatically instead of a
+   hand-supplied ``tip_mass`` (issue #82; requires ``hub_conn = 1``, the
+   clamped-base default) — the same flag works on
+   :meth:`~pybmodes.models.Tower.from_windio`.
 
 If you only need the 6 x 6 stiffness block to compose with an
 existing ``PlatformSupport`` you have already built (the
