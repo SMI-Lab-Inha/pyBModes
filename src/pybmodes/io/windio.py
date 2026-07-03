@@ -678,16 +678,34 @@ def _require_key(node: dict, key: str, path: str) -> Any:
     return node[key]
 
 
-def _positive_mass(value: Any, what: str) -> float:
-    """Coerce ``value`` to a positive, finite mass (kg), else raise."""
+def _finite_float(value: Any, what: str) -> float:
+    """Coerce ``value`` to a finite float (bool rejected), else raise."""
     if isinstance(value, bool):
         raise ValueError(f"{what} must be a number, not a bool; got {value!r}.")
-    m = float(value)
-    if not np.isfinite(m) or m <= 0.0:
+    f = float(value)
+    if not np.isfinite(f):
+        raise ValueError(f"{what} must be finite; got {value!r}.")
+    return f
+
+
+def _positive_mass(value: Any, what: str) -> float:
+    """Coerce ``value`` to a positive, finite mass (kg), else raise."""
+    m = _finite_float(value, what)
+    if m <= 0.0:
         raise ValueError(
             f"{what} must be a positive, finite mass in kg; got {value!r}."
         )
     return m
+
+
+def _finite_vector(value: Any, n: int, what: str) -> np.ndarray:
+    """Coerce ``value`` to a finite length-``n`` 1-D array, else raise."""
+    arr = np.asarray(value, dtype=float)
+    if arr.shape != (n,):
+        raise ValueError(f"{what} must be a {n}-vector; got shape {arr.shape}.")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError(f"{what} must be finite; got {np.asarray(value).tolist()}.")
+    return arr
 
 
 def _sym_tensor_from_6vec(vec: Any, what: str) -> np.ndarray:
@@ -697,18 +715,25 @@ def _sym_tensor_from_6vec(vec: Any, what: str) -> np.ndarray:
     returned tensor is ``[[Ixx, Ixy, Ixz], [Ixy, Iyy, Iyz], [Ixz, Iyz,
     Izz]]``. Every entry must be finite.
     """
-    arr = np.asarray(vec, dtype=float)
-    if arr.shape != (6,):
-        raise ValueError(
-            f"{what} inertia must be a 6-vector [Ixx, Iyy, Izz, Ixy, Ixz, "
-            f"Iyz]; got {arr.size} value(s)."
-        )
-    if not np.all(np.isfinite(arr)):
-        raise ValueError(f"{what} inertia has non-finite entries: {vec!r}.")
+    arr = _finite_vector(vec, 6, f"{what} inertia")
     ixx, iyy, izz, ixy, ixz, iyz = (float(v) for v in arr)
     return np.array(
         [[ixx, ixy, ixz], [ixy, iyy, iyz], [ixz, iyz, izz]], dtype=float
     )
+
+
+def _check_monotone_grid(g: np.ndarray, label: str) -> None:
+    """Require a finite, strictly increasing 1-D grid of >= 2 stations.
+
+    WindIO ``{grid, values}`` curves are piecewise-linear on an ascending
+    grid; a non-finite or non-monotone grid breaks ``np.interp`` /
+    ``np.union1d`` silently, so reject it up front.
+    """
+    if g.size < 2 or not np.all(np.isfinite(g)) or np.any(np.diff(g) <= 0.0):
+        raise ValueError(
+            f"{label} must be a finite, strictly increasing grid of at least "
+            f"2 stations."
+        )
 
 
 def _blade_reference_axis(six: dict, comp: dict, blade_component: str) -> dict:
@@ -757,12 +782,12 @@ def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
             f"components.{blade_component} inertia_matrix.values must be a "
             f"list of numeric rows (upper-triangular 6x6)."
         ) from exc
-    if grid.size != mass_per_len.size or grid.size < 2:
+    if grid.size != mass_per_len.size:
         raise ValueError(
             f"components.{blade_component} inertia_matrix grid ({grid.size}) "
-            f"and values ({mass_per_len.size}) must be equal-length arrays of "
-            f"at least 2 stations."
+            f"and values ({mass_per_len.size}) must be equal-length arrays."
         )
+    _check_monotone_grid(grid, f"components.{blade_component} inertia_matrix.grid")
     if not np.all(np.isfinite(mass_per_len)) or np.any(mass_per_len < 0.0):
         raise ValueError(
             f"components.{blade_component} blade mass/length has non-finite "
@@ -782,10 +807,15 @@ def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
             continue
         ag = np.asarray(_require_key(a, "grid", f"reference_axis.{axis}"), dtype=float)
         av = np.asarray(_require_key(a, "values", f"reference_axis.{axis}"), dtype=float)
-        if ag.size != av.size or ag.size < 2:
+        if ag.size != av.size:
             raise ValueError(
-                f"blade reference_axis.{axis} grid/values must be equal-length "
-                f"arrays of at least 2 stations."
+                f"blade reference_axis.{axis} grid ({ag.size}) and values "
+                f"({av.size}) must be equal-length arrays."
+            )
+        _check_monotone_grid(ag, f"blade reference_axis.{axis}.grid")
+        if not np.all(np.isfinite(av)):
+            raise ValueError(
+                f"blade reference_axis.{axis}.values has non-finite entries."
             )
         axis_curves[axis] = (ag, av)
 
@@ -886,15 +916,10 @@ def read_windio_rna(
         _require_key(nac_ep, "system_mass", "nacelle elastic_properties_mb"),
         "nacelle system_mass",
     )
-    r_nac = np.asarray(
+    r_nac = _finite_vector(
         _require_key(nac_ep, "system_center_mass", "nacelle elastic_properties_mb"),
-        dtype=float,
+        3, "nacelle system_center_mass",
     )
-    if r_nac.shape != (3,) or not np.all(np.isfinite(r_nac)):
-        raise ValueError(
-            f"nacelle system_center_mass must be a finite 3-vector [x, y, z]; "
-            f"got {np.asarray(r_nac).tolist()}."
-        )
     i_nac = _sym_tensor_from_6vec(
         _require_key(nac_ep, "system_inertia", "nacelle elastic_properties_mb"),
         "nacelle",
@@ -908,20 +933,11 @@ def read_windio_rna(
                 f"components.{component_nacelle}[.drivetrain].{key} is "
                 f"required to place the rotor apex for the RNA lump."
             )
-        return float(val)
+        return _finite_float(val, f"nacelle.drivetrain.{key}")
 
     overhang = _nac_geom("overhang")
     uptilt = _nac_geom("uptilt")
     dist_tt_hub = _nac_geom("distance_tt_hub")
-    for gname, gval in (
-        ("overhang", overhang),
-        ("uptilt", uptilt),
-        ("distance_tt_hub", dist_tt_hub),
-    ):
-        if not np.isfinite(gval):
-            raise ValueError(
-                f"nacelle.drivetrain.{gname} must be finite; got {gval!r}."
-            )
 
     # --- Hub: components.<hub>.elastic_properties_mb ---
     hub = _require_mapping(comps.get(component_hub), f"components.{component_hub}")

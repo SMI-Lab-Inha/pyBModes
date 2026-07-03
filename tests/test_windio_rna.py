@@ -288,6 +288,43 @@ def test_rna_input_hardening(tmp_path: pathlib.Path) -> None:
             "overhang", float("nan")))
 
 
+def test_rna_grid_hardening(tmp_path: pathlib.Path) -> None:
+    """Non-finite / non-monotone blade grids and non-finite reference-axis
+    values are rejected rather than silently zeroing the blade mass (Codex
+    review #82)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _run(mut, name):
+        onto = _base_ontology()
+        mut(onto)
+        return read_windio_rna(_write(onto, tmp_path, name))
+
+    def six(o):
+        return o["components"]["blade"]["elastic_properties_mb"]["six_x_six"]
+
+    # NaN in the inertia grid (size-only guard would have passed).
+    with pytest.raises(ValueError, match="increasing"):
+        _run(lambda o: six(o)["inertia_matrix"].__setitem__(
+            "grid", [0.0, float("nan")]), "g1.yaml")
+    # Non-monotone inertia grid.
+    with pytest.raises(ValueError, match="increasing"):
+        _run(lambda o: six(o)["inertia_matrix"].__setitem__(
+            "grid", [1.0, 0.0]), "g2.yaml")
+    # Non-finite reference-axis values.
+    with pytest.raises(ValueError, match="non-finite"):
+        _run(lambda o: six(o)["reference_axis"]["z"].__setitem__(
+            "values", [0.0, float("nan")]), "g3.yaml")
+    # Non-monotone reference-axis grid.
+    with pytest.raises(ValueError, match="increasing"):
+        _run(lambda o: six(o)["reference_axis"]["z"].__setitem__(
+            "grid", [1.0, 0.0]), "g4.yaml")
+    # Bool geometry.
+    with pytest.raises(ValueError, match="not a bool"):
+        _run(lambda o: o["components"]["nacelle"]["drivetrain"].__setitem__(
+            "overhang", True), "g5.yaml")
+
+
 def test_from_windio_lumped_rna_cal(tmp_path: pathlib.Path) -> None:
     """from_windio(lumped_rna_cal=True) attaches the auto-RNA and softens
     the tower; passing both tip_mass and the flag is rejected."""
