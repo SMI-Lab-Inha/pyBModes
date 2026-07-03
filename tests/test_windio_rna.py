@@ -158,6 +158,36 @@ def test_rna_blade_mass_uses_arc_length(tmp_path: pathlib.Path) -> None:
     assert curved.mass - straight.mass == pytest.approx(extra, rel=1e-6)
 
 
+def test_rna_blade_mass_preserves_reference_axis_knots(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A prebend knot that is not on the inertia grid is kept, so the arc
+    length (and blade mass) is not chorded over it (Codex review #82)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    onto = _base_ontology()
+    six = onto["components"]["blade"]["elastic_properties_mb"]["six_x_six"]
+    # inertia grid is [0, 1]; put a prebend peak at mid-span (0.5), a knot
+    # absent from the inertia grid.
+    six["reference_axis"] = {
+        "x": {"grid": [0.0, 0.5, 1.0], "values": [0.0, 30.0, 0.0]},
+        "y": {"grid": [0.0, 1.0], "values": [0.0, 0.0]},
+        "z": {"grid": [0.0, 1.0], "values": [0.0, 40.0]},
+    }
+    rna = read_windio_rna(_write(onto, tmp_path, "prebend.yaml"))
+
+    # True arc length over the union grid [0, 0.5, 1]: points (0,0,0),
+    # (30,0,20), (0,0,40).
+    pts = np.array([[0.0, 0.0, 0.0], [30.0, 0.0, 20.0], [0.0, 0.0, 40.0]])
+    arc = float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
+    expected = 500000.0 + 100000.0 + 3 * 100.0 * arc
+    assert rna.mass == pytest.approx(expected)
+    # ... and it exceeds the chord (endpoint-only) mass the old sampling
+    # onto the inertia grid would have produced (3 * 100 * 40).
+    assert rna.mass > 500000.0 + 100000.0 + 3 * 100.0 * 40.0
+
+
 def test_rna_blade_reference_axis_on_component(tmp_path: pathlib.Path) -> None:
     """The blade reference axis resolves from the component / outer_shape
     when it is not nested in six_x_six (older layout; Codex review #82)."""

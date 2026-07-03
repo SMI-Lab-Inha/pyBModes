@@ -768,7 +768,9 @@ def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
             f"components.{blade_component} blade mass/length has non-finite "
             f"or negative entries."
         )
-    coords = []
+    # Collect the present reference-axis curves (z required; x / y prebend
+    # / sweep optional -> a straight span in that axis).
+    axis_curves = {}
     for axis in ("x", "y", "z"):
         a = ref.get(axis)
         if not isinstance(a, dict):
@@ -777,7 +779,6 @@ def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
                     f"blade reference_axis.z is required to integrate the "
                     f"span mass of components.{blade_component}."
                 )
-            coords.append(np.zeros_like(grid))       # optional prebend/sweep
             continue
         ag = np.asarray(_require_key(a, "grid", f"reference_axis.{axis}"), dtype=float)
         av = np.asarray(_require_key(a, "values", f"reference_axis.{axis}"), dtype=float)
@@ -786,11 +787,31 @@ def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
                 f"blade reference_axis.{axis} grid/values must be equal-length "
                 f"arrays of at least 2 stations."
             )
-        coords.append(np.interp(grid, ag, av))
+        axis_curves[axis] = (ag, av)
+
+    # Integrate on the union of the inertia grid and every reference-axis
+    # knot, restricted to the inertia grid's span (where mass/length is
+    # defined). WindIO curves are piecewise-linear on their own grids, so
+    # sampling onto the union keeps every segment and makes the trapezoidal
+    # integral exact — sampling onto the inertia grid alone would chord over
+    # intermediate prebend/sweep knots and undercount the mass.
+    merged = grid
+    for ag, _ in axis_curves.values():
+        merged = np.union1d(merged, ag)
+    merged = merged[(merged >= grid[0]) & (merged <= grid[-1])]
+
+    mpl = np.interp(merged, grid, mass_per_len)
+    coords = []
+    for axis in ("x", "y", "z"):
+        if axis in axis_curves:
+            ag, av = axis_curves[axis]
+            coords.append(np.interp(merged, ag, av))
+        else:
+            coords.append(np.zeros_like(merged))
     xyz = np.vstack(coords).T
     seg = np.linalg.norm(np.diff(xyz, axis=0), axis=1)
     s = np.concatenate([[0.0], np.cumsum(seg)])
-    return _trapezoid(mass_per_len, s)
+    return _trapezoid(mpl, s)
 
 
 def read_windio_rna(
