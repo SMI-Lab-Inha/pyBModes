@@ -318,6 +318,95 @@ class WindIOMonopileTower:
     z_top: float                      # tower-top elevation (m)
 
 
+def _read_water_depth(
+    yaml_path: str | pathlib.Path, override: float | None,
+) -> float | None:
+    """Resolve the water depth (m, positive) used to place the mudline.
+
+    Priority: an explicit ``override`` argument, then the ontology's
+    ``environment.water_depth`` block, then ``None`` (unknown, so the
+    monopile base is taken as the clamp). An explicit ``override`` must be
+    positive and finite or a ``ValueError`` is raised (it is the caller's
+    contract). A non-positive or non-finite value read from the ontology
+    is treated as absent and returns ``None``.
+    """
+    if override is not None:
+        if isinstance(override, bool):
+            raise ValueError(
+                f"water_depth must be a number in metres, not a bool; got "
+                f"{override!r}"
+            )
+        wd = float(override)
+        if not np.isfinite(wd) or wd <= 0.0:
+            raise ValueError(
+                f"water_depth must be a positive, finite depth in metres; got "
+                f"{override!r}"
+            )
+        return wd
+    yaml = _require_yaml()
+    with pathlib.Path(yaml_path).open("r", encoding="utf-8") as fh:
+        doc = yaml.load(fh, Loader=_dup_anchor_loader(yaml))
+    env = doc.get("environment") if isinstance(doc, dict) else None
+    if isinstance(env, dict) and env.get("water_depth") is not None:
+        raw = env["water_depth"]
+        if isinstance(raw, bool):
+            return None
+        wd = float(raw)
+        return wd if (np.isfinite(wd) and wd > 0.0) else None
+    return None
+
+
+def _truncate_tubular_base(
+    t: WindIOTubular, new_z_base: float, thickness_interp: str,
+) -> WindIOTubular:
+    """Clamp a monopile at ``new_z_base`` (the mudline), dropping the
+    embedded stations below it.
+
+    Every station at or above ``new_z_base`` is kept; when none sits
+    exactly there a station is inserted with geometry interpolated at the
+    mudline. The surviving grid is renormalised to ``[0, 1]``. A
+    wall-schedule step some ontologies place at the mudline (a
+    near-coincident station pair) is preserved because both members of the
+    pair survive the cut.
+    """
+    span = t.z_top - t.z_base
+    if not (span > 0.0 and t.z_base < new_z_base < t.z_top):
+        raise ValueError(
+            f"_truncate_tubular_base requires z_base < new_z_base < z_top; "
+            f"got z_base={t.z_base:g}, new_z_base={new_z_base:g}, "
+            f"z_top={t.z_top:g}."
+        )
+    cut = (new_z_base - t.z_base) / span
+    ftol = 1.0e-6 / span
+    grid = np.asarray(t.station_grid, dtype=float)
+    od = np.asarray(t.outer_diameter, dtype=float)
+    wt = np.asarray(t.wall_thickness, dtype=float)
+
+    keep = grid >= cut - ftol
+    new_grid = grid[keep]
+    new_od = od[keep]
+    new_wt = wt[keep]
+    if new_grid.size == 0 or new_grid[0] > cut + ftol:
+        od_cut = float(np.interp(cut, grid, od))
+        wt_cut = float(_interp(grid, wt, np.array([cut]), thickness_interp)[0])
+        new_grid = np.concatenate([[cut], new_grid])
+        new_od = np.concatenate([[od_cut], new_od])
+        new_wt = np.concatenate([[wt_cut], new_wt])
+
+    new_grid = (new_grid - cut) / (1.0 - cut)
+    new_grid[0] = 0.0
+    return WindIOTubular(
+        station_grid=new_grid,
+        outer_diameter=new_od,
+        wall_thickness=new_wt,
+        flexible_length=float(t.z_top - new_z_base),
+        E=t.E, rho=t.rho, nu=t.nu,
+        outfitting_factor=t.outfitting_factor,
+        z_base=float(new_z_base),
+        z_top=t.z_top,
+    )
+
+
 def read_windio_monopile_tower(
     yaml_path: str | pathlib.Path,
     *,
@@ -325,6 +414,7 @@ def read_windio_monopile_tower(
     component_monopile: str = "monopile",
     thickness_interp: str = "linear",
     n_nodes: int | None = None,
+    water_depth: float | None = None,
 ) -> WindIOMonopileTower:
     """Reduce the ``monopile`` and ``tower`` components and splice them
     into one fixed-bottom cantilever (issue #92).
@@ -351,13 +441,25 @@ def read_windio_monopile_tower(
         spaced stations (geometry interpolated, tube properties
         recomputed exactly), mirroring :meth:`Tower.from_windio`'s
         ``n_nodes``. ``None`` keeps each component's native WindIO grid.
+    water_depth : water depth in metres (positive). Places the mudline at
+        ``z = -water_depth`` and clamps the combined cantilever there,
+        dropping any embedded monopile length below the seabed (issue
+        #121). Needed when the monopile ``reference_axis.z`` includes the
+        embedded pile (e.g. IEA-15: axis -75 -> +15 with the mudline at
+        -30). Defaults to the ontology's ``environment.water_depth`` when
+        present; ``None`` with no ontology value keeps the monopile base
+        as the clamp (correct only when the axis already starts at the
+        mudline).
 
     Raises
     ------
     ValueError : when the monopile top and tower base do not meet at a
         common transition-piece elevation (a gap or overlap of more than
         1 mm), since a non-contiguous pair cannot be spliced into one
-        beam.
+        beam; when an explicit ``water_depth`` is not positive and finite;
+        or when the resolved mudline falls at or above the transition
+        piece, or below the monopile base (the pile does not reach the
+        seabed).
     """
     import numpy as _np
 
@@ -370,6 +472,36 @@ def read_windio_monopile_tower(
     tw = read_windio_tubular(
         yaml_path, component=component_tower, thickness_interp=thickness_interp,
     )
+
+    # Rigid fixed-base monopiles are clamped at the mudline, not at the
+    # embedded pile tip. When the monopile reference_axis extends below the
+    # seabed (e.g. IEA-15: axis -75 -> +15 with the mudline at -30), the
+    # embedded length must be dropped so it is not modelled as a free
+    # cantilever (issue #121). The seabed is -water_depth; water_depth comes
+    # from the caller or the ontology's environment block. With no water
+    # depth available the monopile base is taken as the clamp (the previous
+    # behaviour, correct when the axis already begins at the mudline).
+    wd = _read_water_depth(yaml_path, water_depth)
+    if wd is not None:
+        mudline_z = -wd
+        if mudline_z >= mp.z_top:
+            raise ValueError(
+                f"water_depth={wd:g} m places the mudline (z={mudline_z:g} m) "
+                f"at or above the monopile transition piece (z={mp.z_top:g} m); "
+                f"the mudline must sit below the transition. Check water_depth "
+                f"and the monopile reference_axis.z."
+            )
+        if mudline_z < mp.z_base - 1.0e-6:
+            raise ValueError(
+                f"water_depth={wd:g} m places the mudline (z={mudline_z:g} m) "
+                f"below the monopile base (z={mp.z_base:g} m); the monopile "
+                f"does not reach the seabed. Check water_depth and the monopile "
+                f"reference_axis.z."
+            )
+        if mudline_z > mp.z_base + 1.0e-6:
+            mp = _truncate_tubular_base(mp, mudline_z, thickness_interp)
+        # else: the mudline coincides with the monopile base (within tol),
+        # so the base is already the clamp and no truncation is needed.
 
     # The monopile top and tower base must describe the same transition
     # piece. WindIO encodes both as absolute reference_axis.z, so they

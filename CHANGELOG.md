@@ -18,6 +18,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and how to add the optional dependencies (`matplotlib`, `pyyaml`)
   that the pip extras would otherwise pull in.
 
+### Fixed
+
+- **`from_windio_with_monopile` clamped the embedded pile instead of
+  the mudline (#121).** When a WindIO monopile `reference_axis.z` runs
+  below the seabed (for example IEA-15, whose axis spans -75 m to +15 m
+  with the mudline at -30 m), the combined cantilever was clamped at
+  the pile tip and the whole embedded length was modelled as a free
+  cantilever, so the fundamental frequency came out far too low. The
+  constructor now takes a `water_depth` argument (also read from the
+  ontology's `environment.water_depth` when present) and clamps at the
+  mudline, dropping the embedded stations below it. With no water depth
+  available the monopile base is still taken as the clamp, so
+  ontologies whose axis already begins at the mudline are unchanged.
+  `read_windio_monopile_tower` gains the same `water_depth` keyword.
+
 ## [1.15.1] — 2026-05-30
 
 A focused ergonomic patch addressing the only piece of feedback on

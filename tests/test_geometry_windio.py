@@ -547,6 +547,192 @@ def test_from_windio_with_monopile_tip_mass_and_n_nodes(
     assert np.all(np.isfinite(f)) and np.all(f > 0.0)
 
 
+# An *embedded* monopile: the reference_axis runs from the pile tip at
+# z = -75 up through the transition piece at z = +15, with the mudline at
+# z = -30 (water depth 30 m). The 45 m below the mudline must be clamped
+# out, not modelled as a free cantilever (issue #121).
+_WINDIO_MONOPILE_EMBEDDED = textwrap.dedent("""\
+    environment:
+      water_depth: 30.0
+    components:
+      monopile:
+        outer_shape:
+          outer_diameter:
+            grid: [0.0, 1.0]
+            values: [9.0, 9.0]
+        structure:
+          outfitting_factor: 1.0
+          layers:
+            - name: monopile_wall
+              material: steel_mp
+              thickness:
+                grid: [0.0, 1.0]
+                values: [0.08, 0.08]
+        reference_axis:
+          z:
+            grid: [0.0, 1.0]
+            values: [-75.0, 15.0]
+      tower:
+        outer_shape:
+          outer_diameter:
+            grid: [0.0, 0.5, 1.0]
+            values: [9.0, 7.5, 6.0]
+        structure:
+          outfitting_factor: 1.0
+          layers:
+            - name: tower_wall
+              material: steel_tw
+              thickness:
+                grid: [0.0, 1.0]
+                values: [0.05, 0.02]
+        reference_axis:
+          z:
+            grid: [0.0, 1.0]
+            values: [15.0, 115.0]
+    materials:
+      - name: steel_mp
+        E: 2.0e11
+        rho: 7850.0
+        nu: 0.3
+      - name: steel_tw
+        E: 2.1e11
+        rho: 7800.0
+        nu: 0.3
+    """)
+
+
+def test_monopile_mudline_clamp_from_environment(tmp_path: pathlib.Path) -> None:
+    """water_depth from the ontology's environment block clamps the
+    combined cantilever at the mudline, dropping the embedded pile
+    (issue #121)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_monopile_tower
+
+    p = tmp_path / "embedded.yaml"
+    p.write_text(_WINDIO_MONOPILE_EMBEDDED, encoding="utf-8")
+
+    mt = read_windio_monopile_tower(p)                 # auto-reads water_depth=30
+    assert mt.z_base == pytest.approx(-30.0)           # mudline, not the -75 tip
+    assert mt.z_transition == pytest.approx(15.0)
+    assert mt.z_top == pytest.approx(115.0)
+    assert mt.combined_length == pytest.approx(145.0)  # 115 - (-30)
+    assert mt.transition_frac == pytest.approx(45.0 / 145.0)
+    assert np.all(np.diff(mt.section_props.span_loc) > 0.0)
+
+
+def test_monopile_mudline_clamp_kwarg_overrides(tmp_path: pathlib.Path) -> None:
+    """An explicit water_depth argument is honoured even without an
+    environment block, and takes precedence over it."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_monopile_tower
+
+    # Strip the environment block: only the explicit kwarg can locate the
+    # mudline now.
+    no_env = _WINDIO_MONOPILE_EMBEDDED.split("components:", 1)[1]
+    p = tmp_path / "no_env.yaml"
+    p.write_text("components:" + no_env, encoding="utf-8")
+
+    # No water_depth anywhere -> falls back to the pile tip (-75).
+    mt_tip = read_windio_monopile_tower(p)
+    assert mt_tip.z_base == pytest.approx(-75.0)
+    assert mt_tip.combined_length == pytest.approx(190.0)   # 115 - (-75)
+
+    # Explicit kwarg -> mudline clamp at -30.
+    mt_mud = read_windio_monopile_tower(p, water_depth=30.0)
+    assert mt_mud.z_base == pytest.approx(-30.0)
+    assert mt_mud.combined_length == pytest.approx(145.0)
+
+
+def test_monopile_mudline_clamp_raises_the_frequency(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Clamping at the mudline instead of the embedded pile tip removes a
+    45 m free cantilever, so the fundamental frequency rises sharply
+    (the concrete symptom in issue #121)."""
+    pytest.importorskip("yaml")
+    # Strip the environment block so water_depth=None genuinely falls back
+    # to the pile tip (with the block present it would auto-read 30 m and
+    # both runs would clamp at the mudline).
+    no_env = "components:" + _WINDIO_MONOPILE_EMBEDDED.split("components:", 1)[1]
+    p = tmp_path / "no_env.yaml"
+    p.write_text(no_env, encoding="utf-8")
+
+    f_mudline = Tower.from_windio_with_monopile(
+        p, tip_mass=5.0e5, water_depth=30.0
+    ).run(n_modes=4, check_model=False).frequencies
+    f_tip = Tower.from_windio_with_monopile(
+        p, tip_mass=5.0e5, water_depth=None
+    ).run(n_modes=4, check_model=False).frequencies
+
+    assert np.all(np.isfinite(f_mudline)) and np.all(f_mudline > 0.0)
+    # The embedded (too-long) cantilever is much softer; the mudline clamp
+    # is stiffer. A 45 m embedded length on a 190 m beam is a large effect.
+    assert f_mudline[0] > 1.2 * f_tip[0]
+
+
+def test_monopile_water_depth_above_transition_raises(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A water depth that puts the mudline above the transition piece is
+    non-physical and is rejected."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_monopile_tower
+
+    p = tmp_path / "embedded.yaml"
+    p.write_text(_WINDIO_MONOPILE_EMBEDDED, encoding="utf-8")
+    # TP is at +15; a 10 m depth puts the mudline at -10, still below the
+    # TP, fine. A depth that lifts the mudline to >= +15 needs a negative
+    # depth, which is rejected earlier, so drive it through the TP with a
+    # tower/monopile whose transition is below the mudline is not possible
+    # here; instead assert the guard on mudline >= z_top via a tiny TP.
+    shifted = _WINDIO_MONOPILE_EMBEDDED.replace(
+        "values: [-75.0, 15.0]", "values: [-75.0, -20.0]"
+    ).replace("values: [15.0, 115.0]", "values: [-20.0, 115.0]")
+    q = tmp_path / "shallow_tp.yaml"
+    q.write_text(shifted, encoding="utf-8")
+    # Mudline at -30 is now below the TP at -20, so this is valid; a depth
+    # of 15 (mudline -15) sits above the TP at -20 -> rejected.
+    with pytest.raises(ValueError, match="at or above the monopile transition"):
+        read_windio_monopile_tower(q, water_depth=15.0)
+
+
+def test_monopile_water_depth_below_base_raises(tmp_path: pathlib.Path) -> None:
+    """A water depth deeper than the monopile base means the pile does not
+    reach the seabed; it is rejected rather than silently clamped at the
+    base (Codex review on #121)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_monopile_tower
+
+    # Monopile base at -75 m; a 100 m depth puts the mudline at -100 m,
+    # below the pile tip -> the pile does not reach the seabed.
+    no_env = "components:" + _WINDIO_MONOPILE_EMBEDDED.split("components:", 1)[1]
+    p = tmp_path / "no_env.yaml"
+    p.write_text(no_env, encoding="utf-8")
+    with pytest.raises(ValueError, match="below the monopile base"):
+        read_windio_monopile_tower(p, water_depth=100.0)
+
+
+def test_monopile_water_depth_non_finite_rejected(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A NaN / infinite / non-positive explicit water_depth is rejected
+    rather than silently falling back to the pile-tip clamp (Codex review
+    on #121)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_monopile_tower
+
+    no_env = "components:" + _WINDIO_MONOPILE_EMBEDDED.split("components:", 1)[1]
+    p = tmp_path / "no_env.yaml"
+    p.write_text(no_env, encoding="utf-8")
+    for bad in (float("nan"), float("inf"), 0.0, -30.0):
+        with pytest.raises(ValueError, match="positive, finite depth"):
+            read_windio_monopile_tower(p, water_depth=bad)
+    # A bool is a sneaky float subclass; reject it rather than let True
+    # become a 1 m depth.
+    with pytest.raises(ValueError, match="not a bool"):
+        read_windio_monopile_tower(p, water_depth=True)
+
+
 def test_from_windio_friendly_error_without_pyyaml(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -836,21 +1022,40 @@ def test_from_windio_with_monopile_iea15() -> None:
     from pybmodes.io.bmi import TipMassProps
     from pybmodes.io.windio import read_windio_monopile_tower
 
+    # The IEA-15 monopile reference_axis includes the embedded pile down
+    # to z = -75. Without a water depth the base is taken as the clamp
+    # (the -75 pile tip) — kept as the documented fallback.
     mt = read_windio_monopile_tower(_IEA15_YAML)
     assert mt.z_base == pytest.approx(-75.0)
     assert mt.z_transition == pytest.approx(15.0)
     assert mt.z_top == pytest.approx(144.386)
     assert mt.combined_length == pytest.approx(219.386)
 
+    # With the 30 m water depth the cantilever clamps at the mudline
+    # (z = -30), dropping the 45 m embedded pile (issue #121).
+    mt_mud = read_windio_monopile_tower(_IEA15_YAML, water_depth=30.0)
+    assert mt_mud.z_base == pytest.approx(-30.0)
+    assert mt_mud.z_transition == pytest.approx(15.0)
+    assert mt_mud.z_top == pytest.approx(144.386)
+    assert mt_mud.combined_length == pytest.approx(174.386)   # 144.386 + 30
+
     rna = TipMassProps(
         mass=1.017e6, cm_offset=0.0, cm_axial=0.0,
         ixx=0.0, iyy=0.0, izz=0.0, ixy=0.0, izx=0.0, iyz=0.0,
     )
-    t = Tower.from_windio_with_monopile(_IEA15_YAML, tip_mass=rna, n_nodes=40)
+    t = Tower.from_windio_with_monopile(
+        _IEA15_YAML, tip_mass=rna, n_nodes=40, water_depth=30.0
+    )
     assert t._bmi.hub_conn == 1
     f = t.run(n_modes=6, check_model=False).frequencies
     assert np.all(np.isfinite(f)) and np.all(f > 0.0)
     assert np.all(np.diff(f) >= -1e-9)
+
+    # The mudline clamp is stiffer than the buggy embedded-pile clamp.
+    f_tip = Tower.from_windio_with_monopile(
+        _IEA15_YAML, tip_mass=rna, n_nodes=40
+    ).run(n_modes=6, check_model=False).frequencies
+    assert f[0] > f_tip[0]
 
     f_tower = Tower.from_windio(
         _IEA15_YAML, component="tower", tip_mass=rna, n_nodes=40

@@ -393,6 +393,7 @@ class Tower:
         thickness_interp: str = "linear",
         tip_mass: TipMassProps | float | None = None,
         n_nodes: int | None = None,
+        water_depth: float | None = None,
     ) -> Tower:
         """Build a combined **monopile + tower** fixed-bottom cantilever
         from a WindIO ontology ``.yaml`` (issue #92).
@@ -423,6 +424,15 @@ class Tower:
             ``n_nodes`` evenly-spaced stations), mirroring
             :meth:`from_windio`'s ``n_nodes``. ``None`` keeps each
             component's native WindIO grid.
+        water_depth : water depth in metres (positive). Clamps the
+            cantilever at the mudline (``z = -water_depth``), dropping any
+            embedded monopile length below the seabed. Required when the
+            monopile ``reference_axis.z`` runs below the mudline (e.g.
+            IEA-15: axis -75 -> +15, mudline -30), otherwise the embedded
+            pile is modelled as a free cantilever and the frequency is far
+            too low (issue #121). Defaults to the ontology's
+            ``environment.water_depth`` when present; ``None`` with no
+            ontology value keeps the monopile base as the clamp.
 
         Notes
         -----
@@ -445,6 +455,7 @@ class Tower:
             component_monopile=component_monopile,
             thickness_interp=thickness_interp,
             n_nodes=n_nodes,
+            water_depth=water_depth,
         )
         tip = _coerce_tip_mass(tip_mass)
         bmi = _build_bmi_skeleton(
