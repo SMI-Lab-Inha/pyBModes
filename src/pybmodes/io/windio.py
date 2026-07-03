@@ -861,16 +861,23 @@ def read_windio_rna(
         doc.get("assembly") if isinstance(doc, dict) else None, "assembly"
     )
 
-    # --- Nacelle: components.<nacelle>.drivetrain ---
+    # --- Nacelle: components.<nacelle>[.drivetrain] ---
+    # The nacelle lumped-mass block and drivetrain geometry live under
+    # ``nacelle.drivetrain`` (IEA-22) or directly on ``nacelle`` (the WISDEM
+    # documented layout, where ``elastic_properties_mb`` is a sibling of
+    # ``drivetrain``). Resolve from either, preferring ``drivetrain``.
     nacelle = _require_mapping(
         comps.get(component_nacelle), f"components.{component_nacelle}"
     )
-    drivetrain = _require_mapping(
-        nacelle.get("drivetrain"), f"components.{component_nacelle}.drivetrain"
-    )
+    drivetrain = nacelle.get("drivetrain")
+    _dt = drivetrain if isinstance(drivetrain, dict) else {}
+
+    def _nac_get(key: str) -> Any:
+        return _dt[key] if key in _dt else nacelle.get(key)
+
     nac_ep = _require_mapping(
-        drivetrain.get("elastic_properties_mb"),
-        f"components.{component_nacelle}.drivetrain.elastic_properties_mb",
+        _nac_get("elastic_properties_mb"),
+        f"components.{component_nacelle}[.drivetrain].elastic_properties_mb",
     )
     # ``system_mass`` is the complete nacelle mass; the sibling
     # ``yaw_mass`` is a sub-component breakdown, not an additive term
@@ -894,11 +901,18 @@ def read_windio_rna(
     )
 
     # --- Drivetrain geometry (rotor apex vs tower top); uptilt is radians ---
-    overhang = float(_require_key(drivetrain, "overhang", "nacelle.drivetrain"))
-    uptilt = float(_require_key(drivetrain, "uptilt", "nacelle.drivetrain"))
-    dist_tt_hub = float(
-        _require_key(drivetrain, "distance_tt_hub", "nacelle.drivetrain")
-    )
+    def _nac_geom(key: str) -> float:
+        val = _nac_get(key)
+        if val is None:
+            raise KeyError(
+                f"components.{component_nacelle}[.drivetrain].{key} is "
+                f"required to place the rotor apex for the RNA lump."
+            )
+        return float(val)
+
+    overhang = _nac_geom("overhang")
+    uptilt = _nac_geom("uptilt")
+    dist_tt_hub = _nac_geom("distance_tt_hub")
     for gname, gval in (
         ("overhang", overhang),
         ("uptilt", uptilt),

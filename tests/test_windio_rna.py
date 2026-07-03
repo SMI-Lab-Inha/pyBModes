@@ -217,6 +217,22 @@ def test_rna_blade_reference_axis_z_only(tmp_path: pathlib.Path) -> None:
     assert rna.mass == pytest.approx(615000.0)      # straight 50 m span
 
 
+def test_rna_nacelle_block_at_nacelle_level(tmp_path: pathlib.Path) -> None:
+    """The nacelle mass block + drivetrain geometry resolve when they sit
+    directly on the nacelle component (WISDEM layout), not under
+    drivetrain (Codex review #82)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    hoisted = _base_ontology()
+    dt = hoisted["components"]["nacelle"].pop("drivetrain")
+    hoisted["components"]["nacelle"].update(dt)   # drivetrain keys -> nacelle level
+    moved = read_windio_rna(_write(hoisted, tmp_path, "naclevel.yaml"))
+    base = read_windio_rna(_write(_base_ontology(), tmp_path, "base_nac.yaml"))
+    assert moved.mass == pytest.approx(base.mass)
+    assert moved.cm_axial == pytest.approx(base.cm_axial)
+
+
 def test_rna_missing_blocks_raise(tmp_path: pathlib.Path) -> None:
     """An ontology without the hub / nacelle elastic_properties_mb blocks
     (IEA-15-style) fails clean, naming the missing block."""
