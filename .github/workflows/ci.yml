@@ -65,7 +65,11 @@ jobs:
         run: ruff check src/ tests/ scripts/
 
       - name: Type-check
-        run: mypy src/pybmodes
+        # Type-check at the leg's own Python version so the 3.11 floor is
+        # still checked (catches 3.12-only APIs) while the 3.12 leg targets
+        # 3.12 — required for recent numpy's PEP 695 stubs, which mypy
+        # rejects under a < 3.12 target.
+        run: mypy src/pybmodes --python-version ${{ matrix.python-version }}
 
   wheel-smoke:
     # Build the wheel from source, install it into a fresh venv that
