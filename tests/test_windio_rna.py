@@ -261,6 +261,11 @@ def test_from_windio_lumped_rna_cal(tmp_path: pathlib.Path) -> None:
     with pytest.raises(ValueError, match="hub_conn=1"):
         Tower.from_windio(p, hub_conn=3, lumped_rna_cal=True)
 
+    # component='monopile' would place the RNA at the transition piece, not
+    # the tower top, so the flag is rejected there (Codex review on #82).
+    with pytest.raises(ValueError, match="component='tower'"):
+        Tower.from_windio(p, component="monopile", lumped_rna_cal=True)
+
 
 def test_from_windio_with_monopile_lumped_rna_cal(tmp_path: pathlib.Path) -> None:
     """The same flag works on the monopile constructor and rejects the

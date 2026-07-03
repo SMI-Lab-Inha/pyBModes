@@ -389,6 +389,15 @@ class Tower:
                     "lumped_rna_cal derives the tower-top RNA from the "
                     "ontology's elastic_properties_mb blocks."
                 )
+            if component != "tower":
+                raise ValueError(
+                    f"lumped_rna_cal is only supported for component='tower' "
+                    f"(the RNA lumps at the tower top); got component="
+                    f"{component!r}, whose span top is the transition piece, "
+                    f"not the tower top. For a monopile+tower model use "
+                    f"Tower.from_windio_with_monopile(..., lumped_rna_cal="
+                    f"True), which places the RNA at the tower top."
+                )
             if hub_conn != 1:
                 raise ValueError(
                     "lumped_rna_cal is only supported with hub_conn=1. The "
