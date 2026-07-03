@@ -324,6 +324,7 @@ class Tower:
         hub_conn: int = 1,
         tip_mass: TipMassProps | float | None = None,
         n_nodes: int | None = None,
+        lumped_rna_cal: bool = False,
     ) -> Tower:
         """Build a tower (or monopile) model directly from a **WindIO**
         ontology ``.yaml`` (issue #35).
@@ -358,6 +359,19 @@ class Tower:
             exactly), to resolve higher tower-bending mode shapes.
             ``None`` keeps the WindIO grid. The WindIO blade path
             has the analogous ``n_span``.
+        lumped_rna_cal : when ``True`` (issue #82), auto-derive the
+            tower-top RNA lump from the ontology's
+            ``elastic_properties_mb`` blocks (hub + nacelle) plus the
+            integrated blade span mass, via
+            :func:`pybmodes.io.windio.read_windio_rna`, and use it as
+            ``tip_mass``. Requires an IEA-22-class ontology carrying the
+            hub and nacelle lumped-mass blocks; ontologies without them
+            (IEA-15) raise a clear ``KeyError``. Mutually exclusive with
+            ``tip_mass`` (passing both raises ``ValueError``), and only
+            supported with ``hub_conn = 1`` — the auto-RNA inertia is
+            expressed at the tower top in the clamped-base convention, which
+            a free-base / soil-flexible base interprets differently. Default
+            ``False``.
 
         Notes
         -----
@@ -367,6 +381,37 @@ class Tower:
         (PreComp-class thin-wall cross-section reduction).
         """
         from pybmodes.io.windio import read_windio_tubular
+
+        if lumped_rna_cal:
+            if tip_mass is not None:
+                raise ValueError(
+                    "pass either tip_mass or lumped_rna_cal=True, not both; "
+                    "lumped_rna_cal derives the tower-top RNA from the "
+                    "ontology's elastic_properties_mb blocks."
+                )
+            if component != "tower":
+                raise ValueError(
+                    f"lumped_rna_cal is only supported for component='tower' "
+                    f"(the RNA lumps at the tower top); got component="
+                    f"{component!r}, whose span top is the transition piece, "
+                    f"not the tower top. For a monopile+tower model use "
+                    f"Tower.from_windio_with_monopile(..., lumped_rna_cal="
+                    f"True), which places the RNA at the tower top."
+                )
+            if hub_conn != 1:
+                raise ValueError(
+                    "lumped_rna_cal is only supported with hub_conn=1. The "
+                    "auto-RNA inertia is expressed at the tower top in the "
+                    "clamped-base (cantilever) convention; a free-base / "
+                    "soil-flexible base (hub_conn 2 or 3) interprets the "
+                    "tip-mass record differently and would misplace the "
+                    "rotary inertia. Build the clamped-base model (the basis "
+                    "ElastoDyn uses for tower mode shapes regardless of soil) "
+                    "or pass tip_mass explicitly."
+                )
+            from pybmodes.io.windio import read_windio_rna
+
+            tip_mass = read_windio_rna(yaml_path)
 
         g = read_windio_tubular(
             yaml_path, component=component, thickness_interp=thickness_interp,
@@ -394,6 +439,7 @@ class Tower:
         tip_mass: TipMassProps | float | None = None,
         n_nodes: int | None = None,
         water_depth: float | None = None,
+        lumped_rna_cal: bool = False,
     ) -> Tower:
         """Build a combined **monopile + tower** fixed-bottom cantilever
         from a WindIO ontology ``.yaml`` (issue #92).
@@ -433,6 +479,11 @@ class Tower:
             too low (issue #121). Defaults to the ontology's
             ``environment.water_depth`` when present; ``None`` with no
             ontology value keeps the monopile base as the clamp.
+        lumped_rna_cal : when ``True`` (issue #82), auto-derive the
+            tower-top RNA lump from the ontology's ``elastic_properties_mb``
+            blocks via :func:`pybmodes.io.windio.read_windio_rna` and use
+            it as ``tip_mass``. Requires an IEA-22-class ontology; mutually
+            exclusive with ``tip_mass``. Default ``False``.
 
         Notes
         -----
@@ -448,6 +499,17 @@ class Tower:
         """
         from pybmodes.io._elastodyn.adapter import _build_bmi_skeleton
         from pybmodes.io.windio import read_windio_monopile_tower
+
+        if lumped_rna_cal:
+            if tip_mass is not None:
+                raise ValueError(
+                    "pass either tip_mass or lumped_rna_cal=True, not both; "
+                    "lumped_rna_cal derives the tower-top RNA from the "
+                    "ontology's elastic_properties_mb blocks."
+                )
+            from pybmodes.io.windio import read_windio_rna
+
+            tip_mass = read_windio_rna(yaml_path)
 
         mt = read_windio_monopile_tower(
             yaml_path,
