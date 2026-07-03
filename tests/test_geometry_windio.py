@@ -712,6 +712,27 @@ def test_monopile_water_depth_below_base_raises(tmp_path: pathlib.Path) -> None:
         read_windio_monopile_tower(p, water_depth=100.0)
 
 
+def test_monopile_water_depth_non_finite_rejected(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A NaN / infinite / non-positive explicit water_depth is rejected
+    rather than silently falling back to the pile-tip clamp (Codex review
+    on #121)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_monopile_tower
+
+    no_env = "components:" + _WINDIO_MONOPILE_EMBEDDED.split("components:", 1)[1]
+    p = tmp_path / "no_env.yaml"
+    p.write_text(no_env, encoding="utf-8")
+    for bad in (float("nan"), float("inf"), 0.0, -30.0):
+        with pytest.raises(ValueError, match="positive, finite depth"):
+            read_windio_monopile_tower(p, water_depth=bad)
+    # A bool is a sneaky float subclass; reject it rather than let True
+    # become a 1 m depth.
+    with pytest.raises(ValueError, match="not a bool"):
+        read_windio_monopile_tower(p, water_depth=True)
+
+
 def test_from_windio_friendly_error_without_pyyaml(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

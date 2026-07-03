@@ -324,15 +324,22 @@ def _read_water_depth(
     """Resolve the water depth (m, positive) used to place the mudline.
 
     Priority: an explicit ``override`` argument, then the ontology's
-    ``environment.water_depth`` block, then ``None`` (unknown — the
-    monopile base is taken as the clamp). A non-positive value is treated
-    as unusable and returns ``None``.
+    ``environment.water_depth`` block, then ``None`` (unknown, so the
+    monopile base is taken as the clamp). An explicit ``override`` must be
+    positive and finite or a ``ValueError`` is raised (it is the caller's
+    contract). A non-positive or non-finite value read from the ontology
+    is treated as absent and returns ``None``.
     """
     if override is not None:
-        wd = float(override)
-        if wd <= 0.0:
+        if isinstance(override, bool):
             raise ValueError(
-                f"water_depth must be a positive depth in metres; got "
+                f"water_depth must be a number in metres, not a bool; got "
+                f"{override!r}"
+            )
+        wd = float(override)
+        if not np.isfinite(wd) or wd <= 0.0:
+            raise ValueError(
+                f"water_depth must be a positive, finite depth in metres; got "
                 f"{override!r}"
             )
         return wd
@@ -341,8 +348,11 @@ def _read_water_depth(
         doc = yaml.load(fh, Loader=_dup_anchor_loader(yaml))
     env = doc.get("environment") if isinstance(doc, dict) else None
     if isinstance(env, dict) and env.get("water_depth") is not None:
-        wd = float(env["water_depth"])
-        return wd if wd > 0.0 else None
+        raw = env["water_depth"]
+        if isinstance(raw, bool):
+            return None
+        wd = float(raw)
+        return wd if (np.isfinite(wd) and wd > 0.0) else None
     return None
 
 
@@ -360,8 +370,14 @@ def _truncate_tubular_base(
     pair survive the cut.
     """
     span = t.z_top - t.z_base
+    if not (span > 0.0 and t.z_base < new_z_base < t.z_top):
+        raise ValueError(
+            f"_truncate_tubular_base requires z_base < new_z_base < z_top; "
+            f"got z_base={t.z_base:g}, new_z_base={new_z_base:g}, "
+            f"z_top={t.z_top:g}."
+        )
     cut = (new_z_base - t.z_base) / span
-    ftol = 1.0e-6 / span if span > 0.0 else 1.0e-9
+    ftol = 1.0e-6 / span
     grid = np.asarray(t.station_grid, dtype=float)
     od = np.asarray(t.outer_diameter, dtype=float)
     wt = np.asarray(t.wall_thickness, dtype=float)
@@ -440,7 +456,10 @@ def read_windio_monopile_tower(
     ValueError : when the monopile top and tower base do not meet at a
         common transition-piece elevation (a gap or overlap of more than
         1 mm), since a non-contiguous pair cannot be spliced into one
-        beam.
+        beam; when an explicit ``water_depth`` is not positive and finite;
+        or when the resolved mudline falls at or above the transition
+        piece, or below the monopile base (the pile does not reach the
+        seabed).
     """
     import numpy as _np
 
