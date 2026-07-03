@@ -214,7 +214,13 @@ ignore = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
+# Target 3.12 for the type checker (the package still supports 3.11 at
+# runtime — the pytest matrix covers 3.11 + 3.12). Recent numpy ships
+# PEP 695 ``type`` statements in its bundled stubs, which mypy rejects
+# under a < 3.12 target ("Type statement is only supported in Python
+# 3.12 and greater"), failing the 3.12 CI type-check regardless of our
+# own code.
+python_version = "3.12"
 strict = false
 ignore_missing_imports = true
 # Floor raised for ALL modules (verified clean across the package):
