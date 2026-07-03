@@ -472,8 +472,17 @@ def read_windio_monopile_tower(
                 f"the mudline must sit below the transition. Check water_depth "
                 f"and the monopile reference_axis.z."
             )
+        if mudline_z < mp.z_base - 1.0e-6:
+            raise ValueError(
+                f"water_depth={wd:g} m places the mudline (z={mudline_z:g} m) "
+                f"below the monopile base (z={mp.z_base:g} m); the monopile "
+                f"does not reach the seabed. Check water_depth and the monopile "
+                f"reference_axis.z."
+            )
         if mudline_z > mp.z_base + 1.0e-6:
             mp = _truncate_tubular_base(mp, mudline_z, thickness_interp)
+        # else: the mudline coincides with the monopile base (within tol),
+        # so the base is already the clamp and no truncation is needed.
 
     # The monopile top and tower base must describe the same transition
     # piece. WindIO encodes both as absolute reference_axis.z, so they

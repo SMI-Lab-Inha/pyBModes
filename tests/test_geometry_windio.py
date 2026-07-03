@@ -696,6 +696,22 @@ def test_monopile_water_depth_above_transition_raises(
         read_windio_monopile_tower(q, water_depth=15.0)
 
 
+def test_monopile_water_depth_below_base_raises(tmp_path: pathlib.Path) -> None:
+    """A water depth deeper than the monopile base means the pile does not
+    reach the seabed; it is rejected rather than silently clamped at the
+    base (Codex review on #121)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_monopile_tower
+
+    # Monopile base at -75 m; a 100 m depth puts the mudline at -100 m,
+    # below the pile tip -> the pile does not reach the seabed.
+    no_env = "components:" + _WINDIO_MONOPILE_EMBEDDED.split("components:", 1)[1]
+    p = tmp_path / "no_env.yaml"
+    p.write_text(no_env, encoding="utf-8")
+    with pytest.raises(ValueError, match="below the monopile base"):
+        read_windio_monopile_tower(p, water_depth=100.0)
+
+
 def test_from_windio_friendly_error_without_pyyaml(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
