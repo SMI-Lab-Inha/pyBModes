@@ -711,14 +711,41 @@ def _sym_tensor_from_6vec(vec: Any, what: str) -> np.ndarray:
     )
 
 
-def _blade_single_mass(six: dict, blade_component: str) -> float:
+def _blade_reference_axis(six: dict, comp: dict, blade_component: str) -> dict:
+    """Resolve the blade reference axis across WindIO layouts.
+
+    The newer ``six_x_six`` layout (IEA-22) nests ``reference_axis`` inside
+    ``six_x_six``; older layouts put it on the blade component /
+    ``outer_shape`` / ``structure`` — the same places the blade reader
+    (:func:`pybmodes.io.windio_blade._reference_axis`) looks. Prefer the
+    ``six_x_six`` one when present, then fall back to the component so
+    ``lumped_rna_cal`` works for every ontology the blade reader supports.
+    """
+    outer = comp.get("outer_shape") or comp.get("outer_shape_bem") or {}
+    struct = comp.get("structure") or comp.get("internal_structure_2d_fem") or {}
+    for holder in (six, comp, outer, struct):
+        if isinstance(holder, dict):
+            ra = holder.get("reference_axis")
+            if isinstance(ra, dict) and "z" in ra:
+                return ra
+    raise KeyError(
+        f"components.{blade_component} has no reference_axis with a z curve "
+        f"(needed to integrate the blade span mass); looked in six_x_six, "
+        f"the component, outer_shape and structure."
+    )
+
+
+def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
     """Integrate a WindIO blade's mass per unit length over its span.
 
     ``six`` is
-    ``components.<blade>.elastic_properties_mb.six_x_six``. The per-station
-    mass/length is the first entry (``M[0, 0]``) of each upper-triangular
-    21-vector in ``inertia_matrix.values``, integrated over the arc length
-    of the blade ``reference_axis`` (x, y, z).
+    ``components.<blade>.elastic_properties_mb.six_x_six`` and ``ref`` is
+    the resolved blade ``reference_axis`` (see
+    :func:`_blade_reference_axis`). The per-station mass/length is the
+    first entry (``M[0, 0]``) of each upper-triangular 21-vector in
+    ``inertia_matrix.values``, integrated over the arc length of the
+    reference axis. Only the ``z`` curve is required; ``x`` / ``y``
+    (prebend / sweep) are optional and default to zero (a straight span).
     """
     im = _require_mapping(six.get("inertia_matrix"), "blade six_x_six.inertia_matrix")
     grid = np.asarray(_require_key(im, "grid", "blade inertia_matrix"), dtype=float)
@@ -741,10 +768,17 @@ def _blade_single_mass(six: dict, blade_component: str) -> float:
             f"components.{blade_component} blade mass/length has non-finite "
             f"or negative entries."
         )
-    ref = _require_mapping(six.get("reference_axis"), "blade six_x_six.reference_axis")
     coords = []
     for axis in ("x", "y", "z"):
-        a = _require_mapping(ref.get(axis), f"blade reference_axis.{axis}")
+        a = ref.get(axis)
+        if not isinstance(a, dict):
+            if axis == "z":
+                raise ValueError(
+                    f"blade reference_axis.z is required to integrate the "
+                    f"span mass of components.{blade_component}."
+                )
+            coords.append(np.zeros_like(grid))       # optional prebend/sweep
+            continue
         ag = np.asarray(_require_key(a, "grid", f"reference_axis.{axis}"), dtype=float)
         av = np.asarray(_require_key(a, "values", f"reference_axis.{axis}"), dtype=float)
         if ag.size != av.size or ag.size < 2:
@@ -895,7 +929,8 @@ def read_windio_rna(
             blade_ep.get("six_x_six"),
             f"components.{component_blade}.elastic_properties_mb.six_x_six",
         )
-        m_blade_each = _blade_single_mass(six, component_blade)
+        ref = _blade_reference_axis(six, blade, component_blade)
+        m_blade_each = _blade_single_mass(six, ref, component_blade)
     m_blades = n_blades * m_blade_each
 
     # Rotor apex relative to the tower top. An upwind rotor sits at negative

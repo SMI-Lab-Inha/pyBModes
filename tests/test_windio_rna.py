@@ -158,6 +158,35 @@ def test_rna_blade_mass_uses_arc_length(tmp_path: pathlib.Path) -> None:
     assert curved.mass - straight.mass == pytest.approx(extra, rel=1e-6)
 
 
+def test_rna_blade_reference_axis_on_component(tmp_path: pathlib.Path) -> None:
+    """The blade reference axis resolves from the component / outer_shape
+    when it is not nested in six_x_six (older layout; Codex review #82)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    moved = _base_ontology()
+    six = moved["components"]["blade"]["elastic_properties_mb"]["six_x_six"]
+    ref = six.pop("reference_axis")                 # off six_x_six ...
+    moved["components"]["blade"]["outer_shape"] = {"reference_axis": ref}  # ... onto component
+    on_component = read_windio_rna(_write(moved, tmp_path, "compref.yaml"))
+    base = read_windio_rna(_write(_base_ontology(), tmp_path, "base_ref.yaml"))
+    assert on_component.mass == pytest.approx(base.mass)
+
+
+def test_rna_blade_reference_axis_z_only(tmp_path: pathlib.Path) -> None:
+    """A reference axis with only z (no prebend/sweep) integrates the span
+    mass fine — x / y are optional."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    onto = _base_ontology()
+    onto["components"]["blade"]["elastic_properties_mb"]["six_x_six"][
+        "reference_axis"
+    ] = {"z": {"grid": [0.0, 1.0], "values": [0.0, 50.0]}}
+    rna = read_windio_rna(_write(onto, tmp_path, "zonly.yaml"))
+    assert rna.mass == pytest.approx(615000.0)      # straight 50 m span
+
+
 def test_rna_missing_blocks_raise(tmp_path: pathlib.Path) -> None:
     """An ontology without the hub / nacelle elastic_properties_mb blocks
     (IEA-15-style) fails clean, naming the missing block."""
