@@ -255,6 +255,12 @@ def test_from_windio_lumped_rna_cal(tmp_path: pathlib.Path) -> None:
     with pytest.raises(ValueError, match="not both"):
         Tower.from_windio(p, tip_mass=1.0e5, lumped_rna_cal=True)
 
+    # The pre-shifted tower-top inertia is a clamped-base (hub_conn=1)
+    # record; a free-base / soil-flexible base would misplace it, so it is
+    # rejected (Codex review on #82).
+    with pytest.raises(ValueError, match="hub_conn=1"):
+        Tower.from_windio(p, hub_conn=3, lumped_rna_cal=True)
+
 
 def test_from_windio_with_monopile_lumped_rna_cal(tmp_path: pathlib.Path) -> None:
     """The same flag works on the monopile constructor and rejects the

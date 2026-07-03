@@ -367,7 +367,10 @@ class Tower:
             ``tip_mass``. Requires an IEA-22-class ontology carrying the
             hub and nacelle lumped-mass blocks; ontologies without them
             (IEA-15) raise a clear ``KeyError``. Mutually exclusive with
-            ``tip_mass`` (passing both raises ``ValueError``). Default
+            ``tip_mass`` (passing both raises ``ValueError``), and only
+            supported with ``hub_conn = 1`` — the auto-RNA inertia is
+            expressed at the tower top in the clamped-base convention, which
+            a free-base / soil-flexible base interprets differently. Default
             ``False``.
 
         Notes
@@ -385,6 +388,17 @@ class Tower:
                     "pass either tip_mass or lumped_rna_cal=True, not both; "
                     "lumped_rna_cal derives the tower-top RNA from the "
                     "ontology's elastic_properties_mb blocks."
+                )
+            if hub_conn != 1:
+                raise ValueError(
+                    "lumped_rna_cal is only supported with hub_conn=1. The "
+                    "auto-RNA inertia is expressed at the tower top in the "
+                    "clamped-base (cantilever) convention; a free-base / "
+                    "soil-flexible base (hub_conn 2 or 3) interprets the "
+                    "tip-mass record differently and would misplace the "
+                    "rotary inertia. Build the clamped-base model (the basis "
+                    "ElastoDyn uses for tower mode shapes regardless of soil) "
+                    "or pass tip_mass explicitly."
                 )
             from pybmodes.io.windio import read_windio_rna
 
