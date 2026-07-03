@@ -106,7 +106,10 @@ Model constructors
        moordyn_dat_path, hydrodyn_dat_path=None)``,
        ``from_geometry(...)``,
        ``from_windio(yaml_path, *, component='tower',
-       thickness_interp='linear')``,
+       thickness_interp='linear', hub_conn=1, tip_mass=None,
+       n_nodes=None, lumped_rna_cal=False)``,
+       ``from_windio_with_monopile(yaml_path, *, tip_mass=None,
+       n_nodes=None, water_depth=None, lumped_rna_cal=False)``,
        ``from_windio_floating(yaml_path, *, ...)``.
 
 Results + serialisation
@@ -312,6 +315,7 @@ I/O
 - :func:`pybmodes.io.out_parser.read_out` (with the
   ``strict=True`` option)
 - :func:`pybmodes.io.windio.read_windio_tubular`
+- :func:`pybmodes.io.windio.read_windio_rna`
 - :func:`pybmodes.io.windio_blade.read_windio_blade`
 - :func:`pybmodes.io.windio_floating.read_windio_floating`
 - :class:`pybmodes.io.errors.ParseError` — unified base class for

@@ -84,13 +84,19 @@ minor releases.
     #                       wall_thickness, *, flexible_length,
     #                       E, rho, nu, outfitting_factor)
     #   Tower.from_windio(yaml_path, *, component, thickness_interp,
-    #       hub_conn, tip_mass, n_nodes)
+    #       hub_conn, tip_mass, n_nodes, lumped_rna_cal)
     #     tip_mass: TipMassProps | float (RNA mass kg); n_nodes:
-    #     refine the FE mesh onto N even stations (issue #35)
+    #     refine the FE mesh onto N even stations (issue #35);
+    #     lumped_rna_cal=True auto-derives the tower-top RNA from the
+    #     ontology's elastic_properties_mb blocks (issue #82; hub_conn=1
+    #     only)
     #   Tower.from_windio_with_monopile(yaml_path, *,
     #       component_tower, component_monopile, thickness_interp,
-    #       tip_mass, n_nodes)  # splice monopile + tower into one
-    #       fixed-bottom cantilever clamped at the mudline (issue #92)
+    #       tip_mass, n_nodes, water_depth, lumped_rna_cal)  # splice
+    #       monopile + tower into one fixed-bottom cantilever clamped at
+    #       the mudline (issue #92); water_depth clamps at the true
+    #       seabed, dropping the embedded pile (issue #121);
+    #       lumped_rna_cal auto-derives the RNA (issue #82)
     #   Tower.from_windio_floating(yaml_path, *, water_depth,
     #                              hydrodyn_dat, moordyn_dat,
     #                              elastodyn_dat)  # coupled FOWT
@@ -112,7 +118,14 @@ minor releases.
     # WindIO .yaml input needs the optional [windio] extra (PyYAML);
     # the runtime core stays numpy+scipy only — same stance as
     # [plots]/[notebook]. Tower (tubular tower/monopile):
-    from pybmodes.io.windio  import read_windio_tubular, WindIOTubular
+    # read_windio_rna: assemble the tower-top RNA lump (hub + nacelle +
+    # blades) from the elastic_properties_mb blocks (issue #82; also the
+    # engine behind ``lumped_rna_cal=True``).
+    from pybmodes.io.windio  import (
+        read_windio_rna,
+        read_windio_tubular,
+        WindIOTubular,
+    )
     # Blade (composite layup -> PreComp-class thin-wall reduction):
     from pybmodes.io.windio_blade import (
         read_windio_blade,
