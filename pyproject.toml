@@ -214,6 +214,13 @@ ignore = [
 ]
 
 [tool.mypy]
+# Floor at 3.11 (the minimum supported runtime) so the type checker
+# catches code that would break on 3.11. CI overrides this per matrix
+# leg (``mypy --python-version ${{ matrix.python-version }}``) so the
+# 3.12 leg targets 3.12 — needed because recent numpy ships PEP 695
+# ``type`` statements in its bundled stubs that mypy rejects under a
+# < 3.12 target ("Type statement is only supported in Python 3.12 and
+# greater").
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
