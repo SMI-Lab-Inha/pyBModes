@@ -10,6 +10,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Auto-derive the tower-top RNA from a WindIO ontology (#82).**
+  `Tower.from_windio(..., lumped_rna_cal=True)` and
+  `Tower.from_windio_with_monopile(..., lumped_rna_cal=True)` assemble
+  the hub, nacelle and blades of an IEA-22-class ontology (the
+  `elastic_properties_mb` schema) into the tower-top lumped mass
+  automatically, so the RNA no longer has to be hand-computed and passed
+  as `tip_mass`. Backed by the new
+  `pybmodes.io.windio.read_windio_rna`, which mirrors the ElastoDyn
+  tower-top assembler. Mass and centre of mass reproduce the matching
+  IEA-22 ElastoDyn deck to better than 0.1 percent; the rotary inertia
+  is the ontology's own (WindIO-native) value, which is not expected to
+  byte-match a separately authored deck. Ontologies without the hub and
+  nacelle lumped blocks (IEA-15) raise a clear error, so pass `tip_mass`
+  explicitly there. `lumped_rna_cal` is mutually exclusive with
+  `tip_mass`.
 - **conda-forge availability.** pyBmodes is now packaged on
   conda-forge, so `conda install -c conda-forge pybmodes` works
   alongside `pip install pybmodes`. The feedstock builds the noarch

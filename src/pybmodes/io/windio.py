@@ -46,10 +46,14 @@ from __future__ import annotations
 
 import pathlib
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from pybmodes.io.sec_props import SectionProperties
+
+if TYPE_CHECKING:
+    from pybmodes.io.bmi import TipMassProps
 
 
 def _require_yaml():
@@ -633,4 +637,294 @@ def _find_material(doc: dict, name: str, yaml_path: pathlib.Path) -> dict:
         f"WindIO material {name!r} (referenced by a "
         f"{yaml_path.name} structural layer) not found in the top-level "
         f"'materials' list."
+    )
+
+
+# ---------------------------------------------------------------------------
+# RNA (rotor-nacelle assembly) tower-top lumped mass (issue #82)
+# ---------------------------------------------------------------------------
+
+
+def _require_mapping(node: object, path: str) -> dict:
+    """Return ``node`` as a mapping or raise a KeyError naming ``path``."""
+    if not isinstance(node, dict):
+        raise KeyError(
+            f"WindIO ontology has no '{path}' block, which is required to "
+            f"lump the RNA (elastic_properties_mb schema). Ontologies without "
+            f"it (e.g. IEA-15) cannot supply the RNA mass; pass tip_mass "
+            f"explicitly instead."
+        )
+    return node
+
+
+def _require_key(node: dict, key: str, path: str) -> Any:
+    """Return ``node[key]`` or raise a KeyError naming ``path.key``."""
+    if key not in node:
+        raise KeyError(
+            f"WindIO ontology is missing '{path}.{key}', required to lump "
+            f"the RNA."
+        )
+    return node[key]
+
+
+def _positive_mass(value: Any, what: str) -> float:
+    """Coerce ``value`` to a positive, finite mass (kg), else raise."""
+    if isinstance(value, bool):
+        raise ValueError(f"{what} must be a number, not a bool; got {value!r}.")
+    m = float(value)
+    if not np.isfinite(m) or m <= 0.0:
+        raise ValueError(
+            f"{what} must be a positive, finite mass in kg; got {value!r}."
+        )
+    return m
+
+
+def _sym_tensor_from_6vec(vec: Any, what: str) -> np.ndarray:
+    """Build a symmetric 3x3 inertia tensor from a WindIO 6-vector.
+
+    WindIO orders the vector ``[Ixx, Iyy, Izz, Ixy, Ixz, Iyz]``; the
+    returned tensor is ``[[Ixx, Ixy, Ixz], [Ixy, Iyy, Iyz], [Ixz, Iyz,
+    Izz]]``. Every entry must be finite.
+    """
+    arr = np.asarray(vec, dtype=float)
+    if arr.shape != (6,):
+        raise ValueError(
+            f"{what} inertia must be a 6-vector [Ixx, Iyy, Izz, Ixy, Ixz, "
+            f"Iyz]; got {arr.size} value(s)."
+        )
+    if not np.all(np.isfinite(arr)):
+        raise ValueError(f"{what} inertia has non-finite entries: {vec!r}.")
+    ixx, iyy, izz, ixy, ixz, iyz = (float(v) for v in arr)
+    return np.array(
+        [[ixx, ixy, ixz], [ixy, iyy, iyz], [ixz, iyz, izz]], dtype=float
+    )
+
+
+def _blade_single_mass(six: dict, blade_component: str) -> float:
+    """Integrate a WindIO blade's mass per unit length over its span.
+
+    ``six`` is
+    ``components.<blade>.elastic_properties_mb.six_x_six``. The per-station
+    mass/length is the first entry (``M[0, 0]``) of each upper-triangular
+    21-vector in ``inertia_matrix.values``, integrated over the arc length
+    of the blade ``reference_axis`` (x, y, z).
+    """
+    im = _require_mapping(six.get("inertia_matrix"), "blade six_x_six.inertia_matrix")
+    grid = np.asarray(_require_key(im, "grid", "blade inertia_matrix"), dtype=float)
+    rows = _require_key(im, "values", "blade inertia_matrix")
+    try:
+        mass_per_len = np.array([float(r[0]) for r in rows], dtype=float)
+    except (TypeError, ValueError, IndexError) as exc:
+        raise ValueError(
+            f"components.{blade_component} inertia_matrix.values must be a "
+            f"list of numeric rows (upper-triangular 6x6)."
+        ) from exc
+    if grid.size != mass_per_len.size or grid.size < 2:
+        raise ValueError(
+            f"components.{blade_component} inertia_matrix grid ({grid.size}) "
+            f"and values ({mass_per_len.size}) must be equal-length arrays of "
+            f"at least 2 stations."
+        )
+    if not np.all(np.isfinite(mass_per_len)) or np.any(mass_per_len < 0.0):
+        raise ValueError(
+            f"components.{blade_component} blade mass/length has non-finite "
+            f"or negative entries."
+        )
+    ref = _require_mapping(six.get("reference_axis"), "blade six_x_six.reference_axis")
+    coords = []
+    for axis in ("x", "y", "z"):
+        a = _require_mapping(ref.get(axis), f"blade reference_axis.{axis}")
+        ag = np.asarray(_require_key(a, "grid", f"reference_axis.{axis}"), dtype=float)
+        av = np.asarray(_require_key(a, "values", f"reference_axis.{axis}"), dtype=float)
+        if ag.size != av.size or ag.size < 2:
+            raise ValueError(
+                f"blade reference_axis.{axis} grid/values must be equal-length "
+                f"arrays of at least 2 stations."
+            )
+        coords.append(np.interp(grid, ag, av))
+    xyz = np.vstack(coords).T
+    seg = np.linalg.norm(np.diff(xyz, axis=0), axis=1)
+    s = np.concatenate([[0.0], np.cumsum(seg)])
+    return float(np.trapezoid(mass_per_len, s))
+
+
+def read_windio_rna(
+    yaml_path: str | pathlib.Path,
+    *,
+    component_hub: str = "hub",
+    component_nacelle: str = "nacelle",
+    component_blade: str = "blade",
+) -> TipMassProps:
+    """Lump the WindIO rotor-nacelle assembly into a tower-top ``TipMassProps``.
+
+    Reads the ``elastic_properties_mb`` blocks of the ``hub`` and
+    ``nacelle.drivetrain`` components plus the integrated blade span mass,
+    and assembles nacelle + hub + blades into a single rigid-body mass and
+    inertia at the tower top (issue #82). This mirrors the ElastoDyn
+    assembler
+    :func:`pybmodes.io._elastodyn.adapter._tower_top_assembly_mass`, so the
+    yaml path and the deck path share one tower-top convention.
+
+    Requires an ontology that carries the hub and nacelle
+    ``elastic_properties_mb`` lumped-mass blocks (IEA-22-class). Ontologies
+    that omit them (IEA-10 carries only the blade block; IEA-15 neither)
+    raise a ``KeyError`` naming the missing block — the RNA mass cannot be
+    synthesised without them, so pass ``tip_mass`` explicitly in that case.
+
+    Frame: tower-top ``x = downwind, y = lateral, z = up``. The nacelle
+    inertia is the ontology's own tensor about the nacelle CM; the hub is
+    its tensor about the hub centre; the blades are a point mass at the
+    rotor apex (matching the ElastoDyn rigid-RNA convention). The result is
+    expressed at the tower top with ``cm_offset = 0`` and the vertical CM
+    lever in ``cm_axial`` so the FEM nondimensionaliser does not re-apply
+    parallel-axis.
+
+    Requires the optional ``[windio]`` extra (PyYAML).
+    """
+    from pybmodes.io.bmi import TipMassProps
+
+    yaml = _require_yaml()
+    yaml_path = pathlib.Path(yaml_path)
+    with yaml_path.open("r", encoding="utf-8") as fh:
+        doc = yaml.load(fh, Loader=_dup_anchor_loader(yaml))
+
+    comps = _require_mapping(
+        doc.get("components") if isinstance(doc, dict) else None, "components"
+    )
+    assembly = _require_mapping(
+        doc.get("assembly") if isinstance(doc, dict) else None, "assembly"
+    )
+
+    # --- Nacelle: components.<nacelle>.drivetrain ---
+    nacelle = _require_mapping(
+        comps.get(component_nacelle), f"components.{component_nacelle}"
+    )
+    drivetrain = _require_mapping(
+        nacelle.get("drivetrain"), f"components.{component_nacelle}.drivetrain"
+    )
+    nac_ep = _require_mapping(
+        drivetrain.get("elastic_properties_mb"),
+        f"components.{component_nacelle}.drivetrain.elastic_properties_mb",
+    )
+    # ``system_mass`` is the complete nacelle mass; the sibling
+    # ``yaw_mass`` is a sub-component breakdown, not an additive term
+    # (adding it double-counts and overshoots the ElastoDyn NacMass).
+    m_nac = _positive_mass(
+        _require_key(nac_ep, "system_mass", "nacelle elastic_properties_mb"),
+        "nacelle system_mass",
+    )
+    r_nac = np.asarray(
+        _require_key(nac_ep, "system_center_mass", "nacelle elastic_properties_mb"),
+        dtype=float,
+    )
+    if r_nac.shape != (3,) or not np.all(np.isfinite(r_nac)):
+        raise ValueError(
+            f"nacelle system_center_mass must be a finite 3-vector [x, y, z]; "
+            f"got {np.asarray(r_nac).tolist()}."
+        )
+    i_nac = _sym_tensor_from_6vec(
+        _require_key(nac_ep, "system_inertia", "nacelle elastic_properties_mb"),
+        "nacelle",
+    )
+
+    # --- Drivetrain geometry (rotor apex vs tower top); uptilt is radians ---
+    overhang = float(_require_key(drivetrain, "overhang", "nacelle.drivetrain"))
+    uptilt = float(_require_key(drivetrain, "uptilt", "nacelle.drivetrain"))
+    dist_tt_hub = float(
+        _require_key(drivetrain, "distance_tt_hub", "nacelle.drivetrain")
+    )
+    for gname, gval in (
+        ("overhang", overhang),
+        ("uptilt", uptilt),
+        ("distance_tt_hub", dist_tt_hub),
+    ):
+        if not np.isfinite(gval):
+            raise ValueError(
+                f"nacelle.drivetrain.{gname} must be finite; got {gval!r}."
+            )
+
+    # --- Hub: components.<hub>.elastic_properties_mb ---
+    hub = _require_mapping(comps.get(component_hub), f"components.{component_hub}")
+    hub_ep = _require_mapping(
+        hub.get("elastic_properties_mb"),
+        f"components.{component_hub}.elastic_properties_mb",
+    )
+    m_hub = _positive_mass(
+        _require_key(hub_ep, "system_mass", "hub elastic_properties_mb"),
+        "hub system_mass",
+    )
+    i_hub = _sym_tensor_from_6vec(
+        _require_key(hub_ep, "system_inertia", "hub elastic_properties_mb"),
+        "hub",
+    )
+
+    # --- Blades: assembly.number_of_blades x integrated span mass ---
+    n_blades = _require_key(assembly, "number_of_blades", "assembly")
+    if isinstance(n_blades, bool) or not isinstance(n_blades, int) or n_blades < 0:
+        raise ValueError(
+            f"assembly.number_of_blades must be a non-negative integer; got "
+            f"{n_blades!r}."
+        )
+    orientation = str(assembly.get("rotor_orientation", "upwind")).strip().lower()
+    if orientation not in {"upwind", "downwind"}:
+        raise ValueError(
+            f"assembly.rotor_orientation must be 'Upwind' or 'Downwind'; got "
+            f"{assembly.get('rotor_orientation')!r}."
+        )
+    m_blade_each = 0.0
+    if n_blades > 0:
+        blade = _require_mapping(
+            comps.get(component_blade), f"components.{component_blade}"
+        )
+        blade_ep = _require_mapping(
+            blade.get("elastic_properties_mb"),
+            f"components.{component_blade}.elastic_properties_mb",
+        )
+        six = _require_mapping(
+            blade_ep.get("six_x_six"),
+            f"components.{component_blade}.elastic_properties_mb.six_x_six",
+        )
+        m_blade_each = _blade_single_mass(six, component_blade)
+    m_blades = n_blades * m_blade_each
+
+    # Rotor apex relative to the tower top. An upwind rotor sits at negative
+    # x (downwind-positive frame); the vertical hub position is
+    # distance_tt_hub directly (= Twr2Shft + overhang*sin(uptilt)).
+    sign_x = -1.0 if orientation == "upwind" else 1.0
+    apex = np.array(
+        [sign_x * abs(overhang) * float(np.cos(uptilt)), 0.0, dist_tt_hub],
+        dtype=float,
+    )
+
+    bodies = [
+        (m_nac, r_nac, i_nac),
+        (m_hub, apex, i_hub),
+        (m_blades, apex.copy(), np.zeros((3, 3))),
+    ]
+
+    m_total = float(sum(m for m, _, _ in bodies))
+    if m_total <= 0.0:
+        raise ValueError(
+            "WindIO RNA assembled to zero total mass; check the hub / nacelle "
+            "system_mass and assembly.number_of_blades."
+        )
+    cm: np.ndarray = (
+        sum((m * r for m, r, _ in bodies), start=np.zeros(3)) / m_total
+    )
+    eye = np.eye(3)
+    i_tt = np.zeros((3, 3))
+    for m, r, i_body in bodies:
+        rsq = float(r @ r)
+        i_tt = i_tt + i_body + m * (rsq * eye - np.outer(r, r))
+
+    return TipMassProps(
+        mass=m_total,
+        cm_offset=0.0,
+        cm_axial=float(cm[2]),
+        ixx=float(i_tt[0, 0]),
+        iyy=float(i_tt[1, 1]),
+        izz=float(i_tt[2, 2]),
+        ixy=float(i_tt[0, 1]),
+        izx=float(i_tt[2, 0]),
+        iyz=float(i_tt[1, 2]),
     )
