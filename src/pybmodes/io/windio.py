@@ -898,6 +898,19 @@ def read_windio_rna(
     lever in ``cm_axial`` so the FEM nondimensionaliser does not re-apply
     parallel-axis.
 
+    ``cm_offset`` is intentionally ``0``, not the horizontal CM / overhang.
+    The auto-RNA is consumed only by the clamped-base (``hub_conn = 1``)
+    path, where :func:`pybmodes.fem.nondim.nondim_tip_mass` ignores
+    ``cm_offset`` entirely (it carries ``cm_axial`` as the lever and zeroes
+    the axial term). The horizontal overhang is instead folded into the
+    returned inertia tensor: the parallel-axis shift to the tower top puts
+    the ``m·overhang²`` and ``m·height²`` terms into ``ixx`` / ``iyy`` /
+    ``izz``. Setting ``cm_offset = cm[0]`` on top of the already-shifted
+    tensor would double-count the overhang. Likewise the blades' own
+    spanwise spin inertia is left at zero (their parallel-axis contribution
+    is still in the tensor via the point mass at the apex) — the ElastoDyn
+    convention that reproduces the Jonkman (2009) tower frequencies.
+
     Requires the optional ``[windio]`` extra (PyYAML).
     """
     from pybmodes.io.bmi import TipMassProps
