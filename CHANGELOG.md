@@ -19,14 +19,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   inertia (on IEA-22 it is ~2.5x the value the point-mass lump produced),
   so tower fore-aft / side-side frequencies from a rigid-RNA lump came out
   too high versus a rigid-rotor reference. The rotor is now assembled as a
-  rigid body, `diag([I_polar, I_polar/2, I_polar/2])` about the hub with
-  `I_polar = N_bl · ∫ (dm/ds) · r² ds` (`r = hub_radius + span·cos(cone)`),
-  using the hub diameter and cone angle when present. Only each blade's own
-  sectional spin inertia is still excluded. This changes the auto-RNA
-  inertia (and hence coupled tower frequencies) relative to 1.16.0; mass
-  and centre of mass are unchanged. This intentionally goes beyond the
-  ElastoDyn deck path's point-mass lumping, which the WindIO per-station
-  blade mass makes possible.
+  rigid body, `diag([I_polar, I_diam, I_diam])` about the rotor centre of
+  mass with `I_polar = N_bl · ∫ (dm/ds) · r² ds` and the in-plane lever
+  `r = (hub_radius + span)·cos(cone)` (the coned pitch-axis distance, with
+  prebend and sweep folded in), using the hub diameter and cone angle when
+  present. A coned rotor's mass sits off the hub plane, so the rotor is
+  placed at its true centre of mass before the parallel-axis shift; this
+  also moves the tower-top centre of mass slightly (by the precone term)
+  for a non-zero `cone_angle`. Only each blade's own sectional spin inertia
+  is still excluded. This changes the auto-RNA inertia (and hence coupled
+  tower frequencies), and the CM for coned rotors, relative to 1.16.0; the
+  total mass is unchanged. This intentionally goes beyond the ElastoDyn
+  deck path's point-mass lumping, which the WindIO per-station blade mass
+  makes possible.
 
 ## [1.16.0] — 2026-07-03
 
