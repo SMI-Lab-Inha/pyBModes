@@ -171,6 +171,30 @@ def test_rna_rotor_inertia_tilt_rotation(tmp_path: pathlib.Path) -> None:
         flat.ixx + flat.iyy + flat.izz, rel=1e-9)
 
 
+def test_rna_rotor_inertia_cone_axial(tmp_path: pathlib.Path) -> None:
+    """A coned rotor adds the axial (span·sin(cone))² term to the transverse
+    (diametral) moment, so the transverse inertia grows with cone even as
+    the radial reach shrinks (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(cone: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = cone
+        dt = o["components"]["nacelle"]["drivetrain"]
+        dt["uptilt"] = 0.0                               # no shaft-frame rotation
+        dt["overhang"] = 0.0                             # apex purely vertical
+        dt["elastic_properties_mb"]["system_center_mass"] = [0.0, 0.0, 3.0]
+        return read_windio_rna(_write(o, tmp_path, f"cone_{cone}.yaml"))
+
+    flat = _mk(0.0)
+    coned = _mk(0.4)                                     # ~23 deg (exaggerated)
+    # I_diam = I_polar/2 + N_bl·axial: a flat-disc assumption (I_polar/2 only)
+    # would drop the axial term and give a smaller transverse moment.
+    assert coned.iyy > flat.iyy
+    assert coned.mass == pytest.approx(flat.mass)
+
+
 def test_rna_diagonal_inertia_accepted(tmp_path: pathlib.Path) -> None:
     """A diagonal 3-vector system_inertia [Ixx, Iyy, Izz] is accepted as a
     diagonal tensor, matching the equivalent zero-product 6-vector (Codex

@@ -784,9 +784,10 @@ def _blade_reference_axis(six: dict, comp: dict, blade_component: str) -> dict:
 
 
 def _blade_span_mass_inertia(
-    six: dict, ref: dict, blade_component: str, hub_r: float, cone_cos: float,
-) -> tuple[float, float]:
-    """Integrate a WindIO blade's span into ``(mass, polar_second_moment)``.
+    six: dict, ref: dict, blade_component: str,
+    hub_r: float, cone_cos: float, cone_sin: float,
+) -> tuple[float, float, float]:
+    """Integrate a blade's span into ``(mass, polar, axial)`` second moments.
 
     ``six`` is
     ``components.<blade>.elastic_properties_mb.six_x_six`` and ``ref`` is
@@ -797,10 +798,12 @@ def _blade_span_mass_inertia(
     reference axis. Only the ``z`` curve is required; ``x`` / ``y``
     (prebend / sweep) are optional and default to zero (a straight span).
 
-    Returns the single-blade mass and the single-blade polar second moment
-    about the rotor axis, ``∫ (dm/ds) · r(s)² ds`` with the radial distance
-    ``r(s) = hub_r + z(s)·cone_cos``, so the caller can build the rotor's
-    diametral inertia from the spanwise mass distribution (issue #130).
+    Returns the single-blade mass, the polar second moment about the rotor
+    axis ``∫ (dm/ds) · r(s)² ds`` (radial ``r = hub_r + z·cone_cos``), and
+    the axial second moment ``∫ (dm/ds) · a(s)² ds`` (axial offset
+    ``a = z·cone_sin``). The caller builds the rotor's polar inertia from
+    the former and the coned transverse (diametral) inertia
+    ``polar/2 + N_bl·axial`` from both (issue #130).
     """
     im = _require_mapping(six.get("inertia_matrix"), "blade six_x_six.inertia_matrix")
     grid = np.asarray(_require_key(im, "grid", "blade inertia_matrix"), dtype=float)
@@ -872,11 +875,16 @@ def _blade_span_mass_inertia(
     seg = np.linalg.norm(np.diff(xyz, axis=0), axis=1)
     s = np.concatenate([[0.0], np.cumsum(seg)])
     mass = _trapezoid(mpl, s)
-    # Radial distance from the rotor axis: the hub radius plus the spanwise
-    # position projected onto the rotor plane by the cone angle.
-    radial = hub_r + coords[2] * cone_cos
+    # The spanwise position resolves into a radial distance from the rotor
+    # axis (hub radius + span*cos(cone)) and, for a coned rotor, an axial
+    # offset along the shaft (span*sin(cone)). The radial part gives the
+    # polar second moment; the axial part adds to the transverse moment.
+    span = coords[2]
+    radial = hub_r + span * cone_cos
+    axial = span * cone_sin
     polar_second_moment = _trapezoid(mpl * radial * radial, s)
-    return mass, polar_second_moment
+    axial_second_moment = _trapezoid(mpl * axial * axial, s)
+    return mass, polar_second_moment, axial_second_moment
 
 
 def read_windio_rna(
@@ -1017,11 +1025,9 @@ def read_windio_rna(
     )
     if hub_r < 0.0:
         raise ValueError(f"hub diameter must be non-negative; got {hub_diam!r}.")
-    cone = hub.get("cone_angle")
-    cone_cos = (
-        float(np.cos(_finite_float(cone, "hub cone_angle")))
-        if cone is not None else 1.0
-    )
+    cone_ang = _finite_float(hub.get("cone_angle", 0.0), "hub cone_angle")
+    cone_cos = float(np.cos(cone_ang))
+    cone_sin = float(np.sin(cone_ang))
 
     # --- Blades: assembly.number_of_blades x integrated span mass ---
     n_blades = _require_key(assembly, "number_of_blades", "assembly")
@@ -1038,6 +1044,7 @@ def read_windio_rna(
         )
     m_blade_each = 0.0
     i_polar_each = 0.0
+    i_axial_each = 0.0
     if n_blades > 0:
         blade = _require_mapping(
             comps.get(component_blade), f"components.{component_blade}"
@@ -1051,22 +1058,22 @@ def read_windio_rna(
             f"components.{component_blade}.elastic_properties_mb.six_x_six",
         )
         ref = _blade_reference_axis(six, blade, component_blade)
-        m_blade_each, i_polar_each = _blade_span_mass_inertia(
-            six, ref, component_blade, hub_r, cone_cos,
+        m_blade_each, i_polar_each, i_axial_each = _blade_span_mass_inertia(
+            six, ref, component_blade, hub_r, cone_cos, cone_sin,
         )
     m_blades = n_blades * m_blade_each
 
-    # Rotor inertia from the spanwise blade mass (issue #130). For N >= 3
-    # symmetric blades the rotor tensor about the hub is
-    # diag([I_polar, I_polar/2, I_polar/2]) in the shaft frame (polar about
-    # the shaft, half on each transverse axis by the perpendicular-axis
-    # theorem), the same form as the hub. Lumping the blades as a bare point
-    # mass at the apex would drop this, which is the dominant part of the
-    # rotor's contribution to the tower-top rotary inertia.
+    # Rotor inertia from the spanwise blade mass (issue #130). In the shaft
+    # frame the rotor tensor about the hub is diag([I_polar, I_diam, I_diam]):
+    # the polar term ``I_polar = N_bl·∫dm·r²`` (radial), and the transverse
+    # (diametral) term ``I_diam = I_polar/2 + N_bl·∫dm·a²``. The ``I_polar/2``
+    # is the perpendicular-axis split for a planar rotor; the ``N_bl·∫dm·a²``
+    # adds the coned rotor's shaft-axis (``a = span·sin(cone)``) offset, which
+    # a flat-disc assumption would drop. Lumping the blades as a bare point
+    # mass at the apex would drop the whole tensor.
     i_polar_rotor = n_blades * i_polar_each
-    i_blades = np.diag(
-        [i_polar_rotor, 0.5 * i_polar_rotor, 0.5 * i_polar_rotor]
-    )
+    i_diam_rotor = 0.5 * i_polar_rotor + n_blades * i_axial_each
+    i_blades = np.diag([i_polar_rotor, i_diam_rotor, i_diam_rotor])
 
     # Rotor apex relative to the tower top. An upwind rotor sits at negative
     # x (downwind-positive frame); the vertical hub position is
