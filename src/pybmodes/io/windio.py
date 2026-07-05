@@ -1206,9 +1206,10 @@ def read_windio_rna(
 
     # Rotor inertia from the spanwise blade mass (issue #130). In the shaft
     # frame the rotor tensor is diag([I_polar, I_diam, I_diam]): the polar
-    # term ``I_polar = N_bl·∫dm·r²`` (radial ``r = hub_r + span·cos(cone)``),
-    # and the transverse (diametral) term. For a coned rotor the blade mass
-    # sits off the hub plane by ``a = span·sin(cone)``, so the rotor CM shifts
+    # term ``I_polar = N_bl·∫dm·r²`` (radial ``r = (hub_r + span)·cos(cone)``,
+    # the coned pitch-axis distance from the hub centre), and the transverse
+    # (diametral) term. For a coned rotor the blade mass sits off the hub
+    # plane by ``a = (hub_r + span)·sin(cone)``, so the rotor CM shifts
     # along the shaft axis by ``offset = ∫dm·a / m_blades`` and the tensor is
     # formed about that CM: ``I_diam = I_polar/2 + N_bl·∫dm·a² − m_blades·
     # offset²`` (the axial second moment reduced to the CM by the parallel-
