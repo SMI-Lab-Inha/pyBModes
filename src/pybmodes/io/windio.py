@@ -67,6 +67,50 @@ def _trapezoid(y: np.ndarray, x: np.ndarray) -> float:
     return float(np.sum(0.5 * (y[1:] + y[:-1]) * np.diff(x)))
 
 
+def _second_moment(w: np.ndarray, c: np.ndarray, x: np.ndarray) -> float:
+    """Exact ``integral w(x)*c(x)**2 dx`` for piecewise-linear ``w`` and ``c``.
+
+    On each ``[x_i, x_{i+1}]`` segment both the weight ``w`` (mass per unit
+    length) and the coordinate ``c`` vary linearly, so the integrand is a
+    cubic. Simpson's rule is exact through degree three, so evaluating the
+    endpoints plus the segment midpoint (``w`` / ``c`` averaged, since both
+    are linear) integrates it without error. The trapezoid rule chords over
+    the quadratic ``c**2`` and inflates the second moment on a coarse grid
+    (Codex review on #130 measured a 50 % bias for a straight two-station
+    blade).
+    """
+    w = np.asarray(w, dtype=float)
+    c = np.asarray(c, dtype=float)
+    x = np.asarray(x, dtype=float)
+    dx = np.diff(x)
+    w0, w1 = w[:-1], w[1:]
+    c0, c1 = c[:-1], c[1:]
+    wm = 0.5 * (w0 + w1)
+    cm = 0.5 * (c0 + c1)
+    f0 = w0 * c0 * c0
+    fm = wm * cm * cm
+    f1 = w1 * c1 * c1
+    return float(np.sum(dx / 6.0 * (f0 + 4.0 * fm + f1)))
+
+
+def _first_moment(w: np.ndarray, c: np.ndarray, x: np.ndarray) -> float:
+    """Exact ``integral w(x)*c(x) dx`` for piecewise-linear ``w`` and ``c``.
+
+    The integrand is quadratic on each segment (a product of two linear
+    factors), which Simpson's rule integrates exactly. Used for the rotor's
+    axial first moment, i.e. its shaft-axis CM offset, so a coned rotor body
+    is placed at its centre of mass before the parallel-axis shift.
+    """
+    w = np.asarray(w, dtype=float)
+    c = np.asarray(c, dtype=float)
+    x = np.asarray(x, dtype=float)
+    dx = np.diff(x)
+    w0, w1 = w[:-1], w[1:]
+    c0, c1 = c[:-1], c[1:]
+    fm = 0.5 * (w0 + w1) * 0.5 * (c0 + c1)
+    return float(np.sum(dx / 6.0 * (w0 * c0 + 4.0 * fm + w1 * c1)))
+
+
 def _require_yaml():
     """Import PyYAML or raise the documented friendly error.
 
@@ -688,6 +732,53 @@ def _finite_float(value: Any, what: str) -> float:
     return f
 
 
+def _windio_rotor_angles(
+    cone_value: Any, uptilt_value: Any, units: str = "auto"
+) -> tuple[float, float]:
+    """Convert the WindIO precone and shaft tilt to radians.
+
+    The WindIO v2 turbine schema annotates ``hub.cone_angle`` and drivetrain
+    ``uptilt`` as degrees, but the IEA reference ontologies store radians
+    (IEA-22 ``cone_angle`` 0.0698 = 4 deg, ``uptilt`` 0.1047 = 6 deg).
+    ``units`` selects how to reconcile that:
+
+    - ``"rad"`` / ``"deg"`` — take the file at its word (no guessing).
+    - ``"auto"`` (default) — a file uses one convention throughout, so decide
+      it once from the *larger* of the two magnitudes: a degrees file reliably
+      carries a several-degree shaft tilt whose magnitude dwarfs any radians
+      precone / tilt (which stay under ~0.3 rad), so the larger angle
+      disambiguates the pair even when the cone is a fraction of a degree.
+      Larger magnitude over 0.5 means degrees, otherwise radians. The
+      residual blind spot is a degrees file whose angles are *both* below
+      ~0.5 deg (e.g. a zero-tilt turbine with a sub-degree precone); it reads
+      as radians. Pass ``units="deg"`` for such a file (issue #130 review).
+
+    Anything above 90 (in the resolved unit) is non-physical and rejected.
+    """
+    cone = _finite_float(cone_value, "hub cone_angle")
+    uptilt = _finite_float(uptilt_value, "nacelle.drivetrain.uptilt")
+    if units not in ("auto", "rad", "deg"):
+        raise ValueError(
+            f"angle_units must be 'auto', 'rad' or 'deg'; got {units!r}."
+        )
+    if units == "auto":
+        biggest = max(abs(cone), abs(uptilt))
+        units = "deg" if biggest > 0.5 else "rad"
+    if units == "deg":
+        cone_rad, uptilt_rad = float(np.radians(cone)), float(np.radians(uptilt))
+    else:
+        cone_rad, uptilt_rad = cone, uptilt
+    # Bound the resolved radian value (not the raw input, whose scale depends
+    # on the unit), so a 90 deg limit holds whether the file was rad or deg.
+    if max(abs(cone_rad), abs(uptilt_rad)) > np.pi / 2:
+        raise ValueError(
+            f"rotor precone / shaft tilt (cone_angle={cone!r}, uptilt="
+            f"{uptilt!r}, units={units}) resolves to more than 90 deg, which "
+            f"is non-physical."
+        )
+    return cone_rad, uptilt_rad
+
+
 def _positive_mass(value: Any, what: str) -> float:
     """Coerce ``value`` to a positive, finite mass (kg), else raise."""
     m = _finite_float(value, what)
@@ -783,8 +874,11 @@ def _blade_reference_axis(six: dict, comp: dict, blade_component: str) -> dict:
     )
 
 
-def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
-    """Integrate a WindIO blade's mass per unit length over its span.
+def _blade_span_mass_inertia(
+    six: dict, ref: dict, blade_component: str,
+    hub_r: float, cone_cos: float, cone_sin: float,
+) -> tuple[float, float, float, float]:
+    """Integrate a blade's span into ``(mass, polar, axial)`` second moments.
 
     ``six`` is
     ``components.<blade>.elastic_properties_mb.six_x_six`` and ``ref`` is
@@ -794,6 +888,19 @@ def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
     ``inertia_matrix.values``, integrated over the arc length of the
     reference axis. Only the ``z`` curve is required; ``x`` / ``y``
     (prebend / sweep) are optional and default to zero (a straight span).
+
+    Returns the single-blade mass, the polar second moment about the rotor
+    axis ``∫ (dm/ds) · (r² + t²) ds`` (in-plane radial
+    ``r = (hub_r + z)·cone_cos − x·cone_sin`` and tangential ``t = y`` so the
+    coned hub radius, prebend and sweep are all included), the axial second
+    moment ``∫ (dm/ds) · a(s)² ds`` (axial offset
+    ``a = (hub_r + z)·cone_sin + x·cone_cos``), and the axial first moment
+    ``∫ (dm/ds) · a(s) ds``.
+    The caller builds the rotor's polar inertia from the second radial
+    moment, the coned transverse (diametral) inertia from the radial and
+    axial second moments, and places the rotor body at its coned centre of
+    mass (shaft-axis offset ``axial_first / mass``) before the parallel-axis
+    shift (issue #130).
     """
     im = _require_mapping(six.get("inertia_matrix"), "blade six_x_six.inertia_matrix")
     grid = np.asarray(_require_key(im, "grid", "blade inertia_matrix"), dtype=float)
@@ -864,7 +971,36 @@ def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
     xyz = np.vstack(coords).T
     seg = np.linalg.norm(np.diff(xyz, axis=0), axis=1)
     s = np.concatenate([[0.0], np.cumsum(seg)])
-    return _trapezoid(mpl, s)
+    mass = _trapezoid(mpl, s)
+    # Resolve each section onto the rotor axes (r = in-plane radial from the
+    # shaft, t = in-plane tangential, a = along the shaft). The reference axis
+    # gives z spanwise, x prebend (flapwise, out of the rotor plane) and y
+    # sweep (edgewise, in the rotor plane). Coning rotates the span/prebend
+    # (radial/axial) plane by the cone angle about the edgewise axis; sweep is
+    # unaffected. The polar lever is the in-plane distance from the shaft axis
+    # ``r² + t²`` (so sweep and prebend are not dropped, issue #130); the
+    # axial offset feeds the coned transverse term.
+    # Span measured from the blade root: reference_axis.z may be offset from
+    # zero (defined from a hub datum), so subtract the root value rather than
+    # treat the absolute z as the distance from the root, which would place
+    # every section too far out.
+    x_off, y_off = coords[0], coords[1]
+    span = coords[2] - coords[2][0]
+    # Distance from the hub centre along the (coned) pitch axis: the blade
+    # root sits at the hub radius and each section a further `span` outboard,
+    # so the whole (hub_r + span) length projects through the cone, matching
+    # WISDEM/ElastoDyn (rotorR = Rtip*cos(precone) = (Rhub + L)*cos(cone))
+    # rather than leaving the hub radius unconed in the rotor plane.
+    axis_dist = hub_r + span
+    radial = axis_dist * cone_cos - x_off * cone_sin
+    tangential = y_off
+    axial = axis_dist * cone_sin + x_off * cone_cos
+    polar_second_moment = _second_moment(mpl, radial, s) + _second_moment(
+        mpl, tangential, s
+    )
+    axial_second_moment = _second_moment(mpl, axial, s)
+    axial_first_moment = _first_moment(mpl, axial, s)
+    return mass, polar_second_moment, axial_second_moment, axial_first_moment
 
 
 def read_windio_rna(
@@ -873,6 +1009,7 @@ def read_windio_rna(
     component_hub: str = "hub",
     component_nacelle: str = "nacelle",
     component_blade: str = "blade",
+    angle_units: str = "auto",
 ) -> TipMassProps:
     """Lump the WindIO rotor-nacelle assembly into a tower-top ``TipMassProps``.
 
@@ -892,11 +1029,11 @@ def read_windio_rna(
 
     Frame: tower-top ``x = downwind, y = lateral, z = up``. The nacelle
     inertia is the ontology's own tensor about the nacelle CM; the hub is
-    its tensor about the hub centre; the blades are a point mass at the
-    rotor apex (matching the ElastoDyn rigid-RNA convention). The result is
-    expressed at the tower top with ``cm_offset = 0`` and the vertical CM
-    lever in ``cm_axial`` so the FEM nondimensionaliser does not re-apply
-    parallel-axis.
+    its tensor about the hub centre; the rotor is a rigid body at the apex
+    (total blade mass plus the diametral inertia from the spanwise blade
+    mass). The result is expressed at the tower top with ``cm_offset = 0``
+    and the vertical CM lever in ``cm_axial`` so the FEM nondimensionaliser
+    does not re-apply parallel-axis.
 
     ``cm_offset`` is intentionally ``0``, not the horizontal CM / overhang.
     The auto-RNA is consumed only by the clamped-base (``hub_conn = 1``)
@@ -906,10 +1043,22 @@ def read_windio_rna(
     returned inertia tensor: the parallel-axis shift to the tower top puts
     the ``m·overhang²`` and ``m·height²`` terms into ``ixx`` / ``iyy`` /
     ``izz``. Setting ``cm_offset = cm[0]`` on top of the already-shifted
-    tensor would double-count the overhang. Likewise the blades' own
-    spanwise spin inertia is left at zero (their parallel-axis contribution
-    is still in the tensor via the point mass at the apex) — the ElastoDyn
-    convention that reproduces the Jonkman (2009) tower frequencies.
+    tensor would double-count the overhang.
+
+    Blade inertia (issue #130): the rotor carries the diametral inertia
+    ``N_bl · ∫ (dm/ds) · r² ds`` from the blade mass spread along the span
+    (``r = (hub_radius + span)·cos(cone)``), as ``diag([I_polar, I_polar/2,
+    I_polar/2])`` about the hub (the same perpendicular-axis form as the
+    hub tensor). Only each blade's own *sectional* spin inertia is left out
+    (its parallel-axis / span contribution is captured). This intentionally
+    goes beyond the ElastoDyn deck path's bare point-mass lumping, which the
+    WindIO ontology's per-station blade mass makes possible.
+
+    ``angle_units`` selects how ``cone_angle`` / ``uptilt`` are read. The
+    WindIO v2 schema annotates them as degrees, but the IEA reference files
+    store radians; ``"auto"`` (default) disambiguates by magnitude (see
+    :func:`_windio_rotor_angles`), while ``"rad"`` / ``"deg"`` take the file
+    at its word for the rare all-sub-degree case ``"auto"`` cannot resolve.
 
     Requires the optional ``[windio]`` extra (PyYAML).
     """
@@ -972,7 +1121,7 @@ def read_windio_rna(
         return _finite_float(val, f"nacelle.drivetrain.{key}")
 
     overhang = _nac_geom("overhang")
-    uptilt = _nac_geom("uptilt")
+    uptilt_raw = _nac_geom("uptilt")  # rad/deg resolved with cone_angle below
     dist_tt_hub = _nac_geom("distance_tt_hub")
 
     # --- Hub: components.<hub>.elastic_properties_mb ---
@@ -989,6 +1138,21 @@ def read_windio_rna(
         _require_key(hub_ep, "system_inertia", "hub elastic_properties_mb"),
         "hub",
     )
+    # Rotor geometry for the blade-span inertia (issue #130): the hub radius
+    # offsets the blade root from the rotor axis, and the cone angle
+    # projects the coned span onto the rotor plane. Both optional (default
+    # no hub offset / no cone).
+    hub_diam = hub.get("diameter")
+    hub_r = (
+        0.5 * _finite_float(hub_diam, "hub diameter") if hub_diam is not None else 0.0
+    )
+    if hub_r < 0.0:
+        raise ValueError(f"hub diameter must be non-negative; got {hub_diam!r}.")
+    cone_ang, uptilt = _windio_rotor_angles(
+        hub.get("cone_angle", 0.0), uptilt_raw, angle_units
+    )
+    cone_cos = float(np.cos(cone_ang))
+    cone_sin = float(np.sin(cone_ang))
 
     # --- Blades: assembly.number_of_blades x integrated span mass ---
     n_blades = _require_key(assembly, "number_of_blades", "assembly")
@@ -997,6 +1161,21 @@ def read_windio_rna(
             f"assembly.number_of_blades must be a non-negative integer; got "
             f"{n_blades!r}."
         )
+    if n_blades in (1, 2):
+        # The rotor tensor uses the axisymmetric transverse split
+        # ``I_diam = I_polar/2 + …``, which is exact only for three or more
+        # evenly spaced blades (a symmetric mass ring has isotropic in-plane
+        # inertia). A one- or two-bladed rotor lies on a single diameter, so
+        # its transverse inertia is azimuth-dependent and no single static
+        # tower-top lump represents it. Reject rather than emit a corrupted
+        # fore-aft / side-side inertia (issue #130 review).
+        raise ValueError(
+            f"assembly.number_of_blades = {n_blades}: the auto-RNA rotor "
+            f"inertia assembly assumes an azimuthally symmetric rotor (three "
+            f"or more evenly spaced blades). A one- or two-bladed rotor has an "
+            f"azimuth-dependent transverse inertia that a single rigid tower-"
+            f"top lump cannot represent; pass an explicit tip_mass instead."
+        )
     orientation = str(assembly.get("rotor_orientation", "upwind")).strip().lower()
     if orientation not in {"upwind", "downwind"}:
         raise ValueError(
@@ -1004,6 +1183,9 @@ def read_windio_rna(
             f"{assembly.get('rotor_orientation')!r}."
         )
     m_blade_each = 0.0
+    i_polar_each = 0.0
+    i_axial_each = 0.0
+    m_axial1_each = 0.0
     if n_blades > 0:
         blade = _require_mapping(
             comps.get(component_blade), f"components.{component_blade}"
@@ -1017,8 +1199,41 @@ def read_windio_rna(
             f"components.{component_blade}.elastic_properties_mb.six_x_six",
         )
         ref = _blade_reference_axis(six, blade, component_blade)
-        m_blade_each = _blade_single_mass(six, ref, component_blade)
+        (
+            m_blade_each,
+            i_polar_each,
+            i_axial_each,
+            m_axial1_each,
+        ) = _blade_span_mass_inertia(
+            six, ref, component_blade, hub_r, cone_cos, cone_sin,
+        )
     m_blades = n_blades * m_blade_each
+
+    # Rotor inertia from the spanwise blade mass (issue #130). In the shaft
+    # frame the rotor tensor is diag([I_polar, I_diam, I_diam]): the polar
+    # term ``I_polar = N_bl·∫dm·r²`` (radial ``r = (hub_r + span)·cos(cone)``,
+    # the coned pitch-axis distance from the hub centre), and the transverse
+    # (diametral) term. For a coned rotor the blade mass sits off the hub
+    # plane by ``a = (hub_r + span)·sin(cone)``, so the rotor CM shifts
+    # along the shaft axis by ``offset = ∫dm·a / m_blades`` and the tensor is
+    # formed about that CM: ``I_diam = I_polar/2 + N_bl·∫dm·a² − m_blades·
+    # offset²`` (the axial second moment reduced to the CM by the parallel-
+    # axis theorem, a mass-weighted variance that stays non-negative). The
+    # body is placed at that CM below so the shift to the tower top is exact.
+    # A flat rotor (``sin(cone) = 0``) leaves the offset and the axial term
+    # zero, recovering the planar ``I_polar/2`` split about the apex. Lumping
+    # the blades as a bare point mass at the apex would drop the whole tensor.
+    # n_blades is 0 or >= 3 here: 1 and 2 are rejected above, since the
+    # I_polar/2 transverse split holds only for an azimuthally symmetric rotor
+    # (>= 3 evenly spaced blades). n_blades == 0 gives a zero rotor tensor.
+    assert n_blades == 0 or n_blades >= 3
+    i_polar_rotor = n_blades * i_polar_each
+    cm_axial_offset = (m_axial1_each / m_blade_each) if m_blade_each > 0.0 else 0.0
+    i_axial_cm = max(
+        0.0, n_blades * i_axial_each - m_blades * cm_axial_offset * cm_axial_offset
+    )
+    i_diam_rotor = 0.5 * i_polar_rotor + i_axial_cm
+    i_blades = np.diag([i_polar_rotor, i_diam_rotor, i_diam_rotor])
 
     # Rotor apex relative to the tower top. An upwind rotor sits at negative
     # x (downwind-positive frame); the vertical hub position is
@@ -1029,10 +1244,35 @@ def read_windio_rna(
         dtype=float,
     )
 
+    # The hub and rotor inertia tensors are in the WindIO hub-aligned frame
+    # (x along the tilted shaft, y lateral, z up including tilt); rotate them
+    # into the tower-top frame before they are summed as tower-top tensors (a
+    # tilted rotor otherwise loses the tensor izx product and misallocates the
+    # large polar term between ixx and izz). The hub frame is the tower frame
+    # tilted about the lateral y-axis by the shaft tilt, so ``sign_x`` rides
+    # the sin (off-diagonal) terms, not the cos: for an upwind rotor the
+    # downwind-positive shaft tilts the opposite way. A diagonal hub or the
+    # symmetric rotor tensor is invariant to that choice, but a hub with
+    # off-diagonal Ixy / Iyz would be mis-signed with sign_x on the cos terms.
+    # The nacelle tensor is already in the tower frame and is left alone.
+    c_t, s_t = float(np.cos(uptilt)), float(np.sin(uptilt))
+    r_hub = np.array(
+        [[c_t, 0.0, -sign_x * s_t], [0.0, 1.0, 0.0], [sign_x * s_t, 0.0, c_t]]
+    )
+    i_hub = r_hub @ i_hub @ r_hub.T
+    i_blades = r_hub @ i_blades @ r_hub.T
+
+    # Outboard shaft direction (tower top toward the apex and beyond), along
+    # which the overhang runs and the coned blade CM is displaced. This is the
+    # shaft *line*, not the hub-frame x basis rotated above (they point in
+    # opposite senses for an upwind rotor), so build it explicitly.
+    shaft_axis = np.array([sign_x * c_t, 0.0, s_t])
+    rotor_cm = apex + cm_axial_offset * shaft_axis
+
     bodies = [
         (m_nac, r_nac, i_nac),
         (m_hub, apex, i_hub),
-        (m_blades, apex.copy(), np.zeros((3, 3))),
+        (m_blades, rotor_cm, i_blades),
     ]
 
     m_total = float(sum(m for m, _, _ in bodies))

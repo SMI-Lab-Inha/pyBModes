@@ -96,13 +96,348 @@ def test_rna_assembly_matches_hand_computation(tmp_path: pathlib.Path) -> None:
     # cm_z = (500000*3 + 100000*4 + 15000*4) / 615000
     assert rna.cm_axial == pytest.approx(1.96e6 / 615000.0)
     assert rna.cm_offset == 0.0
-    # Parallel-axis tensor at the tower top (hand-computed).
-    assert rna.ixx == pytest.approx(1.834e7)
-    assert rna.iyy == pytest.approx(3.884e7)
-    assert rna.izz == pytest.approx(3.35e7)
+    # Parallel-axis tensor at the tower top (hand-computed), plus the rotor
+    # diametral inertia from the spanwise blade mass (issue #130):
+    # I_polar_rotor = 3 · ∫100·z² dz over [0, 50] = 3 · (100·50³/3)
+    #              = 3 · 4.1667e6 = 1.25e7, added about the apex as
+    # diag([1.25e7, 6.25e6, 6.25e6]). The exact span integral (Simpson,
+    # exact for the cubic mass·z² integrand) replaces the earlier trapezoid.
+    assert rna.ixx == pytest.approx(1.834e7 + 1.25e7)
+    assert rna.iyy == pytest.approx(3.884e7 + 0.625e7)
+    assert rna.izz == pytest.approx(3.35e7 + 0.625e7)
     assert rna.izx == pytest.approx(1.06e7)
     assert rna.ixy == pytest.approx(0.0, abs=1e-6)
     assert rna.iyz == pytest.approx(0.0, abs=1e-6)
+
+
+def test_rna_rotor_inertia_from_span(tmp_path: pathlib.Path) -> None:
+    """The rotor diametral inertia from the spanwise blade mass is included,
+    and the hub radius increases it (issue #130). Concentrating the same
+    blade mass near the rotor axis (short span) carries far less rotary
+    inertia than spreading it along a long span."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    base = read_windio_rna(_write(_base_ontology(), tmp_path, "base_r.yaml"))
+    # The pre-#130 value for izz was 3.35e7 (no blade inertia); it must now
+    # be strictly larger because the rotor diametral term is included.
+    assert base.izz > 3.35e7
+    # The diametral term is the exact span integral 3·(100·50³/3)/2 = 6.25e6,
+    # not the trapezoid over-estimate (9.375e6) a coarse two-station grid
+    # would give for the cubic mass·z² integrand (Codex review on #130).
+    assert base.izz == pytest.approx(3.35e7 + 6.25e6)
+
+    # A hub radius offsets every blade section further from the rotor axis,
+    # so the polar / diametral inertia grows.
+    with_hub = _base_ontology()
+    with_hub["components"]["hub"]["diameter"] = 8.0        # hub_R = 4 m
+    wh = read_windio_rna(_write(with_hub, tmp_path, "hub_r.yaml"))
+    assert wh.izz > base.izz
+    assert wh.iyy > base.iyy
+    assert wh.mass == pytest.approx(base.mass)             # mass unchanged
+
+    # Spreading the same blade mass over a longer span carries much more
+    # rotary inertia than keeping it near the root.
+    longer = _base_ontology()
+    longer["components"]["blade"]["elastic_properties_mb"]["six_x_six"][
+        "inertia_matrix"
+    ]["values"] = [[50.0] + [0.0] * 20, [50.0] + [0.0] * 20]   # half kg/m ...
+    longer["components"]["blade"]["elastic_properties_mb"]["six_x_six"][
+        "reference_axis"
+    ]["z"] = {"grid": [0.0, 1.0], "values": [0.0, 100.0]}      # ... over 100 m
+    lg = read_windio_rna(_write(longer, tmp_path, "long_r.yaml"))
+    assert lg.mass == pytest.approx(base.mass)             # same 5000 kg/blade
+    assert lg.izz > base.izz                              # longer span -> more inertia
+
+
+def test_rna_rotor_inertia_tilt_rotation(tmp_path: pathlib.Path) -> None:
+    """The shaft-frame rotor / hub inertia is rotated by the uptilt into the
+    tower frame, so a tilted rotor gains an izx product while preserving the
+    inertia trace (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(uptilt: float):
+        o = _base_ontology()
+        dt = o["components"]["nacelle"]["drivetrain"]
+        dt["overhang"] = 0.0                              # apex purely vertical
+        dt["uptilt"] = uptilt
+        dt["elastic_properties_mb"]["system_center_mass"] = [0.0, 0.0, 3.0]
+        return read_windio_rna(_write(o, tmp_path, f"tilt_{uptilt}.yaml"))
+
+    flat = _mk(0.0)
+    tilt = _mk(0.3)                                       # ~17 deg
+    # overhang 0 + CM x 0 -> all izx comes from the shaft-frame tensor
+    # rotation; a flat rotor/hub are diagonal (izx 0), a tilted one gains izx.
+    assert flat.izx == pytest.approx(0.0, abs=1.0)
+    assert abs(tilt.izx) > 1.0e6
+    # the rotation preserves the inertia trace (apex identical, overhang 0).
+    assert (tilt.ixx + tilt.iyy + tilt.izz) == pytest.approx(
+        flat.ixx + flat.iyy + flat.izz, rel=1e-9)
+
+
+def test_rna_rotor_inertia_cone_axial(tmp_path: pathlib.Path) -> None:
+    """A coned rotor adds the axial (span·sin(cone))² term to the transverse
+    (diametral) moment, so the transverse inertia grows with cone even as
+    the radial reach shrinks (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(cone: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = cone
+        dt = o["components"]["nacelle"]["drivetrain"]
+        dt["uptilt"] = 0.0                               # no shaft-frame rotation
+        dt["overhang"] = 0.0                             # apex purely vertical
+        dt["elastic_properties_mb"]["system_center_mass"] = [0.0, 0.0, 3.0]
+        return read_windio_rna(_write(o, tmp_path, f"cone_{cone}.yaml"))
+
+    flat = _mk(0.0)
+    coned = _mk(0.4)                                     # ~23 deg (exaggerated)
+    # I_diam = I_polar/2 + N_bl·axial: a flat-disc assumption (I_polar/2 only)
+    # would drop the axial term and give a smaller transverse moment.
+    assert coned.iyy > flat.iyy
+    assert coned.mass == pytest.approx(flat.mass)
+
+
+def test_rna_cone_and_uptilt_degrees_match_radians(tmp_path: pathlib.Path) -> None:
+    """WindIO's rad/deg ambiguity: the v2 schema annotates cone_angle / uptilt
+    as degrees while the IEA reference files store radians. The reader
+    disambiguates by magnitude, so a degrees encoding (4, 6) and the
+    equivalent radians encoding (0.0698, 0.1047) assemble to the same RNA
+    (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    import numpy as np
+
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(cone: float, uptilt: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = cone
+        o["components"]["nacelle"]["drivetrain"]["uptilt"] = uptilt
+        return read_windio_rna(_write(o, tmp_path, f"a_{cone}_{uptilt}.yaml"))
+
+    rad = _mk(float(np.radians(4.0)), float(np.radians(6.0)))  # 0.0698, 0.1047
+    deg = _mk(4.0, 6.0)  # degrees encoding of the same angles
+    for attr in ("mass", "cm_axial", "ixx", "iyy", "izz", "izx"):
+        assert getattr(deg, attr) == pytest.approx(getattr(rad, attr))
+
+
+def test_rna_small_degree_cone_keyed_off_uptilt(tmp_path: pathlib.Path) -> None:
+    """A schema-conforming degrees file with a small cone (0.25 deg) and a
+    normal 6 deg uptilt: the unit decision keys off the larger (uptilt)
+    magnitude, so the small cone is read as 0.25 deg, not 0.25 rad = 14.3 deg
+    (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    import numpy as np
+
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(cone: float, uptilt: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = cone
+        o["components"]["nacelle"]["drivetrain"]["uptilt"] = uptilt
+        return read_windio_rna(_write(o, tmp_path, f"s_{cone}_{uptilt}.yaml"))
+
+    deg = _mk(0.25, 6.0)  # degrees, small cone
+    rad = _mk(float(np.radians(0.25)), float(np.radians(6.0)))  # radians equivalent
+    for attr in ("cm_axial", "ixx", "iyy", "izz"):
+        assert getattr(deg, attr) == pytest.approx(getattr(rad, attr))
+
+
+def test_rna_explicit_deg_units_override(tmp_path: pathlib.Path) -> None:
+    """The all-sub-degree case auto cannot resolve: a zero-tilt degrees file
+    with a 0.3 deg cone. angle_units='deg' takes the file at its word, so it
+    reads as 0.3 deg, not 0.3 rad (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    import numpy as np
+
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    o["components"]["hub"]["cone_angle"] = 0.3
+    o["components"]["nacelle"]["drivetrain"]["uptilt"] = 0.0
+    p = _write(o, tmp_path, "small_deg.yaml")
+
+    as_deg = read_windio_rna(p, angle_units="deg")
+    # equivalent radians file resolved by auto
+    o2 = _base_ontology()
+    o2["components"]["hub"]["cone_angle"] = float(np.radians(0.3))
+    o2["components"]["nacelle"]["drivetrain"]["uptilt"] = 0.0
+    as_rad = read_windio_rna(_write(o2, tmp_path, "small_rad.yaml"))
+    for attr in ("cm_axial", "ixx", "iyy", "izz"):
+        assert getattr(as_deg, attr) == pytest.approx(getattr(as_rad, attr))
+    # and auto (default) would misread the 0.3 as radians -> different result
+    as_auto = read_windio_rna(p)
+    assert as_auto.izz != pytest.approx(as_deg.izz)
+
+
+def test_rna_rejects_bad_angle_units(tmp_path: pathlib.Path) -> None:
+    """An unknown angle_units value is rejected."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    with pytest.raises(ValueError, match="angle_units"):
+        read_windio_rna(_write(_base_ontology(), tmp_path, "u.yaml"), angle_units="grad")
+
+
+def test_rna_rejects_nonphysical_angle(tmp_path: pathlib.Path) -> None:
+    """A value non-physical as both radians and degrees (e.g. 200) is rejected
+    rather than silently evaluated at a meaningless angle."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    o["components"]["hub"]["cone_angle"] = 200.0
+    with pytest.raises(ValueError, match="non-physical"):
+        read_windio_rna(_write(o, tmp_path, "cone_bad.yaml"))
+
+
+def test_rna_rejects_over_90deg_explicit_radians(tmp_path: pathlib.Path) -> None:
+    """The 90 deg physical bound is applied to the resolved radian value, so a
+    2.0 rad (~114 deg) cone under angle_units='rad' is rejected rather than
+    slipping past a raw < 90 comparison (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    o["components"]["hub"]["cone_angle"] = 2.0  # rad (~114 deg), non-physical
+    p = _write(o, tmp_path, "cone_2rad.yaml")
+    with pytest.raises(ValueError, match="non-physical"):
+        read_windio_rna(p, angle_units="rad")
+
+
+@pytest.mark.parametrize("n_bl", [1, 2])
+def test_rna_rejects_one_or_two_bladed_rotor(
+    tmp_path: pathlib.Path, n_bl: int
+) -> None:
+    """A one- or two-bladed rotor is not azimuthally symmetric, so the
+    ``I_polar/2`` transverse split is invalid and the auto-RNA rejects it
+    with a message pointing at an explicit tip_mass (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    o["assembly"]["number_of_blades"] = n_bl
+    with pytest.raises(ValueError, match="azimuthally symmetric"):
+        read_windio_rna(_write(o, tmp_path, f"nb_{n_bl}.yaml"))
+
+
+def test_rna_rotor_inertia_includes_sweep(tmp_path: pathlib.Path) -> None:
+    """Sweep (reference_axis.y) sets an in-plane tangential distance from the
+    shaft axis, so it adds ``y²`` to the rotor polar lever. A constant
+    tangential offset leaves the span arc length (and thus the blade mass)
+    unchanged but raises the rotor inertia; a lever built from the z span
+    alone would drop it (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(y_off: float):
+        o = _base_ontology()
+        ra = o["components"]["blade"]["elastic_properties_mb"]["six_x_six"][
+            "reference_axis"
+        ]
+        ra["y"] = {"grid": [0.0, 1.0], "values": [y_off, y_off]}
+        return read_windio_rna(_write(o, tmp_path, f"sw_{y_off}.yaml"))
+
+    straight = _mk(0.0)
+    swept = _mk(10.0)
+    assert swept.mass == pytest.approx(straight.mass)  # constant offset, same arc
+    assert swept.ixx > straight.ixx
+    assert swept.izz > straight.izz
+
+
+def test_rna_blade_span_offset_from_root(tmp_path: pathlib.Path) -> None:
+    """reference_axis.z offset from zero (defined from a hub datum) is measured
+    relative to the root, so a [20, 70] axis gives the same rotor inertia and
+    CM as [0, 50] rather than placing every section 20 m too far out (Codex
+    review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(z0: float, z1: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = 0.15
+        o["components"]["nacelle"]["drivetrain"]["uptilt"] = 0.10
+        ra = o["components"]["blade"]["elastic_properties_mb"]["six_x_six"][
+            "reference_axis"
+        ]
+        ra["z"] = {"grid": [0.0, 1.0], "values": [z0, z1]}
+        return read_windio_rna(_write(o, tmp_path, f"z_{z0}_{z1}.yaml"))
+
+    base = _mk(0.0, 50.0)
+    offset = _mk(20.0, 70.0)
+    for attr in ("mass", "cm_axial", "ixx", "iyy", "izz"):
+        assert getattr(offset, attr) == pytest.approx(getattr(base, attr))
+
+
+def test_rna_upwind_hub_offdiagonal_inertia_sign(tmp_path: pathlib.Path) -> None:
+    """The WindIO hub frame has z up, so at zero tilt the hub tensor rotates by
+    the identity and its off-diagonal Iyz passes through unchanged, even for an
+    upwind rotor. A sign_x on the cos terms would flip it (Codex review on
+    #130). The hub sits on the tower axis (y = 0), so no other body adds iyz."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    assert o["assembly"]["rotor_orientation"] == "Upwind"
+    o["components"]["nacelle"]["drivetrain"]["uptilt"] = 0.0
+    # hub 6-vector [Ixx, Iyy, Izz, Ixy, Ixz, Iyz] with a nonzero Iyz
+    o["components"]["hub"]["elastic_properties_mb"]["system_inertia"] = [
+        2.0e6, 1.0e6, 1.0e6, 0.0, 0.0, 5.0e5,
+    ]
+    rna = read_windio_rna(_write(o, tmp_path, "hub_offdiag.yaml"))
+    assert rna.iyz == pytest.approx(5.0e5)
+
+
+def test_rna_hub_radius_projected_through_cone(tmp_path: pathlib.Path) -> None:
+    """The hub radius is coned like the span (WISDEM Rtip*cos(precone)), so a
+    coned rotor with a hub radius carries an extra Rhub*sin(cone) axial offset
+    that raises the tower-top vertical CM through the shaft tilt, versus the
+    same rotor with a zero hub radius (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(hub_d: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = 0.15
+        o["components"]["hub"]["diameter"] = hub_d
+        o["components"]["nacelle"]["drivetrain"]["uptilt"] = 0.10
+        return read_windio_rna(_write(o, tmp_path, f"hr_{hub_d}.yaml"))
+
+    no_hub = _mk(0.0)  # hub_r = 0
+    with_hub = _mk(6.0)  # hub_r = 3
+    assert with_hub.mass == pytest.approx(no_hub.mass)
+    assert with_hub.cm_axial > no_hub.cm_axial
+
+
+def test_rna_coned_cm_shift_with_uptilt(tmp_path: pathlib.Path) -> None:
+    """A coned rotor's CM sits off the hub apex along the (tilted) shaft, so
+    with uptilt the tower-top vertical CM shifts by m_blades·offset·sin(uptilt)
+    over the total mass. Pins that the rotor body is placed at its coned CM,
+    not the apex, before the parallel-axis shift (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    import numpy as np
+
+    from pybmodes.io.windio import read_windio_rna
+
+    uptilt = 0.10
+
+    def _mk(cone: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = cone
+        o["components"]["nacelle"]["drivetrain"]["uptilt"] = uptilt
+        return read_windio_rna(_write(o, tmp_path, f"tc_{cone}.yaml"))
+
+    flat = _mk(0.0)
+    coned = _mk(0.15)
+    # base blade: uniform 100 kg/m over 0..50 m -> mass-weighted mean span 25 m,
+    # so the coned shaft-axis CM offset is sin(cone)·25.
+    offset = float(np.sin(0.15)) * 25.0
+    m_blades = 3 * 5000.0
+    expected = m_blades * offset * float(np.sin(uptilt)) / flat.mass
+    assert coned.mass == pytest.approx(flat.mass)
+    assert coned.cm_axial - flat.cm_axial == pytest.approx(expected, rel=1e-6)
 
 
 def test_rna_diagonal_inertia_accepted(tmp_path: pathlib.Path) -> None:
@@ -463,9 +798,15 @@ _IEA22_BLADE = _IEA22 / "OpenFAST/IEA-22-280-RWT/IEA-22-280-RWT_ElastoDyn_blade.
     reason="IEA-22 WindIO ontology + ElastoDyn deck not present",
 )
 def test_rna_iea22_matches_elastodyn_deck() -> None:
-    """The WindIO auto-RNA mass and CM match the IEA-22 ElastoDyn deck's
-    tower-top assembly to <0.5 % (issue #82). Inertia is WindIO-native and
-    is not expected to byte-match the deck's NacYIner (ecosystem drift)."""
+    """The WindIO auto-RNA mass matches the IEA-22 ElastoDyn deck's tower-top
+    assembly to <0.5 % (issue #82), and its CM agrees to ~1 %. The small CM
+    divergence is a documented, intentional one: the deck adapter lumps the
+    blades as a point mass at the rotor apex, whereas the WindIO rigid-rotor
+    path (issue #130) places the coned rotor at its true centre of mass,
+    which sits ~2.6 m outboard of the apex for the 4 deg precone and so
+    raises the tower-top vertical CM by ~0.06 m through the 6 deg shaft tilt
+    (real ElastoDyn carries the same precone term). Inertia is WindIO-native
+    and is not expected to byte-match the deck's NacYIner (ecosystem drift)."""
     pytest.importorskip("yaml")
     from pybmodes.io._elastodyn.adapter import _tower_top_assembly_mass
     from pybmodes.io.elastodyn_reader import (
@@ -481,7 +822,10 @@ def test_rna_iea22_matches_elastodyn_deck() -> None:
     )
 
     assert rna.mass == pytest.approx(deck.mass, rel=5e-3)       # <0.5 %
-    assert rna.cm_axial == pytest.approx(deck.cm_axial, rel=5e-3)
+    # The precone CM offset the deck adapter drops raises the WindIO CM
+    # slightly; it stays within ~1.5 % and lies above the apex-lumped value.
+    assert rna.cm_axial == pytest.approx(deck.cm_axial, rel=1.5e-2)
+    assert rna.cm_axial >= deck.cm_axial
     # WindIO-native inertia carries the fore-aft rotary term the same order
     # of magnitude as the deck, but not byte-identical (documented drift).
     assert rna.iyy > 0.0
