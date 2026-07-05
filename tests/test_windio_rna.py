@@ -347,6 +347,30 @@ def test_rna_rotor_inertia_includes_sweep(tmp_path: pathlib.Path) -> None:
     assert swept.izz > straight.izz
 
 
+def test_rna_blade_span_offset_from_root(tmp_path: pathlib.Path) -> None:
+    """reference_axis.z offset from zero (defined from a hub datum) is measured
+    relative to the root, so a [20, 70] axis gives the same rotor inertia and
+    CM as [0, 50] rather than placing every section 20 m too far out (Codex
+    review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(z0: float, z1: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = 0.15
+        o["components"]["nacelle"]["drivetrain"]["uptilt"] = 0.10
+        ra = o["components"]["blade"]["elastic_properties_mb"]["six_x_six"][
+            "reference_axis"
+        ]
+        ra["z"] = {"grid": [0.0, 1.0], "values": [z0, z1]}
+        return read_windio_rna(_write(o, tmp_path, f"z_{z0}_{z1}.yaml"))
+
+    base = _mk(0.0, 50.0)
+    offset = _mk(20.0, 70.0)
+    for attr in ("mass", "cm_axial", "ixx", "iyy", "izz"):
+        assert getattr(offset, attr) == pytest.approx(getattr(base, attr))
+
+
 def test_rna_upwind_hub_offdiagonal_inertia_sign(tmp_path: pathlib.Path) -> None:
     """The WindIO hub frame has z up, so at zero tilt the hub tensor rotates by
     the identity and its off-diagonal Iyz passes through unchanged, even for an

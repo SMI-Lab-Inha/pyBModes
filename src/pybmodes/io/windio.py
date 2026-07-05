@@ -980,7 +980,12 @@ def _blade_span_mass_inertia(
     # unaffected. The polar lever is the in-plane distance from the shaft axis
     # ``r² + t²`` (so sweep and prebend are not dropped, issue #130); the
     # axial offset feeds the coned transverse term.
-    x_off, y_off, span = coords[0], coords[1], coords[2]
+    # Span measured from the blade root: reference_axis.z may be offset from
+    # zero (defined from a hub datum), so subtract the root value rather than
+    # treat the absolute z as the distance from the root, which would place
+    # every section too far out.
+    x_off, y_off = coords[0], coords[1]
+    span = coords[2] - coords[2][0]
     # Distance from the hub centre along the (coned) pitch axis: the blade
     # root sits at the hub radius and each section a further `span` outboard,
     # so the whole (hub_r + span) length projects through the cone, matching
