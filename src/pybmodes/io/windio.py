@@ -783,8 +783,10 @@ def _blade_reference_axis(six: dict, comp: dict, blade_component: str) -> dict:
     )
 
 
-def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
-    """Integrate a WindIO blade's mass per unit length over its span.
+def _blade_span_mass_inertia(
+    six: dict, ref: dict, blade_component: str, hub_r: float, cone_cos: float,
+) -> tuple[float, float]:
+    """Integrate a WindIO blade's span into ``(mass, polar_second_moment)``.
 
     ``six`` is
     ``components.<blade>.elastic_properties_mb.six_x_six`` and ``ref`` is
@@ -794,6 +796,11 @@ def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
     ``inertia_matrix.values``, integrated over the arc length of the
     reference axis. Only the ``z`` curve is required; ``x`` / ``y``
     (prebend / sweep) are optional and default to zero (a straight span).
+
+    Returns the single-blade mass and the single-blade polar second moment
+    about the rotor axis, ``∫ (dm/ds) · r(s)² ds`` with the radial distance
+    ``r(s) = hub_r + z(s)·cone_cos``, so the caller can build the rotor's
+    diametral inertia from the spanwise mass distribution (issue #130).
     """
     im = _require_mapping(six.get("inertia_matrix"), "blade six_x_six.inertia_matrix")
     grid = np.asarray(_require_key(im, "grid", "blade inertia_matrix"), dtype=float)
@@ -864,7 +871,12 @@ def _blade_single_mass(six: dict, ref: dict, blade_component: str) -> float:
     xyz = np.vstack(coords).T
     seg = np.linalg.norm(np.diff(xyz, axis=0), axis=1)
     s = np.concatenate([[0.0], np.cumsum(seg)])
-    return _trapezoid(mpl, s)
+    mass = _trapezoid(mpl, s)
+    # Radial distance from the rotor axis: the hub radius plus the spanwise
+    # position projected onto the rotor plane by the cone angle.
+    radial = hub_r + coords[2] * cone_cos
+    polar_second_moment = _trapezoid(mpl * radial * radial, s)
+    return mass, polar_second_moment
 
 
 def read_windio_rna(
@@ -892,11 +904,11 @@ def read_windio_rna(
 
     Frame: tower-top ``x = downwind, y = lateral, z = up``. The nacelle
     inertia is the ontology's own tensor about the nacelle CM; the hub is
-    its tensor about the hub centre; the blades are a point mass at the
-    rotor apex (matching the ElastoDyn rigid-RNA convention). The result is
-    expressed at the tower top with ``cm_offset = 0`` and the vertical CM
-    lever in ``cm_axial`` so the FEM nondimensionaliser does not re-apply
-    parallel-axis.
+    its tensor about the hub centre; the rotor is a rigid body at the apex
+    (total blade mass plus the diametral inertia from the spanwise blade
+    mass). The result is expressed at the tower top with ``cm_offset = 0``
+    and the vertical CM lever in ``cm_axial`` so the FEM nondimensionaliser
+    does not re-apply parallel-axis.
 
     ``cm_offset`` is intentionally ``0``, not the horizontal CM / overhang.
     The auto-RNA is consumed only by the clamped-base (``hub_conn = 1``)
@@ -906,10 +918,16 @@ def read_windio_rna(
     returned inertia tensor: the parallel-axis shift to the tower top puts
     the ``m·overhang²`` and ``m·height²`` terms into ``ixx`` / ``iyy`` /
     ``izz``. Setting ``cm_offset = cm[0]`` on top of the already-shifted
-    tensor would double-count the overhang. Likewise the blades' own
-    spanwise spin inertia is left at zero (their parallel-axis contribution
-    is still in the tensor via the point mass at the apex) — the ElastoDyn
-    convention that reproduces the Jonkman (2009) tower frequencies.
+    tensor would double-count the overhang.
+
+    Blade inertia (issue #130): the rotor carries the diametral inertia
+    ``N_bl · ∫ (dm/ds) · r² ds`` from the blade mass spread along the span
+    (``r = hub_radius + span·cos(cone)``), as ``diag([I_polar, I_polar/2,
+    I_polar/2])`` about the hub (the same perpendicular-axis form as the
+    hub tensor). Only each blade's own *sectional* spin inertia is left out
+    (its parallel-axis / span contribution is captured). This intentionally
+    goes beyond the ElastoDyn deck path's bare point-mass lumping, which the
+    WindIO ontology's per-station blade mass makes possible.
 
     Requires the optional ``[windio]`` extra (PyYAML).
     """
@@ -989,6 +1007,21 @@ def read_windio_rna(
         _require_key(hub_ep, "system_inertia", "hub elastic_properties_mb"),
         "hub",
     )
+    # Rotor geometry for the blade-span inertia (issue #130): the hub radius
+    # offsets the blade root from the rotor axis, and the cone angle
+    # projects the coned span onto the rotor plane. Both optional (default
+    # no hub offset / no cone).
+    hub_diam = hub.get("diameter")
+    hub_r = (
+        0.5 * _finite_float(hub_diam, "hub diameter") if hub_diam is not None else 0.0
+    )
+    if hub_r < 0.0:
+        raise ValueError(f"hub diameter must be non-negative; got {hub_diam!r}.")
+    cone = hub.get("cone_angle")
+    cone_cos = (
+        float(np.cos(_finite_float(cone, "hub cone_angle")))
+        if cone is not None else 1.0
+    )
 
     # --- Blades: assembly.number_of_blades x integrated span mass ---
     n_blades = _require_key(assembly, "number_of_blades", "assembly")
@@ -1004,6 +1037,7 @@ def read_windio_rna(
             f"{assembly.get('rotor_orientation')!r}."
         )
     m_blade_each = 0.0
+    i_polar_each = 0.0
     if n_blades > 0:
         blade = _require_mapping(
             comps.get(component_blade), f"components.{component_blade}"
@@ -1017,8 +1051,22 @@ def read_windio_rna(
             f"components.{component_blade}.elastic_properties_mb.six_x_six",
         )
         ref = _blade_reference_axis(six, blade, component_blade)
-        m_blade_each = _blade_single_mass(six, ref, component_blade)
+        m_blade_each, i_polar_each = _blade_span_mass_inertia(
+            six, ref, component_blade, hub_r, cone_cos,
+        )
     m_blades = n_blades * m_blade_each
+
+    # Rotor inertia from the spanwise blade mass (issue #130). For N >= 3
+    # symmetric blades the rotor tensor about the hub is
+    # diag([I_polar, I_polar/2, I_polar/2]) in the shaft frame (polar about
+    # the shaft, half on each transverse axis by the perpendicular-axis
+    # theorem), the same form as the hub. Lumping the blades as a bare point
+    # mass at the apex would drop this, which is the dominant part of the
+    # rotor's contribution to the tower-top rotary inertia.
+    i_polar_rotor = n_blades * i_polar_each
+    i_blades = np.diag(
+        [i_polar_rotor, 0.5 * i_polar_rotor, 0.5 * i_polar_rotor]
+    )
 
     # Rotor apex relative to the tower top. An upwind rotor sits at negative
     # x (downwind-positive frame); the vertical hub position is
@@ -1032,7 +1080,7 @@ def read_windio_rna(
     bodies = [
         (m_nac, r_nac, i_nac),
         (m_hub, apex, i_hub),
-        (m_blades, apex.copy(), np.zeros((3, 3))),
+        (m_blades, apex.copy(), i_blades),
     ]
 
     m_total = float(sum(m for m, _, _ in bodies))

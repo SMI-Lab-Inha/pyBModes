@@ -96,13 +96,53 @@ def test_rna_assembly_matches_hand_computation(tmp_path: pathlib.Path) -> None:
     # cm_z = (500000*3 + 100000*4 + 15000*4) / 615000
     assert rna.cm_axial == pytest.approx(1.96e6 / 615000.0)
     assert rna.cm_offset == 0.0
-    # Parallel-axis tensor at the tower top (hand-computed).
-    assert rna.ixx == pytest.approx(1.834e7)
-    assert rna.iyy == pytest.approx(3.884e7)
-    assert rna.izz == pytest.approx(3.35e7)
+    # Parallel-axis tensor at the tower top (hand-computed), plus the rotor
+    # diametral inertia from the spanwise blade mass (issue #130):
+    # I_polar_rotor = 3 · ∫100·z² dz over [0, 50] (trapezoid, 2 stations)
+    #              = 3 · 6.25e6 = 1.875e7, added about the apex as
+    # diag([1.875e7, 9.375e6, 9.375e6]).
+    assert rna.ixx == pytest.approx(1.834e7 + 1.875e7)
+    assert rna.iyy == pytest.approx(3.884e7 + 0.9375e7)
+    assert rna.izz == pytest.approx(3.35e7 + 0.9375e7)
     assert rna.izx == pytest.approx(1.06e7)
     assert rna.ixy == pytest.approx(0.0, abs=1e-6)
     assert rna.iyz == pytest.approx(0.0, abs=1e-6)
+
+
+def test_rna_rotor_inertia_from_span(tmp_path: pathlib.Path) -> None:
+    """The rotor diametral inertia from the spanwise blade mass is included,
+    and the hub radius increases it (issue #130). Concentrating the same
+    blade mass near the rotor axis (short span) carries far less rotary
+    inertia than spreading it along a long span."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    base = read_windio_rna(_write(_base_ontology(), tmp_path, "base_r.yaml"))
+    # The pre-#130 value for izz was 3.35e7 (no blade inertia); it must now
+    # be strictly larger because the rotor diametral term is included.
+    assert base.izz > 3.35e7
+
+    # A hub radius offsets every blade section further from the rotor axis,
+    # so the polar / diametral inertia grows.
+    with_hub = _base_ontology()
+    with_hub["components"]["hub"]["diameter"] = 8.0        # hub_R = 4 m
+    wh = read_windio_rna(_write(with_hub, tmp_path, "hub_r.yaml"))
+    assert wh.izz > base.izz
+    assert wh.iyy > base.iyy
+    assert wh.mass == pytest.approx(base.mass)             # mass unchanged
+
+    # Spreading the same blade mass over a longer span carries much more
+    # rotary inertia than keeping it near the root.
+    longer = _base_ontology()
+    longer["components"]["blade"]["elastic_properties_mb"]["six_x_six"][
+        "inertia_matrix"
+    ]["values"] = [[50.0] + [0.0] * 20, [50.0] + [0.0] * 20]   # half kg/m ...
+    longer["components"]["blade"]["elastic_properties_mb"]["six_x_six"][
+        "reference_axis"
+    ]["z"] = {"grid": [0.0, 1.0], "values": [0.0, 100.0]}      # ... over 100 m
+    lg = read_windio_rna(_write(longer, tmp_path, "long_r.yaml"))
+    assert lg.mass == pytest.approx(base.mass)             # same 5000 kg/blade
+    assert lg.izz > base.izz                              # longer span -> more inertia
 
 
 def test_rna_diagonal_inertia_accepted(tmp_path: pathlib.Path) -> None:

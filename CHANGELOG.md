@@ -8,7 +8,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+### Fixed
+
+- **WindIO auto-RNA now carries the rotor inertia from the spanwise blade
+  mass (#130).** `read_windio_rna` (and `lumped_rna_cal=True`) previously
+  lumped the blades as a bare point mass at the rotor apex, which captured
+  the hub-to-tower-top translation but dropped the rotor's own diametral
+  inertia from the blade mass being spread along the span. That term is the
+  dominant part of the rotor's contribution to the tower-top rotary
+  inertia (on IEA-22 it is ~2.5x the value the point-mass lump produced),
+  so tower fore-aft / side-side frequencies from a rigid-RNA lump came out
+  too high versus a rigid-rotor reference. The rotor is now assembled as a
+  rigid body, `diag([I_polar, I_polar/2, I_polar/2])` about the hub with
+  `I_polar = N_bl · ∫ (dm/ds) · r² ds` (`r = hub_radius + span·cos(cone)`),
+  using the hub diameter and cone angle when present. Only each blade's own
+  sectional spin inertia is still excluded. This changes the auto-RNA
+  inertia (and hence coupled tower frequencies) relative to 1.16.0; mass
+  and centre of mass are unchanged. This intentionally goes beyond the
+  ElastoDyn deck path's point-mass lumping, which the WindIO per-station
+  blade mass makes possible.
 
 ## [1.16.0] — 2026-07-03
 
