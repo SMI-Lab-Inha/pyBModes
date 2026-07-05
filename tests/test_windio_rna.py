@@ -293,6 +293,20 @@ def test_rna_rejects_nonphysical_angle(tmp_path: pathlib.Path) -> None:
         read_windio_rna(_write(o, tmp_path, "cone_bad.yaml"))
 
 
+def test_rna_rejects_over_90deg_explicit_radians(tmp_path: pathlib.Path) -> None:
+    """The 90 deg physical bound is applied to the resolved radian value, so a
+    2.0 rad (~114 deg) cone under angle_units='rad' is rejected rather than
+    slipping past a raw < 90 comparison (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    o["components"]["hub"]["cone_angle"] = 2.0  # rad (~114 deg), non-physical
+    p = _write(o, tmp_path, "cone_2rad.yaml")
+    with pytest.raises(ValueError, match="non-physical"):
+        read_windio_rna(p, angle_units="rad")
+
+
 @pytest.mark.parametrize("n_bl", [1, 2])
 def test_rna_rejects_one_or_two_bladed_rotor(
     tmp_path: pathlib.Path, n_bl: int

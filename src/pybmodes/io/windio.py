@@ -764,15 +764,19 @@ def _windio_rotor_angles(
     if units == "auto":
         biggest = max(abs(cone), abs(uptilt))
         units = "deg" if biggest > 0.5 else "rad"
-    if max(abs(cone), abs(uptilt)) > 90.0:
+    if units == "deg":
+        cone_rad, uptilt_rad = float(np.radians(cone)), float(np.radians(uptilt))
+    else:
+        cone_rad, uptilt_rad = cone, uptilt
+    # Bound the resolved radian value (not the raw input, whose scale depends
+    # on the unit), so a 90 deg limit holds whether the file was rad or deg.
+    if max(abs(cone_rad), abs(uptilt_rad)) > np.pi / 2:
         raise ValueError(
             f"rotor precone / shaft tilt (cone_angle={cone!r}, uptilt="
-            f"{uptilt!r}) is non-physical in {units}; expected values well "
-            f"under 90 deg."
+            f"{uptilt!r}, units={units}) resolves to more than 90 deg, which "
+            f"is non-physical."
         )
-    if units == "deg":
-        return float(np.radians(cone)), float(np.radians(uptilt))
-    return cone, uptilt
+    return cone_rad, uptilt_rad
 
 
 def _positive_mass(value: Any, what: str) -> float:
