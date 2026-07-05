@@ -200,6 +200,35 @@ def test_rna_rotor_inertia_cone_axial(tmp_path: pathlib.Path) -> None:
     assert coned.mass == pytest.approx(flat.mass)
 
 
+def test_rna_coned_cm_shift_with_uptilt(tmp_path: pathlib.Path) -> None:
+    """A coned rotor's CM sits off the hub apex along the (tilted) shaft, so
+    with uptilt the tower-top vertical CM shifts by m_blades·offset·sin(uptilt)
+    over the total mass. Pins that the rotor body is placed at its coned CM,
+    not the apex, before the parallel-axis shift (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    import numpy as np
+
+    from pybmodes.io.windio import read_windio_rna
+
+    uptilt = 0.10
+
+    def _mk(cone: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = cone
+        o["components"]["nacelle"]["drivetrain"]["uptilt"] = uptilt
+        return read_windio_rna(_write(o, tmp_path, f"tc_{cone}.yaml"))
+
+    flat = _mk(0.0)
+    coned = _mk(0.15)
+    # base blade: uniform 100 kg/m over 0..50 m -> mass-weighted mean span 25 m,
+    # so the coned shaft-axis CM offset is sin(cone)·25.
+    offset = float(np.sin(0.15)) * 25.0
+    m_blades = 3 * 5000.0
+    expected = m_blades * offset * float(np.sin(uptilt)) / flat.mass
+    assert coned.mass == pytest.approx(flat.mass)
+    assert coned.cm_axial - flat.cm_axial == pytest.approx(expected, rel=1e-6)
+
+
 def test_rna_diagonal_inertia_accepted(tmp_path: pathlib.Path) -> None:
     """A diagonal 3-vector system_inertia [Ixx, Iyy, Izz] is accepted as a
     diagonal tensor, matching the equivalent zero-product 6-vector (Codex
@@ -558,9 +587,15 @@ _IEA22_BLADE = _IEA22 / "OpenFAST/IEA-22-280-RWT/IEA-22-280-RWT_ElastoDyn_blade.
     reason="IEA-22 WindIO ontology + ElastoDyn deck not present",
 )
 def test_rna_iea22_matches_elastodyn_deck() -> None:
-    """The WindIO auto-RNA mass and CM match the IEA-22 ElastoDyn deck's
-    tower-top assembly to <0.5 % (issue #82). Inertia is WindIO-native and
-    is not expected to byte-match the deck's NacYIner (ecosystem drift)."""
+    """The WindIO auto-RNA mass matches the IEA-22 ElastoDyn deck's tower-top
+    assembly to <0.5 % (issue #82), and its CM agrees to ~1 %. The small CM
+    divergence is a documented, intentional one: the deck adapter lumps the
+    blades as a point mass at the rotor apex, whereas the WindIO rigid-rotor
+    path (issue #130) places the coned rotor at its true centre of mass,
+    which sits ~2.6 m outboard of the apex for the 4 deg precone and so
+    raises the tower-top vertical CM by ~0.06 m through the 6 deg shaft tilt
+    (real ElastoDyn carries the same precone term). Inertia is WindIO-native
+    and is not expected to byte-match the deck's NacYIner (ecosystem drift)."""
     pytest.importorskip("yaml")
     from pybmodes.io._elastodyn.adapter import _tower_top_assembly_mass
     from pybmodes.io.elastodyn_reader import (
@@ -576,7 +611,10 @@ def test_rna_iea22_matches_elastodyn_deck() -> None:
     )
 
     assert rna.mass == pytest.approx(deck.mass, rel=5e-3)       # <0.5 %
-    assert rna.cm_axial == pytest.approx(deck.cm_axial, rel=5e-3)
+    # The precone CM offset the deck adapter drops raises the WindIO CM
+    # slightly; it stays within ~1.5 % and lies above the apex-lumped value.
+    assert rna.cm_axial == pytest.approx(deck.cm_axial, rel=1.5e-2)
+    assert rna.cm_axial >= deck.cm_axial
     # WindIO-native inertia carries the fore-aft rotary term the same order
     # of magnitude as the deck, but not byte-identical (documented drift).
     assert rna.iyy > 0.0

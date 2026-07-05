@@ -93,6 +93,24 @@ def _second_moment(w: np.ndarray, c: np.ndarray, x: np.ndarray) -> float:
     return float(np.sum(dx / 6.0 * (f0 + 4.0 * fm + f1)))
 
 
+def _first_moment(w: np.ndarray, c: np.ndarray, x: np.ndarray) -> float:
+    """Exact ``integral w(x)*c(x) dx`` for piecewise-linear ``w`` and ``c``.
+
+    The integrand is quadratic on each segment (a product of two linear
+    factors), which Simpson's rule integrates exactly. Used for the rotor's
+    axial first moment, i.e. its shaft-axis CM offset, so a coned rotor body
+    is placed at its centre of mass before the parallel-axis shift.
+    """
+    w = np.asarray(w, dtype=float)
+    c = np.asarray(c, dtype=float)
+    x = np.asarray(x, dtype=float)
+    dx = np.diff(x)
+    w0, w1 = w[:-1], w[1:]
+    c0, c1 = c[:-1], c[1:]
+    fm = 0.5 * (w0 + w1) * 0.5 * (c0 + c1)
+    return float(np.sum(dx / 6.0 * (w0 * c0 + 4.0 * fm + w1 * c1)))
+
+
 def _require_yaml():
     """Import PyYAML or raise the documented friendly error.
 
@@ -812,7 +830,7 @@ def _blade_reference_axis(six: dict, comp: dict, blade_component: str) -> dict:
 def _blade_span_mass_inertia(
     six: dict, ref: dict, blade_component: str,
     hub_r: float, cone_cos: float, cone_sin: float,
-) -> tuple[float, float, float]:
+) -> tuple[float, float, float, float]:
     """Integrate a blade's span into ``(mass, polar, axial)`` second moments.
 
     ``six`` is
@@ -825,11 +843,14 @@ def _blade_span_mass_inertia(
     (prebend / sweep) are optional and default to zero (a straight span).
 
     Returns the single-blade mass, the polar second moment about the rotor
-    axis ``∫ (dm/ds) · r(s)² ds`` (radial ``r = hub_r + z·cone_cos``), and
-    the axial second moment ``∫ (dm/ds) · a(s)² ds`` (axial offset
-    ``a = z·cone_sin``). The caller builds the rotor's polar inertia from
-    the former and the coned transverse (diametral) inertia
-    ``polar/2 + N_bl·axial`` from both (issue #130).
+    axis ``∫ (dm/ds) · r(s)² ds`` (radial ``r = hub_r + z·cone_cos``), the
+    axial second moment ``∫ (dm/ds) · a(s)² ds`` (axial offset
+    ``a = z·cone_sin``), and the axial first moment ``∫ (dm/ds) · a(s) ds``.
+    The caller builds the rotor's polar inertia from the second radial
+    moment, the coned transverse (diametral) inertia from the radial and
+    axial second moments, and places the rotor body at its coned centre of
+    mass (shaft-axis offset ``axial_first / mass``) before the parallel-axis
+    shift (issue #130).
     """
     im = _require_mapping(six.get("inertia_matrix"), "blade six_x_six.inertia_matrix")
     grid = np.asarray(_require_key(im, "grid", "blade inertia_matrix"), dtype=float)
@@ -910,7 +931,8 @@ def _blade_span_mass_inertia(
     axial = span * cone_sin
     polar_second_moment = _second_moment(mpl, radial, s)
     axial_second_moment = _second_moment(mpl, axial, s)
-    return mass, polar_second_moment, axial_second_moment
+    axial_first_moment = _first_moment(mpl, axial, s)
+    return mass, polar_second_moment, axial_second_moment, axial_first_moment
 
 
 def read_windio_rna(
@@ -1071,6 +1093,7 @@ def read_windio_rna(
     m_blade_each = 0.0
     i_polar_each = 0.0
     i_axial_each = 0.0
+    m_axial1_each = 0.0
     if n_blades > 0:
         blade = _require_mapping(
             comps.get(component_blade), f"components.{component_blade}"
@@ -1084,21 +1107,35 @@ def read_windio_rna(
             f"components.{component_blade}.elastic_properties_mb.six_x_six",
         )
         ref = _blade_reference_axis(six, blade, component_blade)
-        m_blade_each, i_polar_each, i_axial_each = _blade_span_mass_inertia(
+        (
+            m_blade_each,
+            i_polar_each,
+            i_axial_each,
+            m_axial1_each,
+        ) = _blade_span_mass_inertia(
             six, ref, component_blade, hub_r, cone_cos, cone_sin,
         )
     m_blades = n_blades * m_blade_each
 
     # Rotor inertia from the spanwise blade mass (issue #130). In the shaft
-    # frame the rotor tensor about the hub is diag([I_polar, I_diam, I_diam]):
-    # the polar term ``I_polar = N_bl·∫dm·r²`` (radial), and the transverse
-    # (diametral) term ``I_diam = I_polar/2 + N_bl·∫dm·a²``. The ``I_polar/2``
-    # is the perpendicular-axis split for a planar rotor; the ``N_bl·∫dm·a²``
-    # adds the coned rotor's shaft-axis (``a = span·sin(cone)``) offset, which
-    # a flat-disc assumption would drop. Lumping the blades as a bare point
-    # mass at the apex would drop the whole tensor.
+    # frame the rotor tensor is diag([I_polar, I_diam, I_diam]): the polar
+    # term ``I_polar = N_bl·∫dm·r²`` (radial ``r = hub_r + span·cos(cone)``),
+    # and the transverse (diametral) term. For a coned rotor the blade mass
+    # sits off the hub plane by ``a = span·sin(cone)``, so the rotor CM shifts
+    # along the shaft axis by ``offset = ∫dm·a / m_blades`` and the tensor is
+    # formed about that CM: ``I_diam = I_polar/2 + N_bl·∫dm·a² − m_blades·
+    # offset²`` (the axial second moment reduced to the CM by the parallel-
+    # axis theorem, a mass-weighted variance that stays non-negative). The
+    # body is placed at that CM below so the shift to the tower top is exact.
+    # A flat rotor (``sin(cone) = 0``) leaves the offset and the axial term
+    # zero, recovering the planar ``I_polar/2`` split about the apex. Lumping
+    # the blades as a bare point mass at the apex would drop the whole tensor.
     i_polar_rotor = n_blades * i_polar_each
-    i_diam_rotor = 0.5 * i_polar_rotor + n_blades * i_axial_each
+    cm_axial_offset = (m_axial1_each / m_blade_each) if m_blade_each > 0.0 else 0.0
+    i_axial_cm = max(
+        0.0, n_blades * i_axial_each - m_blades * cm_axial_offset * cm_axial_offset
+    )
+    i_diam_rotor = 0.5 * i_polar_rotor + i_axial_cm
     i_blades = np.diag([i_polar_rotor, i_diam_rotor, i_diam_rotor])
 
     # Rotor apex relative to the tower top. An upwind rotor sits at negative
@@ -1124,10 +1161,17 @@ def read_windio_rna(
     i_hub = r_tilt @ i_hub @ r_tilt.T
     i_blades = r_tilt @ i_blades @ r_tilt.T
 
+    # The coned rotor CM sits ``cm_axial_offset`` beyond the apex along the
+    # shaft axis (r_tilt's first column, the outboard unit vector the overhang
+    # already runs along), so a precone displaces the blade mass further from
+    # the tower in the same sense for both rotor orientations.
+    shaft_axis = r_tilt[:, 0]
+    rotor_cm = apex + cm_axial_offset * shaft_axis
+
     bodies = [
         (m_nac, r_nac, i_nac),
         (m_hub, apex, i_hub),
-        (m_blades, apex.copy(), i_blades),
+        (m_blades, rotor_cm, i_blades),
     ]
 
     m_total = float(sum(m for m, _, _ in bodies))
