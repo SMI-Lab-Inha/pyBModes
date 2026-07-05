@@ -200,6 +200,22 @@ def test_rna_rotor_inertia_cone_axial(tmp_path: pathlib.Path) -> None:
     assert coned.mass == pytest.approx(flat.mass)
 
 
+@pytest.mark.parametrize("n_bl", [1, 2])
+def test_rna_rejects_one_or_two_bladed_rotor(
+    tmp_path: pathlib.Path, n_bl: int
+) -> None:
+    """A one- or two-bladed rotor is not azimuthally symmetric, so the
+    ``I_polar/2`` transverse split is invalid and the auto-RNA rejects it
+    with a message pointing at an explicit tip_mass (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    o["assembly"]["number_of_blades"] = n_bl
+    with pytest.raises(ValueError, match="azimuthally symmetric"):
+        read_windio_rna(_write(o, tmp_path, f"nb_{n_bl}.yaml"))
+
+
 def test_rna_rotor_inertia_includes_sweep(tmp_path: pathlib.Path) -> None:
     """Sweep (reference_axis.y) sets an in-plane tangential distance from the
     shaft axis, so it adds ``y²`` to the rotor polar lever. A constant

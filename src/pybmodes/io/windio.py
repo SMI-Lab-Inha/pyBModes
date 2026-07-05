@@ -1093,6 +1093,21 @@ def read_windio_rna(
             f"assembly.number_of_blades must be a non-negative integer; got "
             f"{n_blades!r}."
         )
+    if n_blades in (1, 2):
+        # The rotor tensor uses the axisymmetric transverse split
+        # ``I_diam = I_polar/2 + …``, which is exact only for three or more
+        # evenly spaced blades (a symmetric mass ring has isotropic in-plane
+        # inertia). A one- or two-bladed rotor lies on a single diameter, so
+        # its transverse inertia is azimuth-dependent and no single static
+        # tower-top lump represents it. Reject rather than emit a corrupted
+        # fore-aft / side-side inertia (issue #130 review).
+        raise ValueError(
+            f"assembly.number_of_blades = {n_blades}: the auto-RNA rotor "
+            f"inertia assembly assumes an azimuthally symmetric rotor (three "
+            f"or more evenly spaced blades). A one- or two-bladed rotor has an "
+            f"azimuth-dependent transverse inertia that a single rigid tower-"
+            f"top lump cannot represent; pass an explicit tip_mass instead."
+        )
     orientation = str(assembly.get("rotor_orientation", "upwind")).strip().lower()
     if orientation not in {"upwind", "downwind"}:
         raise ValueError(
