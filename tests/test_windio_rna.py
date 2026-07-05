@@ -347,6 +347,25 @@ def test_rna_rotor_inertia_includes_sweep(tmp_path: pathlib.Path) -> None:
     assert swept.izz > straight.izz
 
 
+def test_rna_upwind_hub_offdiagonal_inertia_sign(tmp_path: pathlib.Path) -> None:
+    """The WindIO hub frame has z up, so at zero tilt the hub tensor rotates by
+    the identity and its off-diagonal Iyz passes through unchanged, even for an
+    upwind rotor. A sign_x on the cos terms would flip it (Codex review on
+    #130). The hub sits on the tower axis (y = 0), so no other body adds iyz."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    assert o["assembly"]["rotor_orientation"] == "Upwind"
+    o["components"]["nacelle"]["drivetrain"]["uptilt"] = 0.0
+    # hub 6-vector [Ixx, Iyy, Izz, Ixy, Ixz, Iyz] with a nonzero Iyz
+    o["components"]["hub"]["elastic_properties_mb"]["system_inertia"] = [
+        2.0e6, 1.0e6, 1.0e6, 0.0, 0.0, 5.0e5,
+    ]
+    rna = read_windio_rna(_write(o, tmp_path, "hub_offdiag.yaml"))
+    assert rna.iyz == pytest.approx(5.0e5)
+
+
 def test_rna_hub_radius_projected_through_cone(tmp_path: pathlib.Path) -> None:
     """The hub radius is coned like the span (WISDEM Rtip*cos(precone)), so a
     coned rotor with a hub radius carries an extra Rhub*sin(cone) axial offset

@@ -1218,6 +1218,10 @@ def read_windio_rna(
     # A flat rotor (``sin(cone) = 0``) leaves the offset and the axial term
     # zero, recovering the planar ``I_polar/2`` split about the apex. Lumping
     # the blades as a bare point mass at the apex would drop the whole tensor.
+    # n_blades is 0 or >= 3 here: 1 and 2 are rejected above, since the
+    # I_polar/2 transverse split holds only for an azimuthally symmetric rotor
+    # (>= 3 evenly spaced blades). n_blades == 0 gives a zero rotor tensor.
+    assert n_blades == 0 or n_blades >= 3
     i_polar_rotor = n_blades * i_polar_each
     cm_axial_offset = (m_axial1_each / m_blade_each) if m_blade_each > 0.0 else 0.0
     i_axial_cm = max(
@@ -1235,25 +1239,29 @@ def read_windio_rna(
         dtype=float,
     )
 
-    # The hub and rotor inertia tensors are in the shaft frame; rotate them
-    # into the tower-top frame by the shaft tilt before they are summed as
-    # tower-top tensors (a tilted rotor otherwise loses the tensor izx
-    # product and misallocates the large polar term between ixx and izz).
-    # The shaft unit axis is ``[sign_x*cos(uptilt), 0, sin(uptilt)]``; R maps
-    # the shaft x-axis onto it and fixes the lateral y-axis. The nacelle
-    # tensor is already in the tower frame and is left alone.
+    # The hub and rotor inertia tensors are in the WindIO hub-aligned frame
+    # (x along the tilted shaft, y lateral, z up including tilt); rotate them
+    # into the tower-top frame before they are summed as tower-top tensors (a
+    # tilted rotor otherwise loses the tensor izx product and misallocates the
+    # large polar term between ixx and izz). The hub frame is the tower frame
+    # tilted about the lateral y-axis by the shaft tilt, so ``sign_x`` rides
+    # the sin (off-diagonal) terms, not the cos: for an upwind rotor the
+    # downwind-positive shaft tilts the opposite way. A diagonal hub or the
+    # symmetric rotor tensor is invariant to that choice, but a hub with
+    # off-diagonal Ixy / Iyz would be mis-signed with sign_x on the cos terms.
+    # The nacelle tensor is already in the tower frame and is left alone.
     c_t, s_t = float(np.cos(uptilt)), float(np.sin(uptilt))
-    r_tilt = np.array(
-        [[sign_x * c_t, 0.0, -s_t], [0.0, 1.0, 0.0], [s_t, 0.0, sign_x * c_t]]
+    r_hub = np.array(
+        [[c_t, 0.0, -sign_x * s_t], [0.0, 1.0, 0.0], [sign_x * s_t, 0.0, c_t]]
     )
-    i_hub = r_tilt @ i_hub @ r_tilt.T
-    i_blades = r_tilt @ i_blades @ r_tilt.T
+    i_hub = r_hub @ i_hub @ r_hub.T
+    i_blades = r_hub @ i_blades @ r_hub.T
 
-    # The coned rotor CM sits ``cm_axial_offset`` beyond the apex along the
-    # shaft axis (r_tilt's first column, the outboard unit vector the overhang
-    # already runs along), so a precone displaces the blade mass further from
-    # the tower in the same sense for both rotor orientations.
-    shaft_axis = r_tilt[:, 0]
+    # Outboard shaft direction (tower top toward the apex and beyond), along
+    # which the overhang runs and the coned blade CM is displaced. This is the
+    # shaft *line*, not the hub-frame x basis rotated above (they point in
+    # opposite senses for an upwind rotor), so build it explicitly.
+    shaft_axis = np.array([sign_x * c_t, 0.0, s_t])
     rotor_cm = apex + cm_axial_offset * shaft_axis
 
     bodies = [
