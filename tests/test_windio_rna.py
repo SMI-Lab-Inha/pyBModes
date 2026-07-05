@@ -200,6 +200,30 @@ def test_rna_rotor_inertia_cone_axial(tmp_path: pathlib.Path) -> None:
     assert coned.mass == pytest.approx(flat.mass)
 
 
+def test_rna_rotor_inertia_includes_sweep(tmp_path: pathlib.Path) -> None:
+    """Sweep (reference_axis.y) sets an in-plane tangential distance from the
+    shaft axis, so it adds ``y²`` to the rotor polar lever. A constant
+    tangential offset leaves the span arc length (and thus the blade mass)
+    unchanged but raises the rotor inertia; a lever built from the z span
+    alone would drop it (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(y_off: float):
+        o = _base_ontology()
+        ra = o["components"]["blade"]["elastic_properties_mb"]["six_x_six"][
+            "reference_axis"
+        ]
+        ra["y"] = {"grid": [0.0, 1.0], "values": [y_off, y_off]}
+        return read_windio_rna(_write(o, tmp_path, f"sw_{y_off}.yaml"))
+
+    straight = _mk(0.0)
+    swept = _mk(10.0)
+    assert swept.mass == pytest.approx(straight.mass)  # constant offset, same arc
+    assert swept.ixx > straight.ixx
+    assert swept.izz > straight.izz
+
+
 def test_rna_coned_cm_shift_with_uptilt(tmp_path: pathlib.Path) -> None:
     """A coned rotor's CM sits off the hub apex along the (tilted) shaft, so
     with uptilt the tower-top vertical CM shifts by m_blades·offset·sin(uptilt)

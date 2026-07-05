@@ -843,9 +843,11 @@ def _blade_span_mass_inertia(
     (prebend / sweep) are optional and default to zero (a straight span).
 
     Returns the single-blade mass, the polar second moment about the rotor
-    axis ``∫ (dm/ds) · r(s)² ds`` (radial ``r = hub_r + z·cone_cos``), the
-    axial second moment ``∫ (dm/ds) · a(s)² ds`` (axial offset
-    ``a = z·cone_sin``), and the axial first moment ``∫ (dm/ds) · a(s) ds``.
+    axis ``∫ (dm/ds) · (r² + t²) ds`` (in-plane radial
+    ``r = hub_r + z·cone_cos − x·cone_sin`` and tangential ``t = y`` so
+    prebend / sweep are included), the axial second moment
+    ``∫ (dm/ds) · a(s)² ds`` (axial offset ``a = z·cone_sin + x·cone_cos``),
+    and the axial first moment ``∫ (dm/ds) · a(s) ds``.
     The caller builds the rotor's polar inertia from the second radial
     moment, the coned transverse (diametral) inertia from the radial and
     axial second moments, and places the rotor body at its coned centre of
@@ -922,14 +924,21 @@ def _blade_span_mass_inertia(
     seg = np.linalg.norm(np.diff(xyz, axis=0), axis=1)
     s = np.concatenate([[0.0], np.cumsum(seg)])
     mass = _trapezoid(mpl, s)
-    # The spanwise position resolves into a radial distance from the rotor
-    # axis (hub radius + span*cos(cone)) and, for a coned rotor, an axial
-    # offset along the shaft (span*sin(cone)). The radial part gives the
-    # polar second moment; the axial part adds to the transverse moment.
-    span = coords[2]
-    radial = hub_r + span * cone_cos
-    axial = span * cone_sin
-    polar_second_moment = _second_moment(mpl, radial, s)
+    # Resolve each section onto the rotor axes (r = in-plane radial from the
+    # shaft, t = in-plane tangential, a = along the shaft). The reference axis
+    # gives z spanwise, x prebend (flapwise, out of the rotor plane) and y
+    # sweep (edgewise, in the rotor plane). Coning rotates the span/prebend
+    # (radial/axial) plane by the cone angle about the edgewise axis; sweep is
+    # unaffected. The polar lever is the in-plane distance from the shaft axis
+    # ``r² + t²`` (so sweep and prebend are not dropped, issue #130); the
+    # axial offset feeds the coned transverse term.
+    x_off, y_off, span = coords[0], coords[1], coords[2]
+    radial = hub_r + span * cone_cos - x_off * cone_sin
+    tangential = y_off
+    axial = span * cone_sin + x_off * cone_cos
+    polar_second_moment = _second_moment(mpl, radial, s) + _second_moment(
+        mpl, tangential, s
+    )
     axial_second_moment = _second_moment(mpl, axial, s)
     axial_first_moment = _first_moment(mpl, axial, s)
     return mass, polar_second_moment, axial_second_moment, axial_first_moment
