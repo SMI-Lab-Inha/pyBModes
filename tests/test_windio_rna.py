@@ -223,6 +223,28 @@ def test_rna_cone_and_uptilt_degrees_match_radians(tmp_path: pathlib.Path) -> No
         assert getattr(deg, attr) == pytest.approx(getattr(rad, attr))
 
 
+def test_rna_small_degree_cone_keyed_off_uptilt(tmp_path: pathlib.Path) -> None:
+    """A schema-conforming degrees file with a small cone (0.25 deg) and a
+    normal 6 deg uptilt: the unit decision keys off the larger (uptilt)
+    magnitude, so the small cone is read as 0.25 deg, not 0.25 rad = 14.3 deg
+    (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    import numpy as np
+
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(cone: float, uptilt: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = cone
+        o["components"]["nacelle"]["drivetrain"]["uptilt"] = uptilt
+        return read_windio_rna(_write(o, tmp_path, f"s_{cone}_{uptilt}.yaml"))
+
+    deg = _mk(0.25, 6.0)  # degrees, small cone
+    rad = _mk(float(np.radians(0.25)), float(np.radians(6.0)))  # radians equivalent
+    for attr in ("cm_axial", "ixx", "iyy", "izz"):
+        assert getattr(deg, attr) == pytest.approx(getattr(rad, attr))
+
+
 def test_rna_rejects_nonphysical_angle(tmp_path: pathlib.Path) -> None:
     """A value non-physical as both radians and degrees (e.g. 200) is rejected
     rather than silently evaluated at a meaningless angle."""

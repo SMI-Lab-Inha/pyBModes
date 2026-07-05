@@ -732,32 +732,34 @@ def _finite_float(value: Any, what: str) -> float:
     return f
 
 
-def _windio_angle(value: Any, what: str) -> float:
-    """Interpret a WindIO precone / shaft-tilt angle as radians, tolerant of
-    the rad/deg ambiguity across WindIO versions.
+def _windio_rotor_angles(cone_value: Any, uptilt_value: Any) -> tuple[float, float]:
+    """Convert the WindIO precone and shaft tilt to radians, resolving the
+    rad/deg ambiguity once for the pair.
 
     The WindIO v2 turbine schema annotates ``hub.cone_angle`` and drivetrain
     ``uptilt`` as degrees, but the IEA reference ontologies store radians
-    (IEA-22 ``cone_angle`` 0.0698 = 4 deg, ``uptilt`` 0.1047 = 6 deg).
-    Physical rotor precone and shaft tilt are small (well under ~20 deg), so
-    the two encodings never overlap: a stored magnitude at or below 0.5 is
-    radians (0.5 rad = 29 deg, already larger than any real precone / tilt),
-    a larger one is degrees. Convert to radians on that basis, and reject a
-    value that is non-physical under either reading (> 90). This keeps the
-    validated radians reference files working while also accepting a
-    schema-conforming degrees file (issue #130 review).
+    (IEA-22 ``cone_angle`` 0.0698 = 4 deg, ``uptilt`` 0.1047 = 6 deg). A file
+    uses one convention throughout, so decide it once from the *larger* of the
+    two magnitudes rather than per value: a degrees file reliably carries a
+    several-degree shaft tilt (magnitude well above any radians precone /
+    tilt, which stay under ~0.3 rad), whereas judging each value alone would
+    misread a small schema-conforming degrees angle such as 0.25 deg as
+    0.25 rad. If the larger magnitude exceeds 0.5 the pair is degrees;
+    otherwise radians. Anything above 90 is non-physical either way and is
+    rejected (issue #130 review).
     """
-    ang = _finite_float(value, what)
-    mag = abs(ang)
-    if mag <= 0.5:
-        return ang
-    if mag <= 90.0:
-        return float(np.radians(ang))
-    raise ValueError(
-        f"{what} = {ang!r} is non-physical as either radians "
-        f"({np.degrees(ang):.0f} deg) or degrees; expected a rotor precone / "
-        f"shaft tilt well under 90 deg."
-    )
+    cone = _finite_float(cone_value, "hub cone_angle")
+    uptilt = _finite_float(uptilt_value, "nacelle.drivetrain.uptilt")
+    biggest = max(abs(cone), abs(uptilt))
+    if biggest > 90.0:
+        raise ValueError(
+            f"rotor precone / shaft tilt (cone_angle={cone!r}, uptilt="
+            f"{uptilt!r}) is non-physical as either radians or degrees; "
+            f"expected values well under 90 deg."
+        )
+    if biggest > 0.5:  # degrees: a real shaft tilt dwarfs any radians angle
+        return float(np.radians(cone)), float(np.radians(uptilt))
+    return cone, uptilt
 
 
 def _positive_mass(value: Any, what: str) -> float:
@@ -1083,7 +1085,7 @@ def read_windio_rna(
         return _finite_float(val, f"nacelle.drivetrain.{key}")
 
     overhang = _nac_geom("overhang")
-    uptilt = _windio_angle(_nac_geom("uptilt"), "nacelle.drivetrain.uptilt")
+    uptilt_raw = _nac_geom("uptilt")  # rad/deg resolved with cone_angle below
     dist_tt_hub = _nac_geom("distance_tt_hub")
 
     # --- Hub: components.<hub>.elastic_properties_mb ---
@@ -1110,7 +1112,7 @@ def read_windio_rna(
     )
     if hub_r < 0.0:
         raise ValueError(f"hub diameter must be non-negative; got {hub_diam!r}.")
-    cone_ang = _windio_angle(hub.get("cone_angle", 0.0), "hub cone_angle")
+    cone_ang, uptilt = _windio_rotor_angles(hub.get("cone_angle", 0.0), uptilt_raw)
     cone_cos = float(np.cos(cone_ang))
     cone_sin = float(np.sin(cone_ang))
 
