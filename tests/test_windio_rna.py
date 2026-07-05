@@ -245,6 +245,42 @@ def test_rna_small_degree_cone_keyed_off_uptilt(tmp_path: pathlib.Path) -> None:
         assert getattr(deg, attr) == pytest.approx(getattr(rad, attr))
 
 
+def test_rna_explicit_deg_units_override(tmp_path: pathlib.Path) -> None:
+    """The all-sub-degree case auto cannot resolve: a zero-tilt degrees file
+    with a 0.3 deg cone. angle_units='deg' takes the file at its word, so it
+    reads as 0.3 deg, not 0.3 rad (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    import numpy as np
+
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    o["components"]["hub"]["cone_angle"] = 0.3
+    o["components"]["nacelle"]["drivetrain"]["uptilt"] = 0.0
+    p = _write(o, tmp_path, "small_deg.yaml")
+
+    as_deg = read_windio_rna(p, angle_units="deg")
+    # equivalent radians file resolved by auto
+    o2 = _base_ontology()
+    o2["components"]["hub"]["cone_angle"] = float(np.radians(0.3))
+    o2["components"]["nacelle"]["drivetrain"]["uptilt"] = 0.0
+    as_rad = read_windio_rna(_write(o2, tmp_path, "small_rad.yaml"))
+    for attr in ("cm_axial", "ixx", "iyy", "izz"):
+        assert getattr(as_deg, attr) == pytest.approx(getattr(as_rad, attr))
+    # and auto (default) would misread the 0.3 as radians -> different result
+    as_auto = read_windio_rna(p)
+    assert as_auto.izz != pytest.approx(as_deg.izz)
+
+
+def test_rna_rejects_bad_angle_units(tmp_path: pathlib.Path) -> None:
+    """An unknown angle_units value is rejected."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    with pytest.raises(ValueError, match="angle_units"):
+        read_windio_rna(_write(_base_ontology(), tmp_path, "u.yaml"), angle_units="grad")
+
+
 def test_rna_rejects_nonphysical_angle(tmp_path: pathlib.Path) -> None:
     """A value non-physical as both radians and degrees (e.g. 200) is rejected
     rather than silently evaluated at a meaningless angle."""

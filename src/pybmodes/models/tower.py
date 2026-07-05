@@ -325,6 +325,7 @@ class Tower:
         tip_mass: TipMassProps | float | None = None,
         n_nodes: int | None = None,
         lumped_rna_cal: bool = False,
+        rna_angle_units: str = "auto",
     ) -> Tower:
         """Build a tower (or monopile) model directly from a **WindIO**
         ontology ``.yaml`` (issue #35).
@@ -372,6 +373,11 @@ class Tower:
             expressed at the tower top in the clamped-base convention, which
             a free-base / soil-flexible base interprets differently. Default
             ``False``.
+        rna_angle_units : how the auto-RNA reads ``cone_angle`` / ``uptilt``
+            when ``lumped_rna_cal=True``. ``"auto"`` (default) disambiguates
+            the WindIO rad/deg ambiguity by magnitude; pass ``"rad"`` or
+            ``"deg"`` to take the file at its word. Ignored unless
+            ``lumped_rna_cal`` is set.
 
         Notes
         -----
@@ -411,7 +417,7 @@ class Tower:
                 )
             from pybmodes.io.windio import read_windio_rna
 
-            tip_mass = read_windio_rna(yaml_path)
+            tip_mass = read_windio_rna(yaml_path, angle_units=rna_angle_units)
 
         g = read_windio_tubular(
             yaml_path, component=component, thickness_interp=thickness_interp,
@@ -440,6 +446,7 @@ class Tower:
         n_nodes: int | None = None,
         water_depth: float | None = None,
         lumped_rna_cal: bool = False,
+        rna_angle_units: str = "auto",
     ) -> Tower:
         """Build a combined **monopile + tower** fixed-bottom cantilever
         from a WindIO ontology ``.yaml`` (issue #92).
@@ -484,6 +491,9 @@ class Tower:
             blocks via :func:`pybmodes.io.windio.read_windio_rna` and use
             it as ``tip_mass``. Requires an IEA-22-class ontology; mutually
             exclusive with ``tip_mass``. Default ``False``.
+        rna_angle_units : how the auto-RNA reads ``cone_angle`` / ``uptilt``
+            when ``lumped_rna_cal=True`` (``"auto"`` / ``"rad"`` / ``"deg"``);
+            see :meth:`from_windio`. Ignored unless ``lumped_rna_cal`` is set.
 
         Notes
         -----
@@ -509,7 +519,7 @@ class Tower:
                 )
             from pybmodes.io.windio import read_windio_rna
 
-            tip_mass = read_windio_rna(yaml_path)
+            tip_mass = read_windio_rna(yaml_path, angle_units=rna_angle_units)
 
         mt = read_windio_monopile_tower(
             yaml_path,
