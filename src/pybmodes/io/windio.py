@@ -67,6 +67,32 @@ def _trapezoid(y: np.ndarray, x: np.ndarray) -> float:
     return float(np.sum(0.5 * (y[1:] + y[:-1]) * np.diff(x)))
 
 
+def _second_moment(w: np.ndarray, c: np.ndarray, x: np.ndarray) -> float:
+    """Exact ``integral w(x)*c(x)**2 dx`` for piecewise-linear ``w`` and ``c``.
+
+    On each ``[x_i, x_{i+1}]`` segment both the weight ``w`` (mass per unit
+    length) and the coordinate ``c`` vary linearly, so the integrand is a
+    cubic. Simpson's rule is exact through degree three, so evaluating the
+    endpoints plus the segment midpoint (``w`` / ``c`` averaged, since both
+    are linear) integrates it without error. The trapezoid rule chords over
+    the quadratic ``c**2`` and inflates the second moment on a coarse grid
+    (Codex review on #130 measured a 50 % bias for a straight two-station
+    blade).
+    """
+    w = np.asarray(w, dtype=float)
+    c = np.asarray(c, dtype=float)
+    x = np.asarray(x, dtype=float)
+    dx = np.diff(x)
+    w0, w1 = w[:-1], w[1:]
+    c0, c1 = c[:-1], c[1:]
+    wm = 0.5 * (w0 + w1)
+    cm = 0.5 * (c0 + c1)
+    f0 = w0 * c0 * c0
+    fm = wm * cm * cm
+    f1 = w1 * c1 * c1
+    return float(np.sum(dx / 6.0 * (f0 + 4.0 * fm + f1)))
+
+
 def _require_yaml():
     """Import PyYAML or raise the documented friendly error.
 
@@ -882,8 +908,8 @@ def _blade_span_mass_inertia(
     span = coords[2]
     radial = hub_r + span * cone_cos
     axial = span * cone_sin
-    polar_second_moment = _trapezoid(mpl * radial * radial, s)
-    axial_second_moment = _trapezoid(mpl * axial * axial, s)
+    polar_second_moment = _second_moment(mpl, radial, s)
+    axial_second_moment = _second_moment(mpl, axial, s)
     return mass, polar_second_moment, axial_second_moment
 
 

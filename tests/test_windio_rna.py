@@ -98,12 +98,13 @@ def test_rna_assembly_matches_hand_computation(tmp_path: pathlib.Path) -> None:
     assert rna.cm_offset == 0.0
     # Parallel-axis tensor at the tower top (hand-computed), plus the rotor
     # diametral inertia from the spanwise blade mass (issue #130):
-    # I_polar_rotor = 3 · ∫100·z² dz over [0, 50] (trapezoid, 2 stations)
-    #              = 3 · 6.25e6 = 1.875e7, added about the apex as
-    # diag([1.875e7, 9.375e6, 9.375e6]).
-    assert rna.ixx == pytest.approx(1.834e7 + 1.875e7)
-    assert rna.iyy == pytest.approx(3.884e7 + 0.9375e7)
-    assert rna.izz == pytest.approx(3.35e7 + 0.9375e7)
+    # I_polar_rotor = 3 · ∫100·z² dz over [0, 50] = 3 · (100·50³/3)
+    #              = 3 · 4.1667e6 = 1.25e7, added about the apex as
+    # diag([1.25e7, 6.25e6, 6.25e6]). The exact span integral (Simpson,
+    # exact for the cubic mass·z² integrand) replaces the earlier trapezoid.
+    assert rna.ixx == pytest.approx(1.834e7 + 1.25e7)
+    assert rna.iyy == pytest.approx(3.884e7 + 0.625e7)
+    assert rna.izz == pytest.approx(3.35e7 + 0.625e7)
     assert rna.izx == pytest.approx(1.06e7)
     assert rna.ixy == pytest.approx(0.0, abs=1e-6)
     assert rna.iyz == pytest.approx(0.0, abs=1e-6)
@@ -121,6 +122,10 @@ def test_rna_rotor_inertia_from_span(tmp_path: pathlib.Path) -> None:
     # The pre-#130 value for izz was 3.35e7 (no blade inertia); it must now
     # be strictly larger because the rotor diametral term is included.
     assert base.izz > 3.35e7
+    # The diametral term is the exact span integral 3·(100·50³/3)/2 = 6.25e6,
+    # not the trapezoid over-estimate (9.375e6) a coarse two-station grid
+    # would give for the cubic mass·z² integrand (Codex review on #130).
+    assert base.izz == pytest.approx(3.35e7 + 6.25e6)
 
     # A hub radius offsets every blade section further from the rotor axis,
     # so the polar / diametral inertia grows.
