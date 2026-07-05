@@ -200,6 +200,30 @@ def test_rna_rotor_inertia_cone_axial(tmp_path: pathlib.Path) -> None:
     assert coned.mass == pytest.approx(flat.mass)
 
 
+def test_rna_rejects_degree_valued_cone_angle(tmp_path: pathlib.Path) -> None:
+    """WindIO angles are radians; a degrees-valued cone_angle (e.g. 4 read as
+    4 rad = 229 deg) is non-physical and rejected rather than silently
+    evaluated at the wrong angle (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    o["components"]["hub"]["cone_angle"] = 4.0  # 4 deg mistakenly left un-converted
+    with pytest.raises(ValueError, match="radians"):
+        read_windio_rna(_write(o, tmp_path, "cone_deg.yaml"))
+
+
+def test_rna_rejects_degree_valued_uptilt(tmp_path: pathlib.Path) -> None:
+    """A degrees-valued uptilt is likewise rejected as out of physical range."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    o = _base_ontology()
+    o["components"]["nacelle"]["drivetrain"]["uptilt"] = 6.0  # 6 deg un-converted
+    with pytest.raises(ValueError, match="radians"):
+        read_windio_rna(_write(o, tmp_path, "uptilt_deg.yaml"))
+
+
 @pytest.mark.parametrize("n_bl", [1, 2])
 def test_rna_rejects_one_or_two_bladed_rotor(
     tmp_path: pathlib.Path, n_bl: int

@@ -732,6 +732,27 @@ def _finite_float(value: Any, what: str) -> float:
     return f
 
 
+def _finite_angle(value: Any, what: str, max_abs: float = float(np.pi / 4)) -> float:
+    """Coerce ``value`` to a finite angle in radians within a physical bound.
+
+    WindIO stores angles in radians (SI). A rotor precone or shaft tilt beyond
+    ~45 deg is non-physical for a horizontal-axis turbine and almost always
+    means degrees were supplied by mistake (e.g. ``cone_angle: 4`` read as
+    4 rad = 229 deg instead of 4 deg), which would silently corrupt the coned
+    lever and axial offset. Reject it with a clear message rather than
+    evaluate the trig at the wrong angle.
+    """
+    ang = _finite_float(value, what)
+    if abs(ang) > max_abs:
+        raise ValueError(
+            f"{what} = {ang:.4f} rad ({np.degrees(ang):.1f} deg) is outside the "
+            f"physical range +/-{np.degrees(max_abs):.0f} deg. WindIO angles are "
+            f"in radians; a value near a small integer usually means degrees "
+            f"were supplied."
+        )
+    return ang
+
+
 def _positive_mass(value: Any, what: str) -> float:
     """Coerce ``value`` to a positive, finite mass (kg), else raise."""
     m = _finite_float(value, what)
@@ -1055,7 +1076,7 @@ def read_windio_rna(
         return _finite_float(val, f"nacelle.drivetrain.{key}")
 
     overhang = _nac_geom("overhang")
-    uptilt = _nac_geom("uptilt")
+    uptilt = _finite_angle(_nac_geom("uptilt"), "nacelle.drivetrain.uptilt")
     dist_tt_hub = _nac_geom("distance_tt_hub")
 
     # --- Hub: components.<hub>.elastic_properties_mb ---
@@ -1082,7 +1103,7 @@ def read_windio_rna(
     )
     if hub_r < 0.0:
         raise ValueError(f"hub diameter must be non-negative; got {hub_diam!r}.")
-    cone_ang = _finite_float(hub.get("cone_angle", 0.0), "hub cone_angle")
+    cone_ang = _finite_angle(hub.get("cone_angle", 0.0), "hub cone_angle")
     cone_cos = float(np.cos(cone_ang))
     cone_sin = float(np.sin(cone_ang))
 
