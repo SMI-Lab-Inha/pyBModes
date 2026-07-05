@@ -145,6 +145,32 @@ def test_rna_rotor_inertia_from_span(tmp_path: pathlib.Path) -> None:
     assert lg.izz > base.izz                              # longer span -> more inertia
 
 
+def test_rna_rotor_inertia_tilt_rotation(tmp_path: pathlib.Path) -> None:
+    """The shaft-frame rotor / hub inertia is rotated by the uptilt into the
+    tower frame, so a tilted rotor gains an izx product while preserving the
+    inertia trace (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(uptilt: float):
+        o = _base_ontology()
+        dt = o["components"]["nacelle"]["drivetrain"]
+        dt["overhang"] = 0.0                              # apex purely vertical
+        dt["uptilt"] = uptilt
+        dt["elastic_properties_mb"]["system_center_mass"] = [0.0, 0.0, 3.0]
+        return read_windio_rna(_write(o, tmp_path, f"tilt_{uptilt}.yaml"))
+
+    flat = _mk(0.0)
+    tilt = _mk(0.3)                                       # ~17 deg
+    # overhang 0 + CM x 0 -> all izx comes from the shaft-frame tensor
+    # rotation; a flat rotor/hub are diagonal (izx 0), a tilted one gains izx.
+    assert flat.izx == pytest.approx(0.0, abs=1.0)
+    assert abs(tilt.izx) > 1.0e6
+    # the rotation preserves the inertia trace (apex identical, overhang 0).
+    assert (tilt.ixx + tilt.iyy + tilt.izz) == pytest.approx(
+        flat.ixx + flat.iyy + flat.izz, rel=1e-9)
+
+
 def test_rna_diagonal_inertia_accepted(tmp_path: pathlib.Path) -> None:
     """A diagonal 3-vector system_inertia [Ixx, Iyy, Izz] is accepted as a
     diagonal tensor, matching the equivalent zero-product 6-vector (Codex

@@ -1077,6 +1077,20 @@ def read_windio_rna(
         dtype=float,
     )
 
+    # The hub and rotor inertia tensors are in the shaft frame; rotate them
+    # into the tower-top frame by the shaft tilt before they are summed as
+    # tower-top tensors (a tilted rotor otherwise loses the tensor izx
+    # product and misallocates the large polar term between ixx and izz).
+    # The shaft unit axis is ``[sign_x*cos(uptilt), 0, sin(uptilt)]``; R maps
+    # the shaft x-axis onto it and fixes the lateral y-axis. The nacelle
+    # tensor is already in the tower frame and is left alone.
+    c_t, s_t = float(np.cos(uptilt)), float(np.sin(uptilt))
+    r_tilt = np.array(
+        [[sign_x * c_t, 0.0, -s_t], [0.0, 1.0, 0.0], [s_t, 0.0, sign_x * c_t]]
+    )
+    i_hub = r_tilt @ i_hub @ r_tilt.T
+    i_blades = r_tilt @ i_blades @ r_tilt.T
+
     bodies = [
         (m_nac, r_nac, i_nac),
         (m_hub, apex, i_hub),
