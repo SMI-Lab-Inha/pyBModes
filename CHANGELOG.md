@@ -8,6 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+(nothing yet)
+
+## [1.16.1] — 2026-07-06
+
+### Added
+
+- **`angle_units` control on the WindIO auto-RNA.** `read_windio_rna`
+  gains `angle_units` (`"auto"` / `"rad"` / `"deg"`), forwarded from
+  `Tower.from_windio` and `Tower.from_windio_with_monopile` as
+  `rna_angle_units`. The WindIO v2 schema annotates `cone_angle` /
+  `uptilt` as degrees while the IEA reference ontologies store radians;
+  `"auto"` (default) disambiguates by magnitude, and `"rad"` / `"deg"`
+  take the file at its word for the rare all-sub-degree case `"auto"`
+  cannot resolve.
+
 ### Fixed
 
 - **WindIO auto-RNA now carries the rotor inertia from the spanwise blade
@@ -31,7 +46,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   tower frequencies), and the CM for coned rotors, relative to 1.16.0; the
   total mass is unchanged. This intentionally goes beyond the ElastoDyn
   deck path's point-mass lumping, which the WindIO per-station blade mass
-  makes possible.
+  makes possible. The rotor lever now folds in the coned hub radius
+  (`(hub_radius + span)·cos(cone)`, matching WISDEM/ElastoDyn), prebend and
+  sweep, and measures the span from the blade root (so a `reference_axis.z`
+  offset from zero no longer places sections too far out); a hub tensor's
+  off-diagonal terms are rotated with the correct WindIO hub-frame
+  handedness.
+- **The auto-RNA rejects one- and two-bladed rotors.** The axisymmetric
+  `I_polar/2` transverse split holds only for three or more evenly spaced
+  blades; a one- or two-bladed rotor has an azimuth-dependent transverse
+  inertia that a single rigid tower-top lump cannot represent, so
+  `read_windio_rna` now raises a clear `ValueError` pointing at an explicit
+  `tip_mass` rather than emitting a corrupted fore-aft / side-side inertia.
 
 ## [1.16.0] — 2026-07-03
 
