@@ -891,10 +891,11 @@ def _blade_span_mass_inertia(
 
     Returns the single-blade mass, the polar second moment about the rotor
     axis ``∫ (dm/ds) · (r² + t²) ds`` (in-plane radial
-    ``r = hub_r + z·cone_cos − x·cone_sin`` and tangential ``t = y`` so
-    prebend / sweep are included), the axial second moment
-    ``∫ (dm/ds) · a(s)² ds`` (axial offset ``a = z·cone_sin + x·cone_cos``),
-    and the axial first moment ``∫ (dm/ds) · a(s) ds``.
+    ``r = (hub_r + z)·cone_cos − x·cone_sin`` and tangential ``t = y`` so the
+    coned hub radius, prebend and sweep are all included), the axial second
+    moment ``∫ (dm/ds) · a(s)² ds`` (axial offset
+    ``a = (hub_r + z)·cone_sin + x·cone_cos``), and the axial first moment
+    ``∫ (dm/ds) · a(s) ds``.
     The caller builds the rotor's polar inertia from the second radial
     moment, the coned transverse (diametral) inertia from the radial and
     axial second moments, and places the rotor body at its coned centre of
@@ -980,9 +981,15 @@ def _blade_span_mass_inertia(
     # ``r² + t²`` (so sweep and prebend are not dropped, issue #130); the
     # axial offset feeds the coned transverse term.
     x_off, y_off, span = coords[0], coords[1], coords[2]
-    radial = hub_r + span * cone_cos - x_off * cone_sin
+    # Distance from the hub centre along the (coned) pitch axis: the blade
+    # root sits at the hub radius and each section a further `span` outboard,
+    # so the whole (hub_r + span) length projects through the cone, matching
+    # WISDEM/ElastoDyn (rotorR = Rtip*cos(precone) = (Rhub + L)*cos(cone))
+    # rather than leaving the hub radius unconed in the rotor plane.
+    axis_dist = hub_r + span
+    radial = axis_dist * cone_cos - x_off * cone_sin
     tangential = y_off
-    axial = span * cone_sin + x_off * cone_cos
+    axial = axis_dist * cone_sin + x_off * cone_cos
     polar_second_moment = _second_moment(mpl, radial, s) + _second_moment(
         mpl, tangential, s
     )
@@ -1035,7 +1042,7 @@ def read_windio_rna(
 
     Blade inertia (issue #130): the rotor carries the diametral inertia
     ``N_bl · ∫ (dm/ds) · r² ds`` from the blade mass spread along the span
-    (``r = hub_radius + span·cos(cone)``), as ``diag([I_polar, I_polar/2,
+    (``r = (hub_radius + span)·cos(cone)``), as ``diag([I_polar, I_polar/2,
     I_polar/2])`` about the hub (the same perpendicular-axis form as the
     hub tensor). Only each blade's own *sectional* spin inertia is left out
     (its parallel-axis / span contribution is captured). This intentionally

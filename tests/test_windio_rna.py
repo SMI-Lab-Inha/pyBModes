@@ -347,6 +347,27 @@ def test_rna_rotor_inertia_includes_sweep(tmp_path: pathlib.Path) -> None:
     assert swept.izz > straight.izz
 
 
+def test_rna_hub_radius_projected_through_cone(tmp_path: pathlib.Path) -> None:
+    """The hub radius is coned like the span (WISDEM Rtip*cos(precone)), so a
+    coned rotor with a hub radius carries an extra Rhub*sin(cone) axial offset
+    that raises the tower-top vertical CM through the shaft tilt, versus the
+    same rotor with a zero hub radius (Codex review on #130)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio import read_windio_rna
+
+    def _mk(hub_d: float):
+        o = _base_ontology()
+        o["components"]["hub"]["cone_angle"] = 0.15
+        o["components"]["hub"]["diameter"] = hub_d
+        o["components"]["nacelle"]["drivetrain"]["uptilt"] = 0.10
+        return read_windio_rna(_write(o, tmp_path, f"hr_{hub_d}.yaml"))
+
+    no_hub = _mk(0.0)  # hub_r = 0
+    with_hub = _mk(6.0)  # hub_r = 3
+    assert with_hub.mass == pytest.approx(no_hub.mass)
+    assert with_hub.cm_axial > no_hub.cm_axial
+
+
 def test_rna_coned_cm_shift_with_uptilt(tmp_path: pathlib.Path) -> None:
     """A coned rotor's CM sits off the hub apex along the (tilted) shaft, so
     with uptilt the tower-top vertical CM shifts by m_blades·offset·sin(uptilt)
