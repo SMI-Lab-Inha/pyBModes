@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+(nothing yet)
+
+## [1.17.0] — 2026-07-10
+
 ### Added
 
 - **Integrated soil-pile interaction on the WindIO monopile path (#118).**
