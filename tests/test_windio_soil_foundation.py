@@ -100,7 +100,7 @@ _SLENDER = textwrap.dedent("""\
           outfitting_factor: 1.0
           layers:
             - {name: monopile_wall, material: steel,
-               thickness: {grid: [0.0, 1.0], values: [0.04, 0.04]}}
+               thickness: {grid: [0.0, 1.0], values: [0.06, 0.02]}}
         reference_axis: {z: {grid: [0.0, 1.0], values: [-50.0, 0.0]}}
       tower:
         outer_shape:
@@ -126,6 +126,31 @@ def test_soil_auto_build_honors_E_override(tmp_path: pathlib.Path) -> None:
     stiff = MudlineFoundation.from_windio(p, soil_E=60e6, water_depth=20.0, E=4.0e11)
     assert base.pile_behaviour == "flexible"  # a flexible pile: EI (hence E) matters
     assert stiff.K_rr != pytest.approx(base.K_rr)
+
+
+def test_soil_from_windio_honors_thickness_interp(tmp_path: pathlib.Path) -> None:
+    """A piecewise-constant wall schedule takes the step value at the mudline,
+    not a linear blend, so pile_EI (and the springs) match the beam reduction
+    on a tapered pile (Codex review on #118)."""
+    pytest.importorskip("yaml")
+    p = tmp_path / "slender.yaml"
+    p.write_text(_SLENDER, encoding="utf-8")
+    lin = MudlineFoundation.from_windio(p, soil_E=60e6, water_depth=20.0)
+    pwc = MudlineFoundation.from_windio(
+        p, soil_E=60e6, water_depth=20.0, thickness_interp="piecewise_constant"
+    )
+    assert lin.pile_behaviour == "flexible"
+    assert pwc.K_rr != pytest.approx(lin.K_rr)
+
+
+def test_soil_rejects_lumped_rna_cal(tmp_path: pathlib.Path) -> None:
+    """The auto-RNA tip mass is clamped-base (hub_conn=1); it cannot be
+    combined with a soil-flexible base (hub_conn=3) (Codex review on #118)."""
+    p = _yaml(tmp_path)
+    with pytest.raises(ValueError, match="lumped_rna_cal is not supported"):
+        Tower.from_windio_with_monopile(
+            p, water_depth=20.0, soil_E=60e6, lumped_rna_cal=True
+        )
 
 
 def test_soil_and_soil_E_mutually_exclusive(tmp_path: pathlib.Path) -> None:

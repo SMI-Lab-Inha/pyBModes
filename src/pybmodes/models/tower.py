@@ -561,6 +561,18 @@ class Tower:
         from pybmodes.io._elastodyn.adapter import _build_bmi_skeleton
         from pybmodes.io.windio import read_windio_monopile_tower
 
+        if lumped_rna_cal and (soil is not None or soil_E is not None):
+            raise ValueError(
+                "lumped_rna_cal is not supported together with a soil "
+                "foundation (soil / soil_E). The auto-RNA tip mass is "
+                "expressed in the clamped-base (hub_conn = 1) convention, "
+                "which a soft monopile (hub_conn = 3) interprets differently "
+                "and would misplace the rotary inertia. Pass an explicit "
+                "tip_mass for the soil-flexible base, or drop the soil for the "
+                "rigid clamped model (the basis ElastoDyn uses for tower mode "
+                "shapes regardless of soil)."
+            )
+
         if lumped_rna_cal:
             if tip_mass is not None:
                 raise ValueError(

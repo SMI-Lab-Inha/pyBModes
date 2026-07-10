@@ -478,7 +478,14 @@ class MudlineFoundation:
             )
         z_phys = mp.z_base + mp.station_grid * (mp.z_top - mp.z_base)
         pile_diameter = float(np.interp(mudline, z_phys, mp.outer_diameter))
-        wall = float(np.interp(mudline, z_phys, mp.wall_thickness))
+        if thickness_interp == "piecewise_constant":
+            # Match the beam reduction: the wall is constant within a segment,
+            # taking the lower-station step value rather than a linear blend.
+            idx = int(np.searchsorted(z_phys, mudline, side="right")) - 1
+            idx = max(0, min(idx, mp.wall_thickness.size - 1))
+            wall = float(mp.wall_thickness[idx])
+        else:
+            wall = float(np.interp(mudline, z_phys, mp.wall_thickness))
         inner = pile_diameter - 2.0 * wall
         pile_E = mp.E if E is None else E
         pile_EI = pile_E * math.pi / 64.0 * (pile_diameter**4 - inner**4)
