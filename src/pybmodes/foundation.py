@@ -425,6 +425,8 @@ class MudlineFoundation:
         formula: FormulaFamily = "shadlou",
         component_monopile: str = "monopile",
         water_depth: float | None = None,
+        E: float | None = None,
+        thickness_interp: str = "linear",
     ) -> MudlineFoundation:
         """Build the mudline foundation from a WindIO monopile ontology plus
         soil properties, auto-extracting the pile geometry (issue #118).
@@ -444,14 +446,21 @@ class MudlineFoundation:
         attach it for you via its ``soil_E`` keyword.
 
         ``water_depth`` (m, positive) locates the mudline and defaults to the
-        ontology's ``environment.water_depth``. Raises ``ValueError`` when the
-        mudline is unknown or the monopile does not extend below it (no
-        embedded length to model soil reaction over). Requires the optional
-        ``[windio]`` extra (PyYAML).
+        ontology's ``environment.water_depth``. ``E`` and ``thickness_interp``
+        override the monopile modulus and wall-thickness interpolation used
+        for ``pile_EI`` (``E=None`` uses the ontology value); pass the same
+        values here as the beam so the mudline springs stay consistent with
+        it under a material or wall-schedule sensitivity run. Raises
+        ``ValueError`` when the mudline is unknown or the monopile does not
+        extend below it (no embedded length to model soil reaction over).
+        Requires the optional ``[windio]`` extra (PyYAML).
         """
         from pybmodes.io.windio import _read_water_depth, read_windio_tubular
 
-        mp = read_windio_tubular(yaml_path, component=component_monopile)
+        mp = read_windio_tubular(
+            yaml_path, component=component_monopile,
+            thickness_interp=thickness_interp,
+        )
         wd = _read_water_depth(yaml_path, water_depth)
         if wd is None:
             raise ValueError(
@@ -471,7 +480,8 @@ class MudlineFoundation:
         pile_diameter = float(np.interp(mudline, z_phys, mp.outer_diameter))
         wall = float(np.interp(mudline, z_phys, mp.wall_thickness))
         inner = pile_diameter - 2.0 * wall
-        pile_EI = mp.E * math.pi / 64.0 * (pile_diameter**4 - inner**4)
+        pile_E = mp.E if E is None else E
+        pile_EI = pile_E * math.pi / 64.0 * (pile_diameter**4 - inner**4)
         return cls.from_soil_properties(
             pile_diameter=pile_diameter,
             pile_length_embedded=mudline - mp.z_base,

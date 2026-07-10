@@ -89,6 +89,45 @@ def test_soil_no_spurious_check_warnings(tmp_path: pathlib.Path) -> None:
         ).run(n_modes=4)  # check_model on (default)
 
 
+_SLENDER = textwrap.dedent("""\
+    environment:
+      water_depth: 20.0
+    components:
+      monopile:
+        outer_shape:
+          outer_diameter: {grid: [0.0, 1.0], values: [2.0, 2.0]}
+        structure:
+          outfitting_factor: 1.0
+          layers:
+            - {name: monopile_wall, material: steel,
+               thickness: {grid: [0.0, 1.0], values: [0.04, 0.04]}}
+        reference_axis: {z: {grid: [0.0, 1.0], values: [-50.0, 0.0]}}
+      tower:
+        outer_shape:
+          outer_diameter: {grid: [0.0, 1.0], values: [2.0, 1.5]}
+        structure:
+          outfitting_factor: 1.0
+          layers:
+            - {name: tower_wall, material: steel,
+               thickness: {grid: [0.0, 1.0], values: [0.03, 0.02]}}
+        reference_axis: {z: {grid: [0.0, 1.0], values: [0.0, 80.0]}}
+    materials:
+      - {name: steel, E: 2.0e11, rho: 7850.0, nu: 0.3}
+    """)
+
+
+def test_soil_auto_build_honors_E_override(tmp_path: pathlib.Path) -> None:
+    """The E override reaches the mudline springs through pile_EI, not just the
+    beam, so a flexible pile's foundation changes with E (Codex review #118)."""
+    pytest.importorskip("yaml")
+    p = tmp_path / "slender.yaml"
+    p.write_text(_SLENDER, encoding="utf-8")
+    base = MudlineFoundation.from_windio(p, soil_E=60e6, water_depth=20.0)
+    stiff = MudlineFoundation.from_windio(p, soil_E=60e6, water_depth=20.0, E=4.0e11)
+    assert base.pile_behaviour == "flexible"  # a flexible pile: EI (hence E) matters
+    assert stiff.K_rr != pytest.approx(base.K_rr)
+
+
 def test_soil_and_soil_E_mutually_exclusive(tmp_path: pathlib.Path) -> None:
     p = _yaml(tmp_path)
     found = MudlineFoundation.from_windio(p, soil_E=60e6, water_depth=20.0)

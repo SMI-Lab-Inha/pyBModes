@@ -625,6 +625,10 @@ class Tower:
                 formula=soil_formula,  # type: ignore[arg-type]
                 component_monopile=component_monopile,
                 water_depth=water_depth,
+                # keep the mudline springs consistent with the beam's monopile
+                # under a material / wall-schedule override (Codex review #118)
+                E=E,
+                thickness_interp=thickness_interp,
             )
         if foundation is not None:
             obj.attach_mudline_foundation(foundation)
