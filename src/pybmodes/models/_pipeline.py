@@ -31,6 +31,48 @@ from pybmodes.io.sec_props import SectionProperties, read_sec_props
 from pybmodes.models.result import ModalResult
 
 
+def _generalised_mass_stiffness(
+    eigvecs: np.ndarray,
+    gm: np.ndarray,
+    active: np.ndarray,
+    freqs_hz: np.ndarray,
+    ref_mr: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Physical modal (generalised) mass in kg and stiffness in N/m per mode,
+    normalised to unit tip lateral displacement (issue #134).
+
+    The non-dimensional generalised mass ``phi^T gm phi`` re-dimensionalises
+    by ``ref_mr = RM * radius``; dividing by the squared tip lateral
+    displacement DOF applies the unit-tip normalisation (the arbitrary
+    eigenvector scale cancels). Generalised stiffness follows from
+    ``omega^2 * mass``. The tip node is global DOFs 0-5 with lateral
+    displacements at ``v_disp`` (1) and ``w_disp`` (3); a mode whose tip
+    barely moves laterally (a rigid-body platform mode) yields ``NaN``.
+    """
+    active = np.asarray(active)
+
+    def _row(global_dof: int) -> int | None:
+        hits = np.nonzero(active == global_dof)[0]
+        return int(hits[0]) if hits.size else None
+
+    iv, iw = _row(1), _row(3)
+    n = eigvecs.shape[1]
+    gen_mass = np.full(n, np.nan)
+    gen_stiff = np.full(n, np.nan)
+    for i in range(n):
+        phi = eigvecs[:, i]
+        gm_form = float(phi @ gm @ phi)
+        v = float(eigvecs[iv, i]) if iv is not None else 0.0
+        w = float(eigvecs[iw, i]) if iw is not None else 0.0
+        tip2 = v * v + w * w
+        if tip2 <= 0.0 or not np.isfinite(gm_form) or gm_form <= 0.0:
+            continue
+        m = ref_mr * gm_form / tip2
+        gen_mass[i] = m
+        gen_stiff[i] = (2.0 * np.pi * float(freqs_hz[i])) ** 2 * m
+    return gen_mass, gen_stiff
+
+
 @dataclass
 class _SectionPropsView:
     """Minimal struct of pre-nondimensionalised section-property
@@ -268,7 +310,12 @@ def run_fem(
             and np.asarray(bmi.support.distr_m).size > 0:
         ignored.append("distributed added mass (distr_m)")
 
+    gen_mass, gen_stiff = _generalised_mass_stiffness(
+        eigvecs, gm, active, freqs_hz, nd.ref_mr
+    )
+
     return ModalResult(
         frequencies=freqs_hz, shapes=shapes, mode_labels=mode_labels,
         ignored_physics=tuple(ignored), diagnostics=diagnostics,
+        generalized_mass=gen_mass, generalized_stiffness=gen_stiff,
     )

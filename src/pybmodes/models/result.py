@@ -79,6 +79,15 @@ class ModalResult:
         mass-matrix conditioning). Attached by :func:`run_fem`; **not**
         serialised (it describes the live solve run, not the persistent
         result data) and excluded from equality. Added 1.14.0.
+    generalized_mass, generalized_stiffness : optional ``(n_modes,)`` arrays
+        of the physical modal (generalised) mass in kg and stiffness in N/m
+        for each mode, normalised to **unit tip lateral displacement** so
+        they are directly comparable to another tool's modal output (e.g.
+        an OrcaFlex modal report). ``stiffness = (2π·f)² · mass`` by
+        construction. Most meaningful for bending modes; for a rigid-body
+        platform mode (tip displacement ≈ 0) the entry is ``NaN``. Attached
+        by :func:`run_fem` on a live solve; not serialised (derivable from
+        the shapes). Added 1.17.0 (issue #134).
     """
 
     # NOTE: field order is the positional constructor ABI for this
@@ -99,6 +108,12 @@ class ModalResult:
     # Transient solve telemetry — excluded from equality and from both
     # serialisers (it is about the run, not the persisted result).
     diagnostics: SolverDiagnostics | None = field(default=None, compare=False)
+    # Per-mode physical generalised (modal) mass and stiffness, normalised
+    # to unit tip lateral displacement (issue #134). Populated on a live
+    # solve; excluded from equality and not serialised (derivable from the
+    # shapes). ``generalized_mass`` in kg, ``generalized_stiffness`` in N/m.
+    generalized_mass: np.ndarray | None = field(default=None, compare=False)
+    generalized_stiffness: np.ndarray | None = field(default=None, compare=False)
 
     # ------------------------------------------------------------------
     # Shared integrity check

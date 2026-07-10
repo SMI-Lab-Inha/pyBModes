@@ -8,7 +8,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+### Added
+
+- **Material / outfitting overrides on the WindIO tower paths (#133).**
+  `Tower.from_windio` and `Tower.from_windio_with_monopile` accept optional
+  `E`, `rho`, `nu` and `outfitting_factor` keywords. Each defaults to
+  `None` (use the ontology value); pass a number to override it, so a
+  material or outfitting sensitivity sweep runs straight off a WindIO file
+  without editing the yaml. On the combined monopile+tower path the
+  override applies to both segments. Existing callers are unaffected.
+- **Per-mode generalised mass and stiffness on `ModalResult` (#134).**
+  A solve now attaches `generalized_mass` (kg) and `generalized_stiffness`
+  (N/m) arrays, one entry per mode, normalised to unit tip lateral
+  displacement so a mode's modal mass and stiffness can be read off and
+  compared against another tool's modal report. `stiffness = (2π·f)² ·
+  mass` by construction; a rigid-body platform mode (tip barely moves)
+  yields `NaN`. Not serialised (derivable from the mode shapes).
 
 ## [1.16.1] — 2026-07-06
 

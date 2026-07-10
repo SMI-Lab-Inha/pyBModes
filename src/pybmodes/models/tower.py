@@ -326,6 +326,10 @@ class Tower:
         n_nodes: int | None = None,
         lumped_rna_cal: bool = False,
         rna_angle_units: str = "auto",
+        E: float | None = None,
+        rho: float | None = None,
+        nu: float | None = None,
+        outfitting_factor: float | None = None,
     ) -> Tower:
         """Build a tower (or monopile) model directly from a **WindIO**
         ontology ``.yaml`` (issue #35).
@@ -378,6 +382,13 @@ class Tower:
             the WindIO rad/deg ambiguity by magnitude; pass ``"rad"`` or
             ``"deg"`` to take the file at its word. Ignored unless
             ``lumped_rna_cal`` is set.
+        E, rho, nu, outfitting_factor : optional material / outfitting
+            overrides (issue #133). Each defaults to ``None``, meaning
+            "use the value from the ontology"; pass a number to override
+            it, e.g. for a sensitivity sweep straight off a WindIO file
+            without editing the yaml. ``E`` (Pa), ``rho`` (kg/m^3), ``nu``
+            (-) set the isotropic tower-wall material; ``outfitting_factor``
+            scales the non-structural mass (see :meth:`from_geometry`).
 
         Notes
         -----
@@ -427,8 +438,12 @@ class Tower:
             g.outer_diameter,
             g.wall_thickness,
             flexible_length=g.flexible_length,
-            E=g.E, rho=g.rho, nu=g.nu,
-            outfitting_factor=g.outfitting_factor,
+            E=g.E if E is None else E,
+            rho=g.rho if rho is None else rho,
+            nu=g.nu if nu is None else nu,
+            outfitting_factor=(
+                g.outfitting_factor if outfitting_factor is None else outfitting_factor
+            ),
             hub_conn=hub_conn,
             tip_mass=tip_mass,
             n_nodes=n_nodes,
@@ -447,6 +462,10 @@ class Tower:
         water_depth: float | None = None,
         lumped_rna_cal: bool = False,
         rna_angle_units: str = "auto",
+        E: float | None = None,
+        rho: float | None = None,
+        nu: float | None = None,
+        outfitting_factor: float | None = None,
     ) -> Tower:
         """Build a combined **monopile + tower** fixed-bottom cantilever
         from a WindIO ontology ``.yaml`` (issue #92).
@@ -494,6 +513,12 @@ class Tower:
         rna_angle_units : how the auto-RNA reads ``cone_angle`` / ``uptilt``
             when ``lumped_rna_cal=True`` (``"auto"`` / ``"rad"`` / ``"deg"``);
             see :meth:`from_windio`. Ignored unless ``lumped_rna_cal`` is set.
+        E, rho, nu, outfitting_factor : optional material / outfitting
+            overrides (issue #133), each defaulting to ``None`` (use the
+            ontology value). When given, the override is applied to **both**
+            the monopile and the tower segment, so a single value drives a
+            whole-structure sensitivity sweep off a WindIO file. For
+            per-segment materials, edit the ontology instead.
 
         Notes
         -----
@@ -528,6 +553,7 @@ class Tower:
             thickness_interp=thickness_interp,
             n_nodes=n_nodes,
             water_depth=water_depth,
+            E=E, rho=rho, nu=nu, outfitting_factor=outfitting_factor,
         )
         tip = _coerce_tip_mass(tip_mass)
         bmi = _build_bmi_skeleton(

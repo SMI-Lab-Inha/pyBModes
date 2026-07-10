@@ -474,6 +474,10 @@ def read_windio_monopile_tower(
     thickness_interp: str = "linear",
     n_nodes: int | None = None,
     water_depth: float | None = None,
+    E: float | None = None,
+    rho: float | None = None,
+    nu: float | None = None,
+    outfitting_factor: float | None = None,
 ) -> WindIOMonopileTower:
     """Reduce the ``monopile`` and ``tower`` components and splice them
     into one fixed-bottom cantilever (issue #92).
@@ -509,6 +513,10 @@ def read_windio_monopile_tower(
         present; ``None`` with no ontology value keeps the monopile base
         as the clamp (correct only when the axis already starts at the
         mudline).
+    E, rho, nu, outfitting_factor : optional material / outfitting overrides
+        (issue #133), each ``None`` by default (use the ontology value).
+        When given, the override is applied to **both** the monopile and the
+        tower segment before the tube reduction.
 
     Raises
     ------
@@ -531,6 +539,19 @@ def read_windio_monopile_tower(
     tw = read_windio_tubular(
         yaml_path, component=component_tower, thickness_interp=thickness_interp,
     )
+
+    # Optional material / outfitting overrides (issue #133), applied to both
+    # freshly-read segments so a single value drives a whole-structure
+    # sensitivity sweep. mp / tw are local dataclasses, so mutate in place.
+    for _seg in (mp, tw):
+        if E is not None:
+            _seg.E = E
+        if rho is not None:
+            _seg.rho = rho
+        if nu is not None:
+            _seg.nu = nu
+        if outfitting_factor is not None:
+            _seg.outfitting_factor = outfitting_factor
 
     # Rigid fixed-base monopiles are clamped at the mudline, not at the
     # embedded pile tip. When the monopile reference_axis extends below the
