@@ -643,6 +643,23 @@ class Tower:
                 thickness_interp=thickness_interp,
             )
         if foundation is not None:
+            # The springs act at the mudline, so the beam must be truncated
+            # there. read_windio_monopile_tower only truncates when a water
+            # depth resolves; without one it clamps at the pile toe, which
+            # would leave the embedded pile as a free beam and place the
+            # springs at the toe. The soil_E path already requires the depth
+            # (via MudlineFoundation.from_windio); enforce it for the explicit
+            # ``soil`` path too (Codex review #118).
+            from pybmodes.io.windio import _read_water_depth
+
+            if _read_water_depth(yaml_path, water_depth) is None:
+                raise ValueError(
+                    "a soil foundation needs a resolved water depth so the "
+                    "beam is truncated to the mudline (and the springs act "
+                    "there, not at the monopile toe with the embedded pile "
+                    "left as a free beam). Pass water_depth=... or set "
+                    "environment.water_depth in the ontology."
+                )
             obj.attach_mudline_foundation(foundation)
         return obj
 

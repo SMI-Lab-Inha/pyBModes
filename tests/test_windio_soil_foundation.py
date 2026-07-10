@@ -162,6 +162,20 @@ def test_soil_and_soil_E_mutually_exclusive(tmp_path: pathlib.Path) -> None:
         )
 
 
+def test_explicit_soil_requires_water_depth(tmp_path: pathlib.Path) -> None:
+    """The explicit-soil path also needs a resolved mudline depth, else the
+    beam clamps at the pile toe and the springs act there, not at the mudline
+    (Codex review on #118)."""
+    pytest.importorskip("yaml")
+    # ontology without environment.water_depth
+    p = tmp_path / "no_env.yaml"
+    p.write_text(_ONTO.split("environment:")[0] + _ONTO.split("\n", 2)[2],
+                 encoding="utf-8")
+    found = MudlineFoundation.from_windio(p, soil_E=60e6, water_depth=20.0)
+    with pytest.raises(ValueError, match="resolved water depth"):
+        Tower.from_windio_with_monopile(p, soil=found)  # no water_depth
+
+
 def test_from_windio_requires_water_depth(tmp_path: pathlib.Path) -> None:
     """No mudline (no water_depth and no environment block) -> clear error."""
     pytest.importorskip("yaml")
