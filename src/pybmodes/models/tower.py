@@ -466,6 +466,12 @@ class Tower:
         rho: float | None = None,
         nu: float | None = None,
         outfitting_factor: float | None = None,
+        soil: MudlineFoundation | None = None,
+        soil_E: float | None = None,
+        soil_nu: float = 0.3,
+        soil_profile: str = "homogeneous",
+        pile_behaviour: str = "auto",
+        soil_formula: str = "shadlou",
     ) -> Tower:
         """Build a combined **monopile + tower** fixed-bottom cantilever
         from a WindIO ontology ``.yaml`` (issue #92).
@@ -519,16 +525,36 @@ class Tower:
             the monopile and the tower segment, so a single value drives a
             whole-structure sensitivity sweep off a WindIO file. For
             per-segment materials, edit the ontology instead.
+        soil : optional pre-built :class:`pybmodes.MudlineFoundation`
+            (issue #118). When given, the rigid mudline clamp is replaced by
+            the foundation's coupled springs and the model is switched to a
+            soft monopile (``hub_conn = 3``) via
+            :meth:`attach_mudline_foundation`. Mutually exclusive with
+            ``soil_E``.
+        soil_E, soil_nu, soil_profile, pile_behaviour, soil_formula :
+            soil properties to **auto-build** the foundation (issue #118).
+            Pass ``soil_E`` (soil Young's modulus, Pa) and optionally the
+            others to have the pile geometry (diameter, embedded length and
+            EI at the mudline) read from the ontology and a
+            :class:`pybmodes.MudlineFoundation` built via
+            :meth:`MudlineFoundation.from_windio`, then attached. Needs a
+            ``water_depth`` (or ``environment.water_depth``) and a monopile
+            that extends below the mudline. Defaults reproduce
+            ``from_soil_properties``' defaults (``soil_nu=0.3``,
+            ``soil_profile="homogeneous"``, ``pile_behaviour="auto"``,
+            ``soil_formula="shadlou"``).
 
         Notes
         -----
-        Requires the optional ``[windio]`` extra (PyYAML). This is the
+        Requires the optional ``[windio]`` extra (PyYAML). Defaults to the
         **rigid fixed-base** monopile path: the pile is clamped at the
         mudline with no soil flexibility, matching
         :meth:`from_elastodyn_with_subdyn` and the bundled monopile
-        samples. Distributed soil springs (a Winkler ``distr_k`` /
-        ``hub_conn = 3`` foundation) and Morison hydrodynamics are out of
-        scope here and tracked separately. Raises ``ValueError`` if the
+        samples. Pass ``soil`` or ``soil_E`` for the soft-monopile tier
+        (lumped mudline coupled springs, ``hub_conn = 3``); this lowers the
+        coupled frequency relative to the rigid clamp. Fully distributed
+        Winkler ``distr_k`` springs and Morison hydrodynamics remain a
+        separate higher-fidelity follow-up. Raises ``ValueError`` if the
         monopile top and tower base do not meet at a common
         transition-piece elevation.
         """
@@ -576,6 +602,32 @@ class Tower:
         obj._bmi = bmi
         obj._sp = mt.section_props
         obj.coeff_validation = None
+
+        # Optional soil-pile interaction (issue #118): replace the rigid
+        # mudline clamp with a coupled-spring foundation (hub_conn = 3). Pass
+        # a pre-built ``soil`` MudlineFoundation, or ``soil_E`` to auto-build
+        # it from the ontology's pile geometry.
+        if soil is not None and soil_E is not None:
+            raise ValueError(
+                "pass either soil (a MudlineFoundation) or soil_E (auto-build "
+                "from the ontology), not both."
+            )
+        foundation = soil
+        if soil_E is not None:
+            from pybmodes.foundation import MudlineFoundation
+
+            foundation = MudlineFoundation.from_windio(
+                yaml_path,
+                soil_E=soil_E,
+                soil_nu=soil_nu,
+                soil_profile=soil_profile,  # type: ignore[arg-type]
+                pile_behaviour=pile_behaviour,
+                formula=soil_formula,  # type: ignore[arg-type]
+                component_monopile=component_monopile,
+                water_depth=water_depth,
+            )
+        if foundation is not None:
+            obj.attach_mudline_foundation(foundation)
         return obj
 
     @classmethod
