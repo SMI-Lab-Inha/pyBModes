@@ -10,6 +10,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Integrated soil-pile interaction on the WindIO monopile path (#118).**
+  `Tower.from_windio_with_monopile` gains a `soil` keyword (a pre-built
+  `MudlineFoundation`) and a `soil_E` / `soil_nu` / `soil_profile` /
+  `pile_behaviour` / `soil_formula` auto-build path. When given, the rigid
+  mudline clamp is replaced by the coupled-spring soil foundation and the
+  model switches to a soft monopile (`hub_conn=3`), lowering the coupled
+  frequency relative to the rigid clamp. A new
+  `MudlineFoundation.from_windio(yaml, soil_E=...)` classmethod extracts the
+  pile diameter, embedded length and EI at the mudline from the ontology, so
+  only the soil is specified. Reuses the validated `MudlineFoundation`
+  (#97) and `attach_mudline_foundation` wiring, removing the manual
+  BMI-poking the feature request showed. Fully distributed Winkler `distr_k`
+  springs remain a separate higher-fidelity follow-up.
+
 - **Material / outfitting overrides on the WindIO tower paths (#133).**
   `Tower.from_windio` and `Tower.from_windio_with_monopile` accept optional
   `E`, `rho`, `nu` and `outfitting_factor` keywords. Each defaults to

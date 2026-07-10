@@ -62,6 +62,7 @@ References
 from __future__ import annotations
 
 import math
+import pathlib
 import warnings
 from dataclasses import dataclass
 from typing import Literal
@@ -409,5 +410,92 @@ class MudlineFoundation:
             K_rr=K_rr,
             pile_behaviour=behaviour,
             soil_profile=soil_profile,
+            formula=formula,
+        )
+
+    @classmethod
+    def from_windio(
+        cls,
+        yaml_path: str | pathlib.Path,
+        *,
+        soil_E: float,
+        soil_nu: float = 0.3,
+        soil_profile: SoilProfile = "homogeneous",
+        pile_behaviour: str = "auto",
+        formula: FormulaFamily = "shadlou",
+        component_monopile: str = "monopile",
+        water_depth: float | None = None,
+        E: float | None = None,
+        thickness_interp: str = "linear",
+    ) -> MudlineFoundation:
+        """Build the mudline foundation from a WindIO monopile ontology plus
+        soil properties, auto-extracting the pile geometry (issue #118).
+
+        Only the soil is specified; the pile terms the coupled-spring model
+        needs are read from the ontology's ``monopile`` component:
+
+        - **pile diameter** — the monopile outer diameter at the mudline.
+        - **embedded length** — the mudline down to the pile base
+          (``-water_depth`` minus the monopile ``reference_axis.z`` base).
+        - **pile EI** — ``E * pi/64 (D^4 - (D - 2 t)^4)`` at the mudline, with
+          ``E`` the monopile material modulus from the ontology.
+
+        then defers to :meth:`from_soil_properties`. Pair the result with
+        :meth:`pybmodes.models.Tower.attach_mudline_foundation`, or let
+        :meth:`~pybmodes.models.Tower.from_windio_with_monopile` build and
+        attach it for you via its ``soil_E`` keyword.
+
+        ``water_depth`` (m, positive) locates the mudline and defaults to the
+        ontology's ``environment.water_depth``. ``E`` and ``thickness_interp``
+        override the monopile modulus and wall-thickness interpolation used
+        for ``pile_EI`` (``E=None`` uses the ontology value); pass the same
+        values here as the beam so the mudline springs stay consistent with
+        it under a material or wall-schedule sensitivity run. Raises
+        ``ValueError`` when the mudline is unknown or the monopile does not
+        extend below it (no embedded length to model soil reaction over).
+        Requires the optional ``[windio]`` extra (PyYAML).
+        """
+        from pybmodes.io.windio import _read_water_depth, read_windio_tubular
+
+        mp = read_windio_tubular(
+            yaml_path, component=component_monopile,
+            thickness_interp=thickness_interp,
+        )
+        wd = _read_water_depth(yaml_path, water_depth)
+        if wd is None:
+            raise ValueError(
+                "water_depth is required to place the mudline for the soil "
+                "springs; pass water_depth=... or set environment.water_depth "
+                "in the ontology."
+            )
+        mudline = -wd
+        if not (mp.z_base < mudline < mp.z_top):
+            raise ValueError(
+                f"the monopile (reference_axis.z {mp.z_base:g}..{mp.z_top:g} m) "
+                f"does not extend below the mudline (z = {mudline:g} m), so "
+                f"there is no embedded length to model soil reaction over. "
+                f"Check water_depth and the monopile reference_axis.z."
+            )
+        z_phys = mp.z_base + mp.station_grid * (mp.z_top - mp.z_base)
+        pile_diameter = float(np.interp(mudline, z_phys, mp.outer_diameter))
+        if thickness_interp == "piecewise_constant":
+            # Match the beam reduction: the wall is constant within a segment,
+            # taking the lower-station step value rather than a linear blend.
+            idx = int(np.searchsorted(z_phys, mudline, side="right")) - 1
+            idx = max(0, min(idx, mp.wall_thickness.size - 1))
+            wall = float(mp.wall_thickness[idx])
+        else:
+            wall = float(np.interp(mudline, z_phys, mp.wall_thickness))
+        inner = pile_diameter - 2.0 * wall
+        pile_E = mp.E if E is None else E
+        pile_EI = pile_E * math.pi / 64.0 * (pile_diameter**4 - inner**4)
+        return cls.from_soil_properties(
+            pile_diameter=pile_diameter,
+            pile_length_embedded=mudline - mp.z_base,
+            pile_EI=pile_EI,
+            soil_E=soil_E,
+            soil_nu=soil_nu,
+            soil_profile=soil_profile,
+            pile_behaviour=pile_behaviour,
             formula=formula,
         )

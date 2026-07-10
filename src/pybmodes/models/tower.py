@@ -466,6 +466,12 @@ class Tower:
         rho: float | None = None,
         nu: float | None = None,
         outfitting_factor: float | None = None,
+        soil: MudlineFoundation | None = None,
+        soil_E: float | None = None,
+        soil_nu: float = 0.3,
+        soil_profile: str = "homogeneous",
+        pile_behaviour: str = "auto",
+        soil_formula: str = "shadlou",
     ) -> Tower:
         """Build a combined **monopile + tower** fixed-bottom cantilever
         from a WindIO ontology ``.yaml`` (issue #92).
@@ -519,21 +525,53 @@ class Tower:
             the monopile and the tower segment, so a single value drives a
             whole-structure sensitivity sweep off a WindIO file. For
             per-segment materials, edit the ontology instead.
+        soil : optional pre-built :class:`pybmodes.MudlineFoundation`
+            (issue #118). When given, the rigid mudline clamp is replaced by
+            the foundation's coupled springs and the model is switched to a
+            soft monopile (``hub_conn = 3``) via
+            :meth:`attach_mudline_foundation`. Mutually exclusive with
+            ``soil_E``.
+        soil_E, soil_nu, soil_profile, pile_behaviour, soil_formula :
+            soil properties to **auto-build** the foundation (issue #118).
+            Pass ``soil_E`` (soil Young's modulus, Pa) and optionally the
+            others to have the pile geometry (diameter, embedded length and
+            EI at the mudline) read from the ontology and a
+            :class:`pybmodes.MudlineFoundation` built via
+            :meth:`MudlineFoundation.from_windio`, then attached. Needs a
+            ``water_depth`` (or ``environment.water_depth``) and a monopile
+            that extends below the mudline. Defaults reproduce
+            ``from_soil_properties``' defaults (``soil_nu=0.3``,
+            ``soil_profile="homogeneous"``, ``pile_behaviour="auto"``,
+            ``soil_formula="shadlou"``).
 
         Notes
         -----
-        Requires the optional ``[windio]`` extra (PyYAML). This is the
+        Requires the optional ``[windio]`` extra (PyYAML). Defaults to the
         **rigid fixed-base** monopile path: the pile is clamped at the
         mudline with no soil flexibility, matching
         :meth:`from_elastodyn_with_subdyn` and the bundled monopile
-        samples. Distributed soil springs (a Winkler ``distr_k`` /
-        ``hub_conn = 3`` foundation) and Morison hydrodynamics are out of
-        scope here and tracked separately. Raises ``ValueError`` if the
+        samples. Pass ``soil`` or ``soil_E`` for the soft-monopile tier
+        (lumped mudline coupled springs, ``hub_conn = 3``); this lowers the
+        coupled frequency relative to the rigid clamp. Fully distributed
+        Winkler ``distr_k`` springs and Morison hydrodynamics remain a
+        separate higher-fidelity follow-up. Raises ``ValueError`` if the
         monopile top and tower base do not meet at a common
         transition-piece elevation.
         """
         from pybmodes.io._elastodyn.adapter import _build_bmi_skeleton
         from pybmodes.io.windio import read_windio_monopile_tower
+
+        if lumped_rna_cal and (soil is not None or soil_E is not None):
+            raise ValueError(
+                "lumped_rna_cal is not supported together with a soil "
+                "foundation (soil / soil_E). The auto-RNA tip mass is "
+                "expressed in the clamped-base (hub_conn = 1) convention, "
+                "which a soft monopile (hub_conn = 3) interprets differently "
+                "and would misplace the rotary inertia. Pass an explicit "
+                "tip_mass for the soil-flexible base, or drop the soil for the "
+                "rigid clamped model (the basis ElastoDyn uses for tower mode "
+                "shapes regardless of soil)."
+            )
 
         if lumped_rna_cal:
             if tip_mass is not None:
@@ -576,6 +614,53 @@ class Tower:
         obj._bmi = bmi
         obj._sp = mt.section_props
         obj.coeff_validation = None
+
+        # Optional soil-pile interaction (issue #118): replace the rigid
+        # mudline clamp with a coupled-spring foundation (hub_conn = 3). Pass
+        # a pre-built ``soil`` MudlineFoundation, or ``soil_E`` to auto-build
+        # it from the ontology's pile geometry.
+        if soil is not None and soil_E is not None:
+            raise ValueError(
+                "pass either soil (a MudlineFoundation) or soil_E (auto-build "
+                "from the ontology), not both."
+            )
+        foundation = soil
+        if soil_E is not None:
+            from pybmodes.foundation import MudlineFoundation
+
+            foundation = MudlineFoundation.from_windio(
+                yaml_path,
+                soil_E=soil_E,
+                soil_nu=soil_nu,
+                soil_profile=soil_profile,  # type: ignore[arg-type]
+                pile_behaviour=pile_behaviour,
+                formula=soil_formula,  # type: ignore[arg-type]
+                component_monopile=component_monopile,
+                water_depth=water_depth,
+                # keep the mudline springs consistent with the beam's monopile
+                # under a material / wall-schedule override (Codex review #118)
+                E=E,
+                thickness_interp=thickness_interp,
+            )
+        if foundation is not None:
+            # The springs act at the mudline, so the beam must be truncated
+            # there. read_windio_monopile_tower only truncates when a water
+            # depth resolves; without one it clamps at the pile toe, which
+            # would leave the embedded pile as a free beam and place the
+            # springs at the toe. The soil_E path already requires the depth
+            # (via MudlineFoundation.from_windio); enforce it for the explicit
+            # ``soil`` path too (Codex review #118).
+            from pybmodes.io.windio import _read_water_depth
+
+            if _read_water_depth(yaml_path, water_depth) is None:
+                raise ValueError(
+                    "a soil foundation needs a resolved water depth so the "
+                    "beam is truncated to the mudline (and the springs act "
+                    "there, not at the monopile toe with the embedded pile "
+                    "left as a free beam). Pass water_depth=... or set "
+                    "environment.water_depth in the ontology."
+                )
+            obj.attach_mudline_foundation(foundation)
         return obj
 
     @classmethod
