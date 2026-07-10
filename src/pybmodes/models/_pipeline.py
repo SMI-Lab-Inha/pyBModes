@@ -64,10 +64,17 @@ def _generalised_mass_stiffness(
         gm_form = float(phi @ gm @ phi)
         v = float(eigvecs[iv, i]) if iv is not None else 0.0
         w = float(eigvecs[iw, i]) if iw is not None else 0.0
-        tip2 = v * v + w * w
-        if tip2 <= 0.0 or not np.isfinite(gm_form) or gm_form <= 0.0:
+        tip = float(np.hypot(v, w))
+        # Scale-aware guard: a torsion / heave / yaw-dominated mode has only
+        # numerical lateral tip motion (tip ~ eps of the mode's peak), for
+        # which the unit-tip normalisation is undefined. An exact-zero check
+        # would let that tiny value through and divide by it, so gate on the
+        # tip motion being a real fraction of the mode's largest DOF.
+        col_scale = float(np.max(np.abs(phi)))
+        if (col_scale <= 0.0 or tip <= 1.0e-8 * col_scale
+                or not np.isfinite(gm_form) or gm_form <= 0.0):
             continue
-        m = ref_mr * gm_form / tip2
+        m = ref_mr * gm_form / (tip * tip)
         gen_mass[i] = m
         gen_stiff[i] = (2.0 * np.pi * float(freqs_hz[i])) ** 2 * m
     return gen_mass, gen_stiff

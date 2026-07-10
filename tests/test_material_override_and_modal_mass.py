@@ -176,6 +176,28 @@ def test_generalized_mass_stiffness_populated() -> None:
     assert res.generalized_mass[0] > 4.0e5
 
 
+def test_generalized_mass_nan_for_near_zero_tip() -> None:
+    """A mode whose tip has only numerical lateral motion (torsion / heave /
+    yaw dominated) yields NaN rather than a huge value from dividing by a tiny
+    tip displacement (Codex review on #134)."""
+    from pybmodes.models._pipeline import _generalised_mass_stiffness
+
+    # active DOFs: tip v_disp (global 1), tip w_disp (global 3), one other DOF
+    active = np.array([1, 3, 99])
+    gm = np.eye(3)
+    # mode 0: genuine lateral tip (w_disp = 1). mode 1: tip is 1e-12 of a large
+    # non-lateral (twist-like) DOF -> undefined normalisation.
+    eigvecs = np.array([
+        [0.0, 0.0],
+        [1.0, 1.0e-12],
+        [0.5, 1.0],
+    ])
+    freqs = np.array([0.5, 2.0])
+    m, k = _generalised_mass_stiffness(eigvecs, gm, active, freqs, 10.0)
+    assert np.isfinite(m[0]) and m[0] > 0.0
+    assert np.isnan(m[1]) and np.isnan(k[1])
+
+
 def test_generalized_mass_stiffness_recovers_frequency() -> None:
     """sqrt(K/M)/(2*pi) reproduces each mode's frequency (issue #134)."""
     res = _clamped_tower_with_rna().run(n_modes=4, check_model=False)
