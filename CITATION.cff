@@ -22,8 +22,8 @@ authors:
     email: jaehoon.seo@inha.ac.kr
     affiliation: "Marine Structural Mechanics and Integrity Lab (SMI Lab), Inha University"
     orcid: "https://orcid.org/0000-0003-1047-2119" 
-version: 1.16.1
-date-released: "2026-07-06"
+version: 1.17.0
+date-released: "2026-07-10"
 license: Apache-2.0
 repository-code: "https://github.com/SMI-Lab-Inha/pyBModes"
 url: "https://github.com/SMI-Lab-Inha/pyBModes"
