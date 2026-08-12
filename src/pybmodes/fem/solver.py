@@ -77,6 +77,15 @@ model's zero-frequency modes, and the negative eigenvalues an indefinite
 ``K`` produces once ``run(gravity=...)`` loads a column past its
 buckling weight.
 
+Both the measurement and the retry use the **symmetrised** matrices, the
+ones the symmetric paths actually solve. The skew they discard is only
+guaranteed small relative to ``max|K|``, which in a model with a wide
+dynamic range can still be large relative to a soft mode's own
+eigenvalue; judging an exact symmetric solve against the unsymmetrised
+matrices would then read as a failure, and ``eig`` on those same
+matrices would "win decisively" purely by answering a different
+question.
+
 Note on the user-spec mode choice: ``eigsh(..., sigma=0,
 mode='buckling')`` reduces to ``OP = K^-1 K = I`` for ``sigma=0``,
 which is degenerate. The standard scipy idiom for "smallest
@@ -286,7 +295,18 @@ def solve_modes(
     # stays exact there.
     residual_fallback = False
     if sym:
-        sym_r = _modal_residuals(gk, gm, eigvals, eigvecs)
+        # Measure — and retry — against the matrices the symmetric paths
+        # actually solved. Both symmetrise internally, and the accepted
+        # skew is only guaranteed small relative to ``max|K|``: in a model
+        # with a wide dynamic range it can still be large relative to a
+        # soft mode's own eigenvalue. Judging an exact symmetric solve
+        # against the unsymmetrised matrices would then show a residual
+        # above the threshold, and ``eig`` on those same unsymmetrised
+        # matrices would "win decisively" purely by answering a different
+        # question — replacing a correct spectrum with the skew's.
+        gk_s = 0.5 * (gk + gk.T)
+        gm_s = 0.5 * (gm + gm.T)
+        sym_r = _modal_residuals(gk_s, gm_s, eigvals, eigvecs)
         if sym_r.size and float(sym_r.max()) > _SOLVER_OPTIONS.residual_retry_threshold:
             # ``preserve_full_spectrum`` so the two candidates describe the
             # same spectrum and equal indices mean the same mode. ``eigh``
@@ -295,10 +315,10 @@ def solve_modes(
             # the per-index comparison would then be reading two different
             # spectra against each other.
             alt_vals, alt_vecs = _solve_dense_general(
-                gk, gm, n_modes, preserve_full_spectrum=True,
+                gk_s, gm_s, n_modes, preserve_full_spectrum=True,
             )
             _normalize_columns_l2(alt_vecs)
-            alt_r = _modal_residuals(gk, gm, alt_vals, alt_vecs)
+            alt_r = _modal_residuals(gk_s, gm_s, alt_vals, alt_vecs)
             improved = _decisively_improved_modes(sym_r, alt_r, alt_vals.size,
                                                   eigvals.size)
             if improved.any():

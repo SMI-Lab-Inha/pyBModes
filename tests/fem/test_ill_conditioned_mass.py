@@ -464,6 +464,72 @@ class TestNegativeEigenvaluesSurviveTheRetry:
         assert eigvals.min() < 0.0
 
 
+class TestAcceptedSkewDoesNotTriggerTheRetry:
+    """A tolerated asymmetry must not be read as a solver failure.
+
+    ``_is_effectively_symmetric`` accepts skew up to ``symmetry_rtol``
+    times ``max|K|``, and the symmetric paths then solve the symmetrised
+    matrices. That skew is only small *relative to the largest* entry: in
+    a model with a wide dynamic range it can be comparable to a soft
+    mode's own eigenvalue. Measuring the resulting modes against the
+    unsymmetrised matrices makes an exact solve look broken, and the
+    general path then "wins decisively" only because it is answering a
+    different question — returning the skewed spectrum in place of the
+    symmetric one the caller was promised.
+    """
+
+    def _wide_range_with_accepted_skew(self):
+        from pybmodes.options import DEFAULT_SOLVER_OPTIONS as opt
+
+        # Eigenvalues spanning 1 down to 1e-12, so max|K| is 1 and the
+        # tolerated skew is ~1e-12 — the same size as the softest mode.
+        # The symmetry test compares max|A - A.T|, which is twice the
+        # off-diagonal skew, so stay under half the tolerance.
+        d = np.array([1.0, 1.0e-6, 1.0e-12])
+        gm = np.eye(3)
+        s = 0.4 * opt.symmetry_rtol * max(1.0, float(np.max(np.abs(d))))
+        # Couple the two softest modes: skew between the stiff ones would
+        # be negligible against their own scale and prove nothing.
+        gk = np.diag(d) + np.array([[0.0, 0.0, 0.0],
+                                    [0.0, 0.0, s],
+                                    [0.0, -s, 0.0]])
+        return gk, gm, d
+
+    def test_the_pair_is_accepted_as_symmetric(self):
+        from pybmodes.fem.solver import _is_effectively_symmetric
+
+        gk, gm, _d = self._wide_range_with_accepted_skew()
+        assert _is_effectively_symmetric(gk)
+        assert _is_effectively_symmetric(gm)
+
+    def test_no_retry_and_the_symmetric_spectrum_is_returned(self):
+        gk, gm, d = self._wide_range_with_accepted_skew()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            eigvals, _v, diag = solve_modes(
+                gk, gm, n_modes=3, return_diagnostics=True,
+            )
+        assert diag.residual_fallback is False
+        assert diag.path == "dense_symmetric"
+        # The symmetrised problem's spectrum, not the skewed one.
+        assert np.allclose(np.sort(eigvals), np.sort(d), rtol=1.0e-6)
+
+    def test_measuring_against_the_unsymmetrised_pair_would_have_tripped(self):
+        """The mechanism: the same exact modes look broken when judged
+        against matrices they were never solved on."""
+        from pybmodes.fem.solver import _modal_residuals
+
+        gk, gm, _d = self._wide_range_with_accepted_skew()
+        gk_s = 0.5 * (gk + gk.T)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            eigvals, eigvecs = solve_modes(gk, gm, n_modes=3)
+        against_solved = _modal_residuals(gk_s, gm, eigvals, eigvecs)
+        against_raw = _modal_residuals(gk, gm, eigvals, eigvecs)
+        assert against_solved.max() < 1.0e-8
+        assert against_raw.max() > 0.1
+
+
 class TestDiagnosticsContract:
     def test_residual_fallback_defaults_to_false(self):
         gk, gm = _cantilever_with_tip_lump(13, REALISTIC)
