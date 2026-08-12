@@ -136,6 +136,61 @@ def _coerce_gravity(gravity: bool | float, hub_conn: int) -> float:
     return g
 
 
+def _reject_foreign_pile(
+    foundation: MudlineFoundation,
+    mt: object,
+    embedded_length: float,
+    mudline_z: float,
+    rtol: float = 0.01,
+) -> None:
+    """Refuse a pre-built foundation describing a different pile (#118).
+
+    On the distributed path the soil model and the FE beam have to be the
+    same structure twice over: the bed's rate is ``D_P E_SO`` and its
+    extent is the embedded length, so either geometry term alone is
+    enough to decouple the soil from the beam it is supposed to act on.
+    A mismatch is silent otherwise — the model solves and returns a
+    plausible frequency for a pile that does not exist.
+
+    Both terms are compared against the ontology at the mudline. A
+    foundation that records neither (built straight from the three
+    stiffnesses) is left alone; it has nothing to contradict.
+    """
+    import numpy as _np
+
+    checks: list[tuple[str, float | None, float, str]] = [
+        ("embedded", foundation.pile_length_embedded, embedded_length,
+         "embedded length (m)"),
+    ]
+    monopile = getattr(mt, "monopile", None)
+    if monopile is not None and foundation.pile_diameter is not None:
+        z_phys = monopile.z_base + monopile.station_grid * (
+            monopile.z_top - monopile.z_base
+        )
+        checks.append((
+            "diameter",
+            foundation.pile_diameter,
+            float(_np.interp(mudline_z, z_phys, monopile.outer_diameter)),
+            "pile diameter at the mudline (m)",
+        ))
+
+    for _key, stored, actual, label in checks:
+        if stored is None or actual <= 0.0:
+            continue
+        if abs(float(stored) - actual) > rtol * actual:
+            raise ValueError(
+                f"the supplied soil foundation was built for a different "
+                f"pile: its {label} is {float(stored):g}, but this ontology "
+                f"and water depth give {actual:g}. The foundation's spring "
+                f"constants, and the distributed bed's own D_P.E_SO rate, "
+                f"would then describe a different structure from the beam "
+                f"they act on. Rebuild it with "
+                f"MudlineFoundation.from_windio(yaml, soil_E=..., "
+                f"water_depth=...), or pass soil_E=... and let this "
+                f"constructor build it."
+            )
+
+
 class Tower:
     """Compute natural frequencies and mode shapes for a tower.
 
@@ -794,21 +849,13 @@ class Tower:
                     )
                 # A pre-built foundation carries its own pile. If that is
                 # not the pile in the ontology, its coupled-spring
-                # constants describe a different structure, so refuse
-                # rather than lay a plausible-looking bed under the wrong
-                # one (Codex review on #138).
-                stored = foundation.pile_length_embedded
-                if stored is not None and abs(stored - embedded) > 0.01 * embedded:
-                    raise ValueError(
-                        f"the supplied soil foundation was built for a pile "
-                        f"embedded {stored:g} m, but this ontology and water "
-                        f"depth give {embedded:g} m. The foundation's spring "
-                        f"constants describe a different pile, so the two "
-                        f"cannot be combined. Rebuild it with "
-                        f"MudlineFoundation.from_windio(yaml, soil_E=..., "
-                        f"water_depth=...), or pass soil_E=... and let this "
-                        f"constructor build it."
-                    )
+                # constants — and the bed's own D_P E_SO rate — describe a
+                # different structure from the beam, so refuse rather than
+                # lay a plausible-looking bed under the wrong pile (Codex
+                # review on #138). Both geometry terms the foundation
+                # stores are checked, since either alone is enough to
+                # decouple the soil from the beam.
+                _reject_foreign_pile(foundation, mt, embedded, -wd)
                 obj.attach_mudline_foundation(
                     foundation, distributed=True,
                     embedded_length=embedded, n_stations=soil_n_stations,

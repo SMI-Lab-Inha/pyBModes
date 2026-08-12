@@ -1350,7 +1350,29 @@ def test_windio_monopile_soil_distributed_rejects_a_foreign_foundation(
         pile_diameter=9.0, pile_length_embedded=20.0, pile_EI=2.0e12,
         soil_E=1.4e8, pile_behaviour="flexible",
     )
-    with pytest.raises(ValueError, match="built for a pile embedded"):
+    with pytest.raises(ValueError, match="embedded length"):
+        Tower.from_windio_with_monopile(
+            p, tip_mass=5.0e5, soil=soil, soil_distributed=True,
+        )
+
+
+def test_windio_monopile_soil_distributed_rejects_a_foreign_diameter(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The bed's rate is D_P.E_SO, so a foundation with the right
+    embedment but the wrong pile diameter still describes a different
+    structure from the beam (Codex review on #138)."""
+    pytest.importorskip("yaml")
+    from pybmodes.foundation import MudlineFoundation
+
+    p = tmp_path / "embedded.yaml"
+    p.write_text(_WINDIO_MONOPILE_EMBEDDED, encoding="utf-8")
+    # Right embedment (45 m), wrong pile: the ontology's monopile is 9 m.
+    soil = MudlineFoundation.from_soil_properties(
+        pile_diameter=5.0, pile_length_embedded=45.0, pile_EI=2.0e12,
+        soil_E=1.4e8, pile_behaviour="flexible",
+    )
+    with pytest.raises(ValueError, match="pile diameter at the mudline"):
         Tower.from_windio_with_monopile(
             p, tip_mass=5.0e5, soil=soil, soil_distributed=True,
         )
