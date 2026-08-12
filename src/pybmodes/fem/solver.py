@@ -335,13 +335,12 @@ def solve_modes(
     # when that is nearly singular, and the backward error is what
     # catches it.
     #
-    # The matrices the returned modes actually solve. Both symmetric
-    # paths symmetrise internally, so for them the diagnostics — and the
-    # retry decision below — have to be measured against that pair, not
-    # against the raw one. Reporting the raw backward error would flag a
-    # correct solve as defective in telemetry meant to be auditable.
-    res_k, res_m = (0.5 * (gk + gk.T), 0.5 * (gm + gm.T)) if sym else (gk, gm)
-
+    # Everything below measures against the matrices the returned modes
+    # actually solve — the symmetrised pair on a symmetric path, since
+    # both symmetrise internally. That is passed as a flag rather than by
+    # building the pair here: materialising it costs two dense ngd-square
+    # allocations, and a large sparse solve would pay for them on every
+    # call without ever needing them.
     residual_fallback = False
     # Dense symmetric only — ``eigsh`` factorises ``K``, so it does not
     # have this failure, and its mode window is a different set that must
@@ -362,7 +361,11 @@ def solve_modes(
         # above the threshold, and ``eig`` on those same unsymmetrised
         # matrices would "win decisively" purely by answering a different
         # question — replacing a correct spectrum with the skew's.
-        gk_s, gm_s = res_k, res_m
+        # Only here is the symmetrised pair actually built: the retry
+        # feeds it to ``eig``, which needs matrices rather than products.
+        # Bounded by the size cap above, and this branch is rare.
+        gk_s = 0.5 * (gk + gk.T)
+        gm_s = 0.5 * (gm + gm.T)
         sym_r = _modal_residuals(gk_s, gm_s, eigvals, eigvecs)
         if sym_r.size and float(sym_r.max()) > _SOLVER_OPTIONS.residual_retry_threshold:
             try:
@@ -448,7 +451,7 @@ def solve_modes(
         return eigvals, eigvecs
 
     diagnostics = _build_diagnostics(
-        res_k, res_m, eigvals, eigvecs, path=path, symmetric=sym,
+        gk, gm, eigvals, eigvecs, path=path, symmetric=sym,
         n_requested=n_modes, sparse_fallback=sparse_fallback,
         fallback_reason=fallback_reason,
         residual_fallback=residual_fallback,
@@ -469,8 +472,17 @@ def _build_diagnostics(
     fallback_reason: str | None,
     residual_fallback: bool = False,
 ) -> SolverDiagnostics:
-    """Assemble a :class:`SolverDiagnostics` for a completed solve."""
-    residuals = _modal_residuals(gk, gm, eigvals, eigvecs)
+    """Assemble a :class:`SolverDiagnostics` for a completed solve.
+
+    ``symmetric`` selects the basis the residuals are measured on: a
+    symmetric path solved the symmetrised pair, so charging its modes for
+    the skew it was told to discard would report a correct solve as
+    defective. After a residual retry the modes came from ``eig`` on that
+    same symmetrised pair, so the basis is unchanged.
+    """
+    residuals = _modal_residuals(
+        gk, gm, eigvals, eigvecs, symmetrise=symmetric,
+    )
     cond = _mass_matrix_cond(gm, path)
     return SolverDiagnostics(
         path=path,
@@ -651,18 +663,37 @@ def _compare_candidate_modes(
     return improved, regressed
 
 
+def _apply(a: np.ndarray, v: np.ndarray, symmetrise: bool) -> np.ndarray:
+    """``A v``, or ``sym(A) v`` without ever forming ``sym(A)``.
+
+    ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``, and the right-hand side
+    costs two thin products rather than a dense ngd-square allocation.
+    That matters because the residuals are computed on every solve that
+    asks for diagnostics, including the large sparse ones the dense
+    allocation would hurt most.
+    """
+    if not symmetrise:
+        return np.asarray(a @ v)
+    return np.asarray(0.5 * (a @ v + a.T @ v))
+
+
 def _modal_residuals(
     gk: np.ndarray, gm: np.ndarray, eigvals: np.ndarray, eigvecs: np.ndarray,
+    *, symmetrise: bool = False,
 ) -> np.ndarray:
     """Per-mode relative backward error ``||K x - λ M x|| / ||K x||``.
 
     The honest health metric for a generalised modal solve. Cheap
     (matrix-times-thin-matrix), so computed for every path.
+
+    ``symmetrise`` measures against ``sym(A)`` instead, which is what a
+    symmetric path actually solved — see :func:`_apply` for why that is
+    done through the products rather than by building the pair.
     """
     if eigvecs.size == 0:
         return np.empty(0, dtype=float)
-    kx = gk @ eigvecs                                 # (ngd, k)
-    mx = gm @ eigvecs
+    kx = _apply(gk, eigvecs, symmetrise)              # (ngd, k)
+    mx = _apply(gm, eigvecs, symmetrise)
     num = np.linalg.norm(kx - mx * eigvals[np.newaxis, :], axis=0)
     den = np.linalg.norm(kx, axis=0)
     return np.asarray(num / np.where(den > 0.0, den, 1.0), dtype=float)

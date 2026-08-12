@@ -1130,6 +1130,76 @@ class TestTheModeCountWarningStaysHonest:
             solve_modes(gk, gm, n_modes=2)
 
 
+class TestTheGuardDoesNotTaxEverySolve:
+    """Residuals are computed on every solve that asks for diagnostics,
+    so measuring them must not allocate a copy of the matrices.
+
+    ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``, and only the second form
+    avoids a dense ngd-square pair. At ngd = 1500 that is a 54 MB peak
+    against 0.3 MB, and it falls on the large sparse solves the dense
+    copy would hurt most.
+    """
+
+    def _pair(self, n):
+        rng = np.random.default_rng(3)
+        a = rng.normal(size=(n, n))
+        gm = a @ a.T + n * np.eye(n)
+        b = rng.normal(size=(n, n))
+        gk = b @ b.T
+        return 0.5 * (gk + gk.T), 0.5 * (gm + gm.T)
+
+    def test_symmetrised_products_match_materialising(self):
+        from pybmodes.fem.solver import _modal_residuals
+
+        gk, gm = self._pair(40)
+        rng = np.random.default_rng(5)
+        v = np.linalg.qr(rng.normal(size=(40, 4)))[0]
+        w = np.linspace(1.0, 2.0, 4)
+        ks, ms = 0.5 * (gk + gk.T), 0.5 * (gm + gm.T)
+        assert np.allclose(
+            _modal_residuals(gk, gm, w, v, symmetrise=True),
+            _modal_residuals(ks, ms, w, v),
+            rtol=1.0e-12, atol=1.0e-15,
+        )
+
+    def test_an_asymmetric_pair_is_measured_unsymmetrised(self):
+        """The flag must actually change the basis, not be inert."""
+        from pybmodes.fem.solver import _modal_residuals
+
+        gk = np.array([[1.0, 0.9], [0.0, 2.0]])
+        gm = np.eye(2)
+        rng = np.random.default_rng(9)
+        v = np.linalg.qr(rng.normal(size=(2, 2)))[0]
+        w = np.array([1.0, 2.0])
+        raw = _modal_residuals(gk, gm, w, v)
+        sym = _modal_residuals(gk, gm, w, v, symmetrise=True)
+        assert not np.allclose(raw, sym)
+
+    def test_measuring_does_not_allocate_a_matrix_copy(self):
+        import tracemalloc
+
+        from pybmodes.fem.solver import _modal_residuals
+
+        n = 400
+        gk, gm = self._pair(n)
+        rng = np.random.default_rng(7)
+        v = np.linalg.qr(rng.normal(size=(n, 5)))[0]
+        w = np.linspace(1.0, 2.0, 5)
+
+        tracemalloc.start()
+        base = tracemalloc.get_traced_memory()[0]
+        _modal_residuals(gk, gm, w, v, symmetrise=True)
+        peak = tracemalloc.get_traced_memory()[1] - base
+        tracemalloc.stop()
+
+        # Well under a single dense copy, which is what materialising the
+        # symmetrised pair would have cost twice over.
+        assert peak < 0.25 * gk.nbytes, (
+            f"peak {peak / 1e6:.1f} MB against a {gk.nbytes / 1e6:.1f} MB "
+            f"matrix — the symmetrised pair is being materialised"
+        )
+
+
 class TestDiagnosticsContract:
     def test_residual_fallback_defaults_to_false(self):
         gk, gm = _cantilever_with_tip_lump(13, REALISTIC)
