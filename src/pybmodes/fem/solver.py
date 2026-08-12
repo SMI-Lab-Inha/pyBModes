@@ -86,6 +86,21 @@ matrices would then read as a failure, and ``eig`` on those same
 matrices would "win decisively" purely by answering a different
 question.
 
+**What this guard does not promise.** It rescues the case it was built
+for — a near-singular mass matrix, with no rigid-body modes — reliably
+and identically on every platform. It is *safe* everywhere else but not
+always *effective*: when rigid-body modes and a near-singular mass
+matrix coincide, QZ may represent the theoretically real zero modes as
+small complex-conjugate pairs that cannot be coerced back to real, and
+where those land in the spectrum differs between LAPACK builds. When
+they land inside the requested window the alternative's ordering cannot
+be verified, so the retry declines and the symmetric result stands.
+Declining is the deliberate choice: a guard added to stop a silent wrong
+answer must never introduce one, and backfilling a dropped zero mode
+with an elastic mode would do exactly that. The result in that situation
+is no worse than without the guard, and ``max_residual`` still reports
+the problem.
+
 Note on the user-spec mode choice: ``eigsh(..., sigma=0,
 mode='buckling')`` reduces to ``OP = K^-1 K = I`` for ``sigma=0``,
 which is degenerate. The standard scipy idiom for "smallest
@@ -329,13 +344,18 @@ def solve_modes(
             # different set — same length, backfilled from higher up — and
             # the per-index comparison would then be reading two different
             # spectra against each other.
-            alt_vals, alt_vecs = _solve_dense_general(
-                gk_s, gm_s, n_modes, preserve_full_spectrum=True,
+            alt_vals, alt_vecs, ordering_sound = _general_spectrum_for_retry(
+                gk_s, gm_s, n_modes,
             )
             _normalize_columns_l2(alt_vecs)
             alt_r = _modal_residuals(gk_s, gm_s, alt_vals, alt_vecs)
-            improved = _decisively_improved_modes(sym_r, alt_r, alt_vals.size,
-                                                  eigvals.size)
+            improved = (
+                _decisively_improved_modes(
+                    sym_r, alt_r, alt_vals.size, eigvals.size,
+                )
+                if ordering_sound
+                else np.zeros(0, dtype=bool)
+            )
             if improved.any():
                 idx = int(np.argmax(np.where(improved, sym_r[:improved.size], 0.0)))
                 warnings.warn(
@@ -564,42 +584,74 @@ def _solve_dense_symmetric(
 
 def _solve_dense_general(
     gk: np.ndarray, gm: np.ndarray, n_modes: int | None,
-    *, preserve_full_spectrum: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Dense LAPACK ``eig`` for genuinely asymmetric problems. Filters
     eigenvalues to the real, positive, finite subset (matches BModes
-    JJ's general-matrix path).
-
-    ``preserve_full_spectrum`` drops the **sign** filter, keeping every
-    real finite eigenvalue including zeros and negatives. Off by default,
-    so the asymmetric production path keeps the BModes-matching filter it
-    is validated against.
-
-    The retry path in :func:`solve_modes` turns it on, and needs the
-    whole spectrum rather than just its zeros. ``eigh`` filters nothing,
-    so any sign filter here would return a *different set* of modes —
-    same length, since the gap is backfilled from higher up — and the
-    per-index comparison would then be reading two different spectra
-    against each other, accepting a result that had quietly dropped a
-    mode and shifted every one above it. Both cases are real: a
-    free-free model's zero-frequency modes, and the genuinely negative
-    eigenvalues an indefinite ``K`` produces once ``run(gravity=...)``
-    loads a column past its buckling weight. With no filter at all both
-    paths return the ``n_modes`` smallest real eigenvalues, so equal
-    indices describe the same mode by construction.
-    """
+    JJ's general-matrix path)."""
     eigvals_all, eigvecs_all = eig(gk, gm)
     eigvals_real = np.real_if_close(eigvals_all, tol=1000)
-    valid = np.isreal(eigvals_real) & np.isfinite(eigvals_real.real)
-    if not preserve_full_spectrum:
-        valid = valid & (eigvals_real.real > 0.0)
-
+    valid = (
+        np.isreal(eigvals_real)
+        & np.isfinite(eigvals_real.real)
+        & (eigvals_real.real > 0.0)
+    )
     eigvals = eigvals_real.real[valid]
     eigvecs = np.real_if_close(eigvecs_all[:, valid], tol=1000).real
     order = np.argsort(eigvals)
     if n_modes is not None:
         order = order[: min(n_modes, order.size)]
     return eigvals[order], eigvecs[:, order]
+
+
+def _general_spectrum_for_retry(
+    gk: np.ndarray, gm: np.ndarray, n_modes: int | None,
+) -> tuple[np.ndarray, np.ndarray, bool]:
+    """The general solve as the retry in :func:`solve_modes` needs it.
+
+    Separate from :func:`_solve_dense_general` so the asymmetric
+    production path keeps the BModes-matching filter it is validated
+    against, untouched.
+
+    Two differences, both about making per-index comparison against a
+    symmetric solve meaningful.
+
+    **No sign filter.** ``eigh`` filters nothing, so discarding
+    non-positive eigenvalues here would return a *different set* — the
+    same length, since a truncated request backfills the gap from higher
+    up — and equal indices would stop meaning equal modes. Both omissions
+    are reachable: a free-free model's zero-frequency modes, and the
+    negative eigenvalues an indefinite ``K`` produces once
+    ``run(gravity=...)`` loads a column past its buckling weight.
+
+    **A verified ordering.** Complex eigenvalues cannot be kept, and on a
+    symmetric problem ``eig`` does emit a few rounding-induced conjugate
+    pairs — routinely, and harmlessly, because they land at the stiff end
+    of the spectrum far above any mode a caller asks for. Demanding that
+    none appear is therefore too strict to be useful. What actually
+    matters is narrower: whether anything discarded would have fallen
+    *inside* the returned window. The third return value reports that,
+    and the caller declines to swap when it is ``False``, since an
+    unverifiable ordering is not a basis for replacing a result.
+    """
+    vals_all, vecs_all = eig(gk, gm)
+    closed = np.real_if_close(vals_all, tol=1000)
+    keep_mask = np.isreal(closed) & np.isfinite(closed.real)
+
+    vals = closed.real[keep_mask]
+    vecs = np.real_if_close(vecs_all[:, keep_mask], tol=1000).real
+    order = np.argsort(vals)
+    vals, vecs = vals[order], vecs[:, order]
+
+    keep = vals.size if n_modes is None else min(n_modes, vals.size)
+    dropped = vals_all[~keep_mask]
+    ordering_sound = True
+    if dropped.size and keep:
+        # Sound exactly when every discarded eigenvalue sits above the
+        # window, so the window really is the smallest ``keep`` modes.
+        ordering_sound = bool(
+            np.min(dropped.real) > vals[keep - 1]
+        )
+    return vals[:keep], vecs[:, :keep], ordering_sound
 
 
 # ---------------------------------------------------------------------------

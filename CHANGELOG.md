@@ -39,9 +39,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ratio of two near-zero quantities and reads ~1 in both candidates
   however exact each is; on a maximum that floors the alternative and
   hides a genuinely corrupted elastic mode sitting alongside them, while
-  per mode it simply registers as no improvement. The retry also
-  preserves zero eigenvalues, so a spurious trigger on a free-free model
-  costs a little time rather than deleting a physical mode.
+  per mode it simply registers as no improvement. The retry preserves
+  zero and negative eigenvalues and verifies that nothing was dropped
+  from inside the returned window, so it can never backfill a missing
+  mode with a higher one and shift the spectrum.
+
+  **Scope.** The rescue is reliable and platform-independent for the case
+  it was built for, a near-singular mass matrix with no rigid-body modes.
+  Where rigid-body modes and a near-singular mass matrix coincide it is
+  safe but not always effective: QZ may return the theoretically real
+  zero modes as complex-conjugate pairs, and where those land differs
+  between LAPACK builds. When they fall inside the requested window the
+  alternative's ordering cannot be verified and the retry declines,
+  leaving the result no worse than before with `max_residual` still
+  reporting the problem. Declining is deliberate — a guard added to stop
+  a silent wrong answer must not be able to introduce one.
 
 - `SolverOptions` gains `residual_retry_threshold` and
   `residual_retry_improvement` for the two conditions above.

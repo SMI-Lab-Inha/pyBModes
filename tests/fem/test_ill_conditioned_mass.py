@@ -270,11 +270,14 @@ class TestRigidBodyModesAreNotMistakenForBreakdown:
         """The property that makes a false positive harmless: the
         alternative solve keeps the rigid modes rather than filtering
         them, so both candidates describe the same spectrum."""
-        from pybmodes.fem.solver import _solve_dense_general
+        from pybmodes.fem.solver import (
+            _general_spectrum_for_retry,
+            _solve_dense_general,
+        )
 
         gk, gm = self._free_free_with_a_zero_mode()
         dropped, _v = _solve_dense_general(gk, gm, 6)
-        kept, _w = _solve_dense_general(gk, gm, 6, preserve_full_spectrum=True)
+        kept, _w, _ok = _general_spectrum_for_retry(gk, gm, 6)
         assert abs(kept[0]) < 1.0e-8 * float(np.max(np.abs(kept)))
         assert np.min(dropped) > 0.0
         # The default filter loses the zero mode and shifts the rest up.
@@ -385,24 +388,57 @@ class TestRigidModesCannotMaskAnElasticBreakdown:
         alt_r = np.array([1.0e-9, 1.0e-9])
         assert not _decisively_improved_modes(sym_r, alt_r, 2, 3).any()
 
-    def test_the_breakdown_is_caught_and_corrected(self):
+    def test_the_result_is_never_made_worse(self):
+        """The portable guarantee when rigid modes and an ill-conditioned
+        mass matrix coincide.
+
+        Whether the rescue can *fire* here is build-dependent, and
+        deliberately so. QZ may represent this problem's theoretically
+        real zero modes as small complex-conjugate pairs that
+        ``real_if_close`` will not coerce; where those land in the
+        spectrum differs between LAPACK builds. On one they sit at the
+        stiff end, far above anything a caller asks for, and the retry
+        proceeds. On another they are the zero modes themselves, and
+        keeping the alternative would mean backfilling the gap with
+        elastic modes and silently shifting the spectrum.
+
+        So the guard verifies its ordering and declines when it cannot,
+        and the property asserted here is the one that holds either way:
+        the requested modes come back, in ascending order, and nothing is
+        lost. ``TestIllConditionedMassIsCaught`` pins the rescue itself on
+        the case it was built for, which has no rigid modes and behaves
+        identically everywhere.
+        """
         gk, gm = self._rigid_plus_ill_conditioned()
-        with pytest.warns(RuntimeWarning, match="do not satisfy"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
             eigvals, _v, diag = solve_modes(
                 gk, gm, n_modes=10, return_diagnostics=True,
             )
-        assert diag.residual_fallback is True
         assert eigvals.size == 10
+        assert diag.n_returned == 10
+        assert np.all(np.diff(eigvals) >= -1.0e-12 * max(1.0, abs(eigvals).max()))
 
-    def test_the_corrected_spectrum_matches_the_underlying_one(self):
-        """The rotation and the extra rigid DOFs do not change the
-        cantilever's own eigenvalues, so the corrected solve must still
-        contain the analytic lump frequency."""
-        gk, gm = self._rigid_plus_ill_conditioned()
-        with pytest.warns(RuntimeWarning):
-            eigvals, _v = solve_modes(gk, gm, n_modes=10)
-        f = eigvals_to_hz(eigvals, ROMG)
-        assert np.min(np.abs(f - _analytic())) < 5.0e-3 * _analytic()
+    def test_an_unverifiable_ordering_declines_the_swap(self, monkeypatch):
+        """When the alternative drops a mode from inside the window, its
+        ordering cannot be trusted and the symmetric result stands."""
+        import pybmodes.fem.solver as solvermod
+
+        real_fn = solvermod._general_spectrum_for_retry
+
+        def unsound(gk, gm, n_modes):
+            vals, vecs, _ok = real_fn(gk, gm, n_modes)
+            return vals, vecs, False
+
+        monkeypatch.setattr(solvermod, "_general_spectrum_for_retry", unsound)
+        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _v, _x, diag = solve_modes(
+                gk, gm, n_modes=4, return_diagnostics=True,
+            )
+        assert diag.residual_fallback is False
+        assert diag.path == "dense_symmetric"
 
 
 class TestNegativeEigenvaluesSurviveTheRetry:
@@ -434,11 +470,14 @@ class TestNegativeEigenvaluesSurviveTheRetry:
         return 0.5 * (k_rot + k_rot.T), 0.5 * (m_rot + m_rot.T)
 
     def test_the_default_filter_would_drop_the_unstable_mode(self):
-        from pybmodes.fem.solver import _solve_dense_general
+        from pybmodes.fem.solver import (
+            _general_spectrum_for_retry,
+            _solve_dense_general,
+        )
 
         gk, gm = self._indefinite()
         dropped, _v = _solve_dense_general(gk, gm, 6)
-        kept, _w = _solve_dense_general(gk, gm, 6, preserve_full_spectrum=True)
+        kept, _w, _ok = _general_spectrum_for_retry(gk, gm, 6)
         assert kept.min() < 0.0            # the unstable mode is present
         assert dropped.min() > 0.0         # and absent from the default
         # Same length, shifted spectrum — the trap the index comparison
@@ -540,6 +579,59 @@ class TestAcceptedSkewDoesNotTriggerTheRetry:
         against_raw = _modal_residuals(gk, gm, eigvals, eigvecs)
         assert against_solved.max() < 1.0e-8
         assert against_raw.max() > 0.1
+
+
+class TestTheRetryVerifiesItsOrderingRatherThanAssumingIt:
+    """Index matching is only sound if the alternative recovered every
+    mode.
+
+    A symmetric problem has ``ngd`` real eigenvalues, so if ``eig``
+    returns fewer after its real / finite filter, one was discarded — and
+    a truncated request would have backfilled the gap from higher up,
+    leaving equal indices pointing at different modes. The sign filter was
+    one route to that and is switched off; a rounding-induced complex pair
+    is another that no flag can prevent, so completeness is checked rather
+    than assumed.
+    """
+
+    def test_a_sound_ordering_is_the_precondition_for_swapping(self):
+        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
+        with pytest.warns(RuntimeWarning):
+            _v, _x, diag = solve_modes(
+                gk, gm, n_modes=4, return_diagnostics=True,
+            )
+        # This case does swap, so the precondition held.
+        assert diag.residual_fallback is True
+
+    def test_a_drop_above_the_window_leaves_the_ordering_sound(self):
+        """Complex pairs at the stiff end are routine and harmless — they
+        sit far above anything the caller asked for, so the window is
+        still the smallest ``n_modes``."""
+        from pybmodes.fem.solver import _general_spectrum_for_retry
+
+        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
+        vals, _v, sound = _general_spectrum_for_retry(gk, gm, 4)
+        assert sound is True
+        assert vals.size == 4
+
+    def test_a_drop_inside_the_window_makes_the_ordering_unsound(self):
+        """A discarded eigenvalue below the top of the window means the
+        window is not the smallest ``n_modes`` and cannot be compared by
+        index."""
+        from pybmodes.fem.solver import _general_spectrum_for_retry
+
+        # Two well-separated real modes plus a complex pair placed below
+        # them, which no coercion will make real.
+        gm = np.eye(4)
+        gk = np.array([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, -1.0e-3],
+            [0.0, 0.0, 1.0e-3, 0.0],
+        ])
+        vals, _v, sound = _general_spectrum_for_retry(gk, gm, 2)
+        assert sound is False
+        assert vals.size == 2
 
 
 class TestDiagnosticsContract:
