@@ -478,6 +478,7 @@ def read_windio_monopile_tower(
     rho: float | None = None,
     nu: float | None = None,
     outfitting_factor: float | None = None,
+    clamp_at_mudline: bool = True,
 ) -> WindIOMonopileTower:
     """Reduce the ``monopile`` and ``tower`` components and splice them
     into one fixed-bottom cantilever (issue #92).
@@ -517,6 +518,14 @@ def read_windio_monopile_tower(
         (issue #133), each ``None`` by default (use the ontology value).
         When given, the override is applied to **both** the monopile and the
         tower segment before the tube reduction.
+    clamp_at_mudline : when ``False``, keep the embedded pile in the beam
+        even though a water depth resolves — the caller intends to support
+        it some other way, e.g. with the distributed Winkler soil springs of
+        :meth:`pybmodes.models.Tower.attach_mudline_foundation` (issue
+        #118). The default ``True`` truncates at the seabed as described
+        above. Note the resulting beam is **not** a valid rigid-clamped
+        model on its own: without soil it is the free-cantilever failure
+        mode issue #121 fixed.
 
     Raises
     ------
@@ -561,7 +570,7 @@ def read_windio_monopile_tower(
     # from the caller or the ontology's environment block. With no water
     # depth available the monopile base is taken as the clamp (the previous
     # behaviour, correct when the axis already begins at the mudline).
-    wd = _read_water_depth(yaml_path, water_depth)
+    wd = _read_water_depth(yaml_path, water_depth) if clamp_at_mudline else None
     if wd is not None:
         mudline_z = -wd
         if mudline_z >= mp.z_top:

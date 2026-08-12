@@ -514,6 +514,8 @@ class Tower:
         soil_profile: str = "homogeneous",
         pile_behaviour: str = "auto",
         soil_formula: str = "shadlou",
+        soil_distributed: bool = False,
+        soil_n_stations: int = 20,
     ) -> Tower:
         """Build a combined **monopile + tower** fixed-bottom cantilever
         from a WindIO ontology ``.yaml`` (issue #92).
@@ -585,6 +587,14 @@ class Tower:
             ``from_soil_properties``' defaults (``soil_nu=0.3``,
             ``soil_profile="homogeneous"``, ``pile_behaviour="auto"``,
             ``soil_formula="shadlou"``).
+        soil_distributed : select the **distributed Winkler** soil tier
+            instead of the lumped mudline springs (issue #118). The
+            embedded pile is kept in the beam rather than truncated at
+            the mudline, and a spring bed is laid along it, so the pile's
+            own deflection below the seabed is resolved instead of
+            condensed onto a base spring. Requires ``soil`` or ``soil_E``.
+        soil_n_stations : number of spring stations along the embedded
+            length when ``soil_distributed`` (default 20).
 
         Notes
         -----
@@ -593,12 +603,12 @@ class Tower:
         mudline with no soil flexibility, matching
         :meth:`from_elastodyn_with_subdyn` and the bundled monopile
         samples. Pass ``soil`` or ``soil_E`` for the soft-monopile tier
-        (lumped mudline coupled springs, ``hub_conn = 3``); this lowers the
-        coupled frequency relative to the rigid clamp. Fully distributed
-        Winkler ``distr_k`` springs and Morison hydrodynamics remain a
-        separate higher-fidelity follow-up. Raises ``ValueError`` if the
-        monopile top and tower base do not meet at a common
-        transition-piece elevation.
+        (``hub_conn = 3``), which lowers the coupled frequency relative to
+        the rigid clamp — lumped mudline springs by default, or the
+        distributed Winkler bed with ``soil_distributed=True``. Morison
+        hydrodynamics on the submerged length remains a separate
+        follow-up. Raises ``ValueError`` if the monopile top and tower
+        base do not meet at a common transition-piece elevation.
         """
         from pybmodes.io._elastodyn.adapter import _build_bmi_skeleton
         from pybmodes.io.windio import read_windio_monopile_tower
@@ -626,6 +636,22 @@ class Tower:
 
             tip_mass = read_windio_rna(yaml_path, angle_units=rna_angle_units)
 
+        if soil is not None and soil_E is not None:
+            raise ValueError(
+                "pass either soil (a MudlineFoundation) or soil_E (auto-build "
+                "from the ontology), not both."
+            )
+        has_soil = soil is not None or soil_E is not None
+        if soil_distributed and not has_soil:
+            raise ValueError(
+                "soil_distributed=True needs a soil model to distribute. Pass "
+                "soil_E=... (auto-build from the ontology) or a pre-built "
+                "soil=MudlineFoundation(...)."
+            )
+
+        # The distributed Winkler bed acts on the embedded pile, so that
+        # length has to stay in the beam; the lumped springs condense onto
+        # the mudline, so there the beam is truncated at the seabed.
         mt = read_windio_monopile_tower(
             yaml_path,
             component_tower=component_tower,
@@ -633,12 +659,13 @@ class Tower:
             thickness_interp=thickness_interp,
             n_nodes=n_nodes,
             water_depth=water_depth,
+            clamp_at_mudline=not soil_distributed,
             E=E, rho=rho, nu=nu, outfitting_factor=outfitting_factor,
         )
         tip = _coerce_tip_mass(tip_mass)
         bmi = _build_bmi_skeleton(
             title=(
-                f"WindIO monopile+tower (mudline z={mt.z_base:g} m, "
+                f"WindIO monopile+tower (base z={mt.z_base:g} m, "
                 f"TP z={mt.z_transition:g} m, top z={mt.z_top:g} m)"
             ),
             beam_type=2,
@@ -658,14 +685,9 @@ class Tower:
         obj.coeff_validation = None
 
         # Optional soil-pile interaction (issue #118): replace the rigid
-        # mudline clamp with a coupled-spring foundation (hub_conn = 3). Pass
-        # a pre-built ``soil`` MudlineFoundation, or ``soil_E`` to auto-build
+        # mudline clamp with a soil foundation (hub_conn = 3). Pass a
+        # pre-built ``soil`` MudlineFoundation, or ``soil_E`` to auto-build
         # it from the ontology's pile geometry.
-        if soil is not None and soil_E is not None:
-            raise ValueError(
-                "pass either soil (a MudlineFoundation) or soil_E (auto-build "
-                "from the ontology), not both."
-            )
         foundation = soil
         if soil_E is not None:
             from pybmodes.foundation import MudlineFoundation
@@ -685,24 +707,42 @@ class Tower:
                 thickness_interp=thickness_interp,
             )
         if foundation is not None:
-            # The springs act at the mudline, so the beam must be truncated
-            # there. read_windio_monopile_tower only truncates when a water
-            # depth resolves; without one it clamps at the pile toe, which
-            # would leave the embedded pile as a free beam and place the
-            # springs at the toe. The soil_E path already requires the depth
-            # (via MudlineFoundation.from_windio); enforce it for the explicit
-            # ``soil`` path too (Codex review #118).
+            # Both tiers need the mudline located. Lumped springs act there,
+            # so the beam must be truncated there — read_windio_monopile_tower
+            # only truncates when a water depth resolves, and without one it
+            # clamps at the pile toe, which would leave the embedded pile as a
+            # free beam with the springs at the wrong end. The distributed bed
+            # needs the depth to know how much of the beam is embedded. The
+            # soil_E path already requires it (via MudlineFoundation
+            # .from_windio); enforce it for the explicit ``soil`` path too
+            # (Codex review #118).
             from pybmodes.io.windio import _read_water_depth
 
-            if _read_water_depth(yaml_path, water_depth) is None:
+            wd = _read_water_depth(yaml_path, water_depth)
+            if wd is None:
                 raise ValueError(
-                    "a soil foundation needs a resolved water depth so the "
-                    "beam is truncated to the mudline (and the springs act "
-                    "there, not at the monopile toe with the embedded pile "
-                    "left as a free beam). Pass water_depth=... or set "
+                    "a soil foundation needs a resolved water depth to place "
+                    "the mudline (the lumped springs act there and the beam is "
+                    "truncated to it; the distributed bed measures the embedded "
+                    "length from it). Pass water_depth=... or set "
                     "environment.water_depth in the ontology."
                 )
-            obj.attach_mudline_foundation(foundation)
+            if soil_distributed:
+                embedded = -wd - mt.z_base
+                if embedded <= 0.0:
+                    raise ValueError(
+                        f"the monopile base (z = {mt.z_base:g} m) is at or "
+                        f"above the mudline (z = {-wd:g} m), so there is no "
+                        f"embedded length for the distributed soil springs to "
+                        f"act over. Check water_depth and the monopile "
+                        f"reference_axis.z."
+                    )
+                obj.attach_mudline_foundation(
+                    foundation, distributed=True,
+                    embedded_length=embedded, n_stations=soil_n_stations,
+                )
+            else:
+                obj.attach_mudline_foundation(foundation)
         return obj
 
     @classmethod
@@ -1312,19 +1352,54 @@ class Tower:
         return obj
 
     def attach_mudline_foundation(
-        self, foundation: MudlineFoundation,
+        self, foundation: MudlineFoundation, *,
+        distributed: bool = False,
+        embedded_length: float | None = None,
+        n_stations: int = 20,
     ) -> Tower:
-        """Attach a mudline coupled-spring soil foundation to a clamped
-        monopile model and switch the boundary condition to
-        ``hub_conn = 3`` (soft monopile, axial + torsion clamped,
-        lateral + rocking free).
+        """Attach a soil foundation to a monopile model and switch the
+        boundary condition to ``hub_conn = 3`` (soft monopile, axial +
+        torsion clamped, lateral + rocking free).
 
-        Wires the foundation's 6 x 6 ``mooring_K`` block into a fresh
+        Two fidelity tiers share this entry point (issue #118).
+
+        **Lumped** (``distributed=False``, the default) wires the
+        foundation's 6 x 6 ``mooring_K`` block into a fresh
         :class:`~pybmodes.io.bmi.PlatformSupport` carrying zero hydro
-        and zero platform inertia, sets ``tow_support = 1`` (inline
-        platform block) and flips ``hub_conn`` to ``3``. The tower's
-        section properties and tip mass are preserved. Returns ``self``
-        for chaining.
+        and zero platform inertia. The whole soil reaction is condensed
+        onto the beam's base node, so the model's beam must be the
+        structure **above the mudline**.
+
+        **Distributed** (``distributed=True``) instead lays a Winkler
+        spring bed along the embedded pile via
+        :meth:`~pybmodes.foundation.MudlineFoundation.distributed_springs`
+        and writes it into the support block's ``distr_k_z`` /
+        ``distr_k`` arrays, leaving ``mooring_K`` zero. Here the model's
+        beam must **include the embedded pile**, with its base at the
+        pile toe, because that is what the springs act on. The soil then
+        resists along its real length rather than through a condensed
+        base spring, which resolves the pile's own deflection shape below
+        the mudline instead of assuming it.
+
+        Parameters
+        ----------
+        foundation : the soil model. ``distributed=True`` additionally
+            requires it to carry the pile geometry it was derived from,
+            i.e. to have come from
+            :meth:`~pybmodes.foundation.MudlineFoundation.from_soil_properties`
+            or :meth:`~pybmodes.foundation.MudlineFoundation.from_windio`.
+        distributed : select the spring-bed tier described above.
+        embedded_length : embedded pile length in metres, i.e. how far up
+            from the beam base the spring bed reaches. Defaults to the
+            foundation's own ``pile_length_embedded``; override it when
+            the beam base is not exactly the pile toe. Ignored unless
+            ``distributed``.
+        n_stations : number of spring stations along the embedded length
+            (default 20). Ignored unless ``distributed``.
+
+        Sets ``tow_support = 1`` (inline platform block) and flips
+        ``hub_conn`` to ``3``. The tower's section properties and tip
+        mass are preserved. Returns ``self`` for chaining.
 
         Use this to convert a rigid-clamped monopile model built via
         :meth:`from_windio_with_monopile`, :meth:`from_elastodyn_with_subdyn`,
@@ -1361,6 +1436,40 @@ class Tower:
                 "cable model (hub_conn = 4); the BC has no lateral "
                 "spring DOF to wire the mudline stiffness into."
             )
+
+        mooring_K = np.zeros((6, 6))
+        distr_k_z = np.zeros(0)
+        distr_k = np.zeros(0)
+        if distributed:
+            length = (foundation.pile_length_embedded
+                      if embedded_length is None else float(embedded_length))
+            if length is None:
+                raise ValueError(
+                    "distributed=True needs the embedded pile length. Build "
+                    "the foundation from soil properties (which records it) "
+                    "or pass embedded_length=... explicitly."
+                )
+            if not np.isfinite(length) or length <= 0.0:
+                raise ValueError(
+                    f"embedded_length must be a positive, finite length in "
+                    f"metres; got {length!r}"
+                )
+            if length > float(self._bmi.radius) * (1.0 + 1e-9):
+                raise ValueError(
+                    f"the embedded length ({length:g} m) exceeds the whole "
+                    f"flexible beam ({self._bmi.radius:g} m). With "
+                    f"distributed=True the beam must run from the pile toe "
+                    f"up, so the embedded pile is part of it — build the "
+                    f"model without truncating at the mudline."
+                )
+            depth, k_line = foundation.distributed_springs(n_stations=n_stations)
+            # ``distr_k_z`` is measured upward from the flexible beam base,
+            # which is the pile toe here, so flip the mudline-down depths.
+            distr_k_z = np.asarray(length - depth[::-1], dtype=float)
+            distr_k = np.asarray(k_line[::-1], dtype=float)
+        else:
+            mooring_K = foundation.as_mooring_K()
+
         self._bmi.support = PlatformSupport(
             draft=0.0,
             cm_pform=0.0,
@@ -1369,11 +1478,11 @@ class Tower:
             ref_msl=0.0,
             hydro_M=np.zeros((6, 6)),
             hydro_K=np.zeros((6, 6)),
-            mooring_K=foundation.as_mooring_K(),
+            mooring_K=mooring_K,
             distr_m_z=np.zeros(0),
             distr_m=np.zeros(0),
-            distr_k_z=np.zeros(0),
-            distr_k=np.zeros(0),
+            distr_k_z=distr_k_z,
+            distr_k=distr_k,
         )
         self._bmi.tow_support = 1
         self._bmi.hub_conn = 3
