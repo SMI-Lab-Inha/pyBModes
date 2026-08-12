@@ -47,9 +47,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   spectrum, not the modes that prompted it, so a candidate that rescues
   one mode while pushing a previously acceptable one above the failure
   threshold is refused — it would hand back a new bad mode in place of an
-  old one. Regression mirrors improvement with the same threshold and
-  factor, so rigid-body modes reading ~1 in both candidates are not
-  mistaken for it.
+  old one. A mode counts as regressed when the candidate leaves it
+  failing and either it was acceptable before, any crossing counting
+  however small, or it was already failing and is now decisively worse.
+  Rigid-body modes read ~1 in both candidates, so they were never on the
+  acceptable side to cross from and their noise is not mistaken for a
+  regression.
 
   The comparison is made **per mode** rather than on the two maxima, so
   that rigid-body modes cannot distort it. Their backward error is a

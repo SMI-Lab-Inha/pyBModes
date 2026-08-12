@@ -515,14 +515,19 @@ def _compare_candidate_modes(
     decisively better" is only half the test; the other half is that no
     mode got decisively worse.
 
-    Regression mirrors improvement exactly, using the same threshold and
-    the same factor rather than a second notion of acceptable: a mode has
-    regressed when it ends up above the failure threshold *and* is worse
-    there by the margin that would have counted as decisive in the other
-    direction. The symmetry matters for rigid-body modes, whose residual
-    is ~1 in both candidates and wobbles a little either way — that is
-    noise, not a regression, and a bare ``alt > sym`` test would read it
-    as one and block every rescue that happens to sit beside them.
+    A mode has regressed when the candidate leaves it above the failure
+    threshold **and** either it was acceptable before — any crossing
+    counts, however small — or it was already failing and is now
+    decisively worse by the same factor that defines an improvement.
+
+    The two halves cover different things and both are needed. Without
+    the crossing test a mode sliding from 0.09 to 0.8 escapes, since that
+    is less than the tenfold margin; without the decisive test a mode
+    already at 0.2 could be driven to 5.0 unremarked. And the crossing
+    test cannot mistake rigid-body noise for a regression, which is what
+    a bare ``alt > sym`` comparison would do: those modes read ~1 in both
+    candidates and wobble either way, so they were never on the
+    acceptable side of the threshold to cross from.
 
     The comparison has to be **per mode**, not on the two maxima. A
     rigid-body mode's backward error is a ratio of two near-zero
@@ -555,7 +560,13 @@ def _compare_candidate_modes(
     factor = _SOLVER_OPTIONS.residual_retry_improvement
     sym, alt = sym_r[:n], alt_r[:n]
     improved = (sym > threshold) & (alt < factor * sym)
-    regressed = (alt > threshold) & (sym < factor * alt)
+    # A mode regresses when the candidate leaves it failing, and either
+    # it was acceptable before — any crossing of the threshold counts,
+    # however small — or it was already failing and is now decisively
+    # worse. The crossing test cannot mistake rigid-body noise for a
+    # regression, because those modes read ~1 and so were never on the
+    # acceptable side to cross from.
+    regressed = (alt > threshold) & ((sym <= threshold) | (sym < factor * alt))
     return improved, regressed
 
 

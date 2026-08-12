@@ -814,6 +814,30 @@ class TestARetryThatTradesModesIsRefused:
         # The rule the caller applies.
         assert not (improved.any() and not regressed.any())
 
+    def test_a_small_crossing_of_the_threshold_is_still_a_regression(self):
+        """A mode sliding from just under the threshold to well over it
+        worsens by less than the decisive factor, so the mirrored test
+        alone lets it through. Any crossing counts."""
+        from pybmodes.fem.solver import _compare_candidate_modes
+
+        sym_r = np.array([0.52, 0.09])
+        alt_r = np.array([1.0e-10, 0.8])
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 2, 2)
+        assert improved[0]
+        assert regressed[1]
+        assert not (improved.any() and not regressed.any())
+
+    def test_an_already_failing_mode_driven_much_worse_is_a_regression(self):
+        """The other half: no crossing, because it was failing already,
+        but a decisive worsening all the same."""
+        from pybmodes.fem.solver import _compare_candidate_modes
+
+        sym_r = np.array([0.52, 0.2])
+        alt_r = np.array([1.0e-10, 5.0])
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 2, 2)
+        assert improved[0]
+        assert regressed[1]
+
     def test_a_mode_that_worsens_but_stays_acceptable_is_not_a_regression(self):
         """Mode 2 above goes from 5.7e-6 to 3.5e-5 — six times worse and
         entirely irrelevant, since it is nowhere near the threshold."""
