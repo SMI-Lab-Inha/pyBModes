@@ -64,12 +64,18 @@ alternative and hides a genuinely corrupted elastic mode alongside them,
 while per mode they simply register as ~1 against ~1, i.e. no
 improvement. Identifying such modes and excluding them was tried twice
 and abandoned — neither their eigenvalue nor their strain separates them
-reliably from a genuinely soft mode. The retry additionally runs with
-``keep_rigid_body=True`` so the two candidates describe the same
-spectrum and equal indices mean the same mode; otherwise a retry
-triggered by a free-free model's zero modes would swap in a mode set
-with those modes filtered out, which is worse than the imprecision it
-was trying to fix.
+reliably from a genuinely soft mode.
+
+The retry additionally runs with ``preserve_full_spectrum=True``, which
+drops the sign filter the general path normally applies. ``eigh``
+filters nothing, so keeping it would return a *different set* of modes —
+the same length, since the gap is backfilled from higher up — and the
+per-index comparison would be reading two different spectra against each
+other, able to accept a result that had quietly dropped a mode and
+shifted every one above it. Both omissions are reachable: a free-free
+model's zero-frequency modes, and the negative eigenvalues an indefinite
+``K`` produces once ``run(gravity=...)`` loads a column past its
+buckling weight.
 
 Note on the user-spec mode choice: ``eigsh(..., sigma=0,
 mode='buckling')`` reduces to ``OP = K^-1 K = I`` for ``sigma=0``,
@@ -282,12 +288,14 @@ def solve_modes(
     if sym:
         sym_r = _modal_residuals(gk, gm, eigvals, eigvecs)
         if sym_r.size and float(sym_r.max()) > _SOLVER_OPTIONS.residual_retry_threshold:
-            # ``keep_rigid_body`` so the two candidates describe the same
-            # spectrum. Without it a free-free model's zero modes would be
-            # filtered out of the alternative only, and a retry triggered
-            # by those very modes would swap in a different mode set.
+            # ``preserve_full_spectrum`` so the two candidates describe the
+            # same spectrum and equal indices mean the same mode. ``eigh``
+            # filters nothing, so any sign filter here would return a
+            # different set — same length, backfilled from higher up — and
+            # the per-index comparison would then be reading two different
+            # spectra against each other.
             alt_vals, alt_vecs = _solve_dense_general(
-                gk, gm, n_modes, keep_rigid_body=True,
+                gk, gm, n_modes, preserve_full_spectrum=True,
             )
             _normalize_columns_l2(alt_vecs)
             alt_r = _modal_residuals(gk, gm, alt_vals, alt_vecs)
@@ -519,44 +527,39 @@ def _solve_dense_symmetric(
     return np.asarray(eigvals), np.asarray(eigvecs)
 
 
-# A real eigenvalue this far below zero, relative to the spectrum's own
-# magnitude, is a rigid-body mode sitting at zero plus rounding rather
-# than a non-physical negative one.
-_RIGID_BODY_NEGATIVE_RTOL = 1.0e-10
-
-
 def _solve_dense_general(
     gk: np.ndarray, gm: np.ndarray, n_modes: int | None,
-    *, keep_rigid_body: bool = False,
+    *, preserve_full_spectrum: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Dense LAPACK ``eig`` for genuinely asymmetric problems. Filters
     eigenvalues to the real, positive, finite subset (matches BModes
     JJ's general-matrix path).
 
-    ``keep_rigid_body`` additionally retains eigenvalues that sit at zero
-    to within rounding, clamping them to exactly zero. Off by default, so
-    the asymmetric production path keeps the BModes-matching filter it is
-    validated against. The retry path in :func:`solve_modes` turns it on:
-    a free-free model's zero-frequency modes are physical, and dropping
-    them there would replace a possibly-imprecise spectrum with a
-    structurally different one — which is a worse outcome than the
-    imprecision, and would make a false-positive retry actively harmful
-    rather than merely wasteful.
+    ``preserve_full_spectrum`` drops the **sign** filter, keeping every
+    real finite eigenvalue including zeros and negatives. Off by default,
+    so the asymmetric production path keeps the BModes-matching filter it
+    is validated against.
+
+    The retry path in :func:`solve_modes` turns it on, and needs the
+    whole spectrum rather than just its zeros. ``eigh`` filters nothing,
+    so any sign filter here would return a *different set* of modes —
+    same length, since the gap is backfilled from higher up — and the
+    per-index comparison would then be reading two different spectra
+    against each other, accepting a result that had quietly dropped a
+    mode and shifted every one above it. Both cases are real: a
+    free-free model's zero-frequency modes, and the genuinely negative
+    eigenvalues an indefinite ``K`` produces once ``run(gravity=...)``
+    loads a column past its buckling weight. With no filter at all both
+    paths return the ``n_modes`` smallest real eigenvalues, so equal
+    indices describe the same mode by construction.
     """
     eigvals_all, eigvecs_all = eig(gk, gm)
     eigvals_real = np.real_if_close(eigvals_all, tol=1000)
-    real_finite = np.isreal(eigvals_real) & np.isfinite(eigvals_real.real)
-    vals = eigvals_real.real
+    valid = np.isreal(eigvals_real) & np.isfinite(eigvals_real.real)
+    if not preserve_full_spectrum:
+        valid = valid & (eigvals_real.real > 0.0)
 
-    if keep_rigid_body and real_finite.any():
-        scale = float(np.max(np.abs(vals[real_finite])))
-        floor = -_RIGID_BODY_NEGATIVE_RTOL * scale if scale > 0.0 else 0.0
-        valid = real_finite & (vals >= floor)
-        vals = np.where(vals < 0.0, 0.0, vals)
-    else:
-        valid = real_finite & (vals > 0.0)
-
-    eigvals = vals[valid]
+    eigvals = eigvals_real.real[valid]
     eigvecs = np.real_if_close(eigvecs_all[:, valid], tol=1000).real
     order = np.argsort(eigvals)
     if n_modes is not None:
