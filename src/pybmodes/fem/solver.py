@@ -329,15 +329,12 @@ def solve_modes(
 
     _normalize_columns_l2(eigvecs)
 
-    # Accuracy guarantee for the symmetric paths. Both ``eigh`` and
-    # ``eigsh`` reduce ``K x = λ M x`` through a Cholesky factor of one of
-    # the matrices, and that reduction degrades once the factored matrix
-    # is nearly singular — a very light beam carrying a very heavy lump
-    # does exactly that to ``M``. The failure is silent: LAPACK returns
-    # confidently wrong low modes rather than raising. The backward error
-    # catches it (healthy solves sit at ~1e-4 or below, degraded ones
-    # above 1), and the general path, which factorises neither matrix,
-    # stays exact there.
+    # The residual retry — see the module docstring for the rule and for
+    # why each of its clauses exists. In short: dense ``eigh`` reduces
+    # through a Cholesky factor of the *mass* matrix and fails silently
+    # when that is nearly singular, and the backward error is what
+    # catches it.
+    #
     # The matrices the returned modes actually solve. Both symmetric
     # paths symmetrise internally, so for them the diagnostics — and the
     # retry decision below — have to be measured against that pair, not
@@ -346,26 +343,11 @@ def solve_modes(
     res_k, res_m = (0.5 * (gk + gk.T), 0.5 * (gm + gm.T)) if sym else (gk, gm)
 
     residual_fallback = False
-    # Only the *dense* symmetric path is retried, and that is a statement
-    # about which matrix each routine factorises rather than a
-    # convenience. ``eigh`` reduces through a Cholesky factor of the mass
-    # matrix, which is the one this guard exists for. ``eigsh(sigma=0,
-    # mode='normal')`` factorises ``K`` instead, so a near-singular ``M``
-    # does not degrade it — the mesh sweep that motivated this work
-    # returns correct frequencies on exactly the meshes large enough to
-    # take the sparse path.
-    #
-    # Excluding it also removes a mismatch that would otherwise need
-    # separate handling: ``which="LM"`` on ``OP = K^-1 M`` selects the
-    # modes nearest zero *in magnitude*, while the retry selects the
-    # algebraically smallest. With negative eigenvalues present — a
-    # post-buckling ``run(gravity=...)`` column — those are different
-    # sets, and a per-index comparison between them would be pairing
-    # unrelated modes.
-    #
-    # The size ceiling matters only because a sparse solve that fails to
-    # converge falls back to the dense path at *any* size, where an
-    # unbounded ``eig`` could spend minutes on a result already in hand.
+    # Dense symmetric only — ``eigsh`` factorises ``K``, so it does not
+    # have this failure, and its mode window is a different set that must
+    # not be index-compared. Size-capped because a sparse solve that
+    # fails to converge falls back to dense at *any* size. Both reasons
+    # in full in the module docstring.
     if (
         sym
         and path == "dense_symmetric"

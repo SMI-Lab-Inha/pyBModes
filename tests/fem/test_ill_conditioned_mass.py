@@ -228,20 +228,12 @@ class TestRigidBodyModesAreNotMistakenForBreakdown:
     """A free-free model's zero-frequency modes must not corrupt the result.
 
     For a rigid-body mode ``K x ~ 0`` and ``lambda ~ 0``, so the relative
-    residual is a ratio of two near-zero quantities and reads ~1 however
-    exact the eigenpair is. Two attempts to *identify* such modes and
-    exclude them both failed — an eigenvalue-relative cutoff takes a
-    rigid-only subset's own noise as its scale, and a strain-relative one
-    cannot tell a rigid mode from a genuinely soft one (the 0.08 Hz lump
-    mode of a 1e10 N.m^2 beam carries less strain than a floating
-    platform's rigid modes do, and excluding it blinded the guard to a
-    case it had caught).
-
-    So they are not identified at all. Both candidate solves are measured
-    the same way and the retry needs a decisive win, so a mode the metric
-    cannot speak to says the same nothing twice. The retry also preserves
-    zero eigenvalues, which is what makes a false positive merely wasteful
-    instead of destructive.
+    residual divides one roundoff quantity by another and its value is
+    arbitrary. Such modes are deliberately *not* identified — three
+    attempts to do so failed, which the module docstring of
+    :mod:`pybmodes.fem.solver` records. They are neutralised instead, by
+    judging the size of the win and by preserving zero eigenvalues so a
+    false positive is wasteful rather than destructive.
     """
 
     def _free_free_with_a_zero_mode(self):
@@ -312,11 +304,11 @@ class TestRigidBodyModesAreNotMistakenForBreakdown:
 
     @pytest.mark.parametrize("n_modes", [1, 3, 6])
     def test_a_rigid_only_subset_keeps_its_modes(self, n_modes):
-        """The case that broke both classification attempts.
+        """The case that broke the eigenvalue-scale classifier.
 
-        Every requested mode is rigid-body, so the metric reads ~1 on all
-        of them and no reference scale drawn from the subset can say
-        otherwise. The retry may well run; what matters is that it cannot
+        Every requested mode is rigid-body, so no reference scale drawn
+        from the subset can say which of them is meaningful. The retry
+        may well run; what matters is that it cannot
         take modes away, because it now preserves zero eigenvalues and
         has to win decisively to be accepted at all.
         """
