@@ -56,8 +56,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one mode while pushing a previously acceptable one above the failure
   threshold is refused — it would hand back a new bad mode in place of an
   old one. The guarantee is one-sided and precise: a mode that was
-  acceptable can end up above the regression floor only by having
-  improved, never as collateral of another mode's rescue. A mode
+  acceptable can end up above the regression floor only by not having got
+  worse, never as collateral of another mode's rescue. Below that floor
+  it is free to move either way, which is deliberate — a residual already
+  that small is not a claim about accuracy worth defending. A mode
   already failing carries no verdict either way — above the threshold
   neither candidate is trustworthy, and a rigid-body mode, whose residual
   divides one roundoff quantity by another and has been measured at 12.4
