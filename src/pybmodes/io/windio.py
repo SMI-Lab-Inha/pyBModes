@@ -375,6 +375,12 @@ class WindIOMonopileTower:
     z_base: float                     # mudline elevation (m)
     z_transition: float               # transition-piece elevation (m)
     z_top: float                      # tower-top elevation (m)
+    # The two reduced segments as read (after any truncation and material
+    # override), so callers can inspect the raw tube and material each was
+    # built from — used by the domain checks in issue #102. Optional so a
+    # hand-built instance stays constructible.
+    monopile: WindIOTubular | None = None
+    tower: WindIOTubular | None = None
 
 
 def _read_water_depth(
@@ -691,6 +697,8 @@ def read_windio_monopile_tower(
         z_base=float(z_base),
         z_transition=float(z_transition),
         z_top=float(z_top),
+        monopile=mp,
+        tower=tw,
     )
 
 

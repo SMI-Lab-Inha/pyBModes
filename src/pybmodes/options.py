@@ -153,6 +153,25 @@ class CheckOptions:
         platform's own size is almost always a coordinate-origin error
         leaking into the field, which injects spurious surge/sway↔yaw
         coupling and mislabels the rigid-body modes (issue #95).
+    diameter_thickness_min, diameter_thickness_max : float, default 20 / 400
+        Band for a **fixed-bottom** tube's ``D / t`` ratio (issue #102).
+        Real towers run about 80-250 and monopiles about 80-140
+        (DNV-ST-0126; EN 1993-1-6 for the shell-buckling background), and
+        the reference corpus spans 56 at a base course upward. This is
+        deliberately looser than the design range so a thick base flange
+        or a thin top course does not false-positive, and it is applied
+        only where the support type justifies it —
+        :mod:`pybmodes.io.geometry` keeps a much wider band at the
+        construction layer, where the boundary condition is unknown and a
+        floating tower legitimately reaches ~1100.
+    embedment_ratio_min, embedment_ratio_max : float, default 0.5 / 20
+        Band for a monopile's embedded length over its diameter.
+        Contemporary driven designs sit near 4-6, but this is a
+        transcription guard rather than a design check — it exists to
+        catch an embedded length in the wrong unit or a mudline placed on
+        the wrong side of the pile toe, both of which land one to three
+        orders of magnitude out. The band is set wide enough not to argue
+        with a short rigid caisson or an unusually slender pile.
     """
 
     stiffness_jump_factor: float = 5.0
@@ -162,6 +181,10 @@ class CheckOptions:
     fit_cond_warn: float = 1.0e4
     fit_cond_fail: float = 1.0e6
     platform_cm_offset_gyradius_factor: float = 1.0
+    diameter_thickness_min: float = 20.0
+    diameter_thickness_max: float = 400.0
+    embedment_ratio_min: float = 0.5
+    embedment_ratio_max: float = 20.0
 
 
 # Module-level default instances. Internal call sites that don't (yet)

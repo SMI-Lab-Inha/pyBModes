@@ -64,12 +64,34 @@ Checks performed (see :func:`check_model` for the details):
 11. The requested ``n_modes`` does not exceed the model's DOF count.
 12. The polynomial-fit design matrix on the mesh stations is not
     ill-conditioned (cond > 1e4 ⇒ WARN, > 1e6 ⇒ ERROR).
+13. Tube ``D / t`` is inside the band a **fixed-bottom** shell is built
+    to (WARN) — a support-type-aware tightening of the gross band
+    :mod:`pybmodes.io.geometry` already applies at construction.
+14. A monopile clamped rigidly at the mudline with no soil springs is
+    flagged as non-conservative (INFO), and an implausible embedment
+    ratio ``L / D`` is flagged (WARN).
 
 Checks 7–10 are the "floating-model readiness" gates (``hub_conn = 2``
 only): they catch the seakeeping omissions a non-specialist makes when
 a WindIO ``.yaml`` (geometry + material only) is treated as sufficient
 for a floating system — it is not, the way it is for a land tower
 (issue #95).
+
+Checks 13–14 extend the same idea to the civil-structural and
+geotechnical disciplines (issue #102); the mechanical / units gates of
+that issue live at the construction layer in
+:func:`pybmodes.io.geometry.tubular_section_props`, which sees the user's
+raw ``E`` / ``rho`` / ``D`` / ``t``. These two read the same raw inputs
+through the record a geometry-derived constructor keeps
+(:mod:`pybmodes.io.construction`), never the derived
+``SectionProperties`` — see that module for why the distinction is
+load-bearing rather than stylistic. A deck-derived model has no such
+record and skips them.
+
+:func:`check_solved_frequencies` completes the set on the other side of
+the solve: a fixed-bottom tower whose first mode lands nowhere near the
+0.15–1.5 Hz every real machine occupies has a scale error that the
+per-input bands can miss when two mistakes partly cancel.
 """
 
 from __future__ import annotations
@@ -84,6 +106,7 @@ from pybmodes.options import DEFAULT_CHECK_OPTIONS as _CHECK_OPTIONS
 
 if TYPE_CHECKING:
     from pybmodes.io.bmi import BMIFile, PlatformSupport
+    from pybmodes.io.construction import ConstructionInputs
     from pybmodes.io.sec_props import SectionProperties
     from pybmodes.models.blade import RotatingBlade
     from pybmodes.models.tower import Tower
@@ -206,6 +229,11 @@ def check_model(
     if n_modes is not None:
         _check_n_modes_vs_dof(bmi, n_modes, out)
     _check_polyfit_conditioning(bmi, out)
+
+    construction = getattr(model, "_construction", None)
+    if construction is not None:
+        _check_shell_slenderness(construction, bmi, out)
+        _check_monopile_foundation(construction, bmi, out)
 
     return out
 
@@ -704,6 +732,159 @@ def _check_polyfit_conditioning(bmi: BMIFile, out: list[ModelWarning]) -> None:
             f"larger coefficient shifts than the mode shapes warrant.",
             "bmi.el_loc",
         ))
+
+
+# ---------------------------------------------------------------------------
+# Domain gates on the raw construction inputs (issue #102)
+# ---------------------------------------------------------------------------
+
+def _check_shell_slenderness(
+    con: ConstructionInputs, bmi: BMIFile, out: list[ModelWarning],
+) -> None:
+    """Civil-structural: is the shell slenderness credible *for this
+    support type*?
+
+    :func:`pybmodes.io.geometry.tubular_section_props` already warns on a
+    gross ``D / t``, but deliberately with a very wide band, because it
+    cannot see the boundary condition and the reference corpus spans
+    D/t = 56 on a fixed-bottom base course up to ~1100 on the IEA-15
+    VolturnUS-S *floating* tower — a floating tower legitimately carries
+    far less bending than a fixed-bottom one, so one band cannot serve
+    both. That is the gap its own comment leaves for this issue.
+
+    ``check_model`` does know the support type, so the tighter
+    fixed-bottom band applies here and only here: a clamped or
+    soil-supported tower (``hub_conn`` 1 or 3) has to resist the full
+    overturning moment, and a shell as thin as a floating tower's would
+    buckle. Floating and cable models are skipped rather than judged
+    against a band that does not describe them.
+    """
+    if bmi.hub_conn not in (1, 3):
+        return
+    lo = _CHECK_OPTIONS.diameter_thickness_min
+    hi = _CHECK_OPTIONS.diameter_thickness_max
+    for seg in con.segments:
+        ratio = seg.diameter_thickness
+        if ratio.size == 0:
+            continue
+        worst_lo = float(ratio.min())
+        worst_hi = float(ratio.max())
+        if worst_hi > hi or worst_lo < lo:
+            extreme = worst_hi if worst_hi > hi else worst_lo
+            out.append(ModelWarning(
+                "WARN",
+                f"{seg.name} diameter-to-thickness ratio reaches "
+                f"{extreme:.0f} (per-station range "
+                f"[{worst_lo:.0f}, {worst_hi:.0f}]), outside the band "
+                f"[{lo:.0f}, {hi:.0f}] a fixed-bottom shell is built to "
+                f"(DNV-ST-0126; EN 1993-1-6 for the buckling background — "
+                f"real towers run ~80-250 and monopiles ~80-140). A shell "
+                f"this thin would buckle under the overturning moment a "
+                f"clamped tower carries, well before it reached this mode.",
+                f"construction.{seg.name}.wall_thickness",
+            ))
+
+
+def _check_monopile_foundation(
+    con: ConstructionInputs, bmi: BMIFile, out: list[ModelWarning],
+) -> None:
+    """Geotechnical: soil flexibility and embedment plausibility.
+
+    Two findings. A monopile clamped rigidly at the mudline ignores soil
+    compliance, which can only stiffen the model — the answer is
+    non-conservative, by about 4 % on the 1st fore-aft frequency for an
+    OC3-class monopile. That is a fidelity caveat rather than a mistake,
+    so INFO. An implausible embedment ratio is a transcription error, so
+    WARN.
+    """
+    if not con.is_monopile:
+        return
+
+    if not con.has_soil and bmi.hub_conn == 1:
+        out.append(ModelWarning(
+            "INFO",
+            "monopile is clamped rigidly at the mudline with no soil "
+            "springs. Soil compliance can only lower the coupled "
+            "frequency, so this estimate is non-conservative (about 4 % "
+            "high on the 1st fore-aft mode for an OC3-class monopile). "
+            "Pass soil_E=... (or a MudlineFoundation) to "
+            "Tower.from_windio_with_monopile, or attach one via "
+            "Tower.attach_mudline_foundation, for the soil-flexible tier.",
+            "bmi.hub_conn",
+        ))
+
+    length = con.embedded_length
+    if length is None or not np.isfinite(length) or length <= 0.0:
+        return
+    pile = next((s for s in con.segments if s.name == "monopile"), None)
+    diameter = None
+    if pile is not None:
+        od = np.asarray(pile.outer_diameter, dtype=float)
+        if od.size and np.all(np.isfinite(od)):
+            diameter = float(np.max(od))
+    if diameter is None or diameter <= 0.0:
+        return
+    ratio = length / diameter
+    lo = _CHECK_OPTIONS.embedment_ratio_min
+    hi = _CHECK_OPTIONS.embedment_ratio_max
+    if not (lo <= ratio <= hi):
+        out.append(ModelWarning(
+            "WARN",
+            f"monopile embedment ratio L/D = {ratio:.2f} "
+            f"({length:.1f} m embedded, {diameter:.1f} m diameter) is "
+            f"outside the band [{lo:.1f}, {hi:.1f}] any pile geometry "
+            f"falls in. Driven monopiles for offshore wind sit near 4-6, "
+            f"and this is loose enough to admit an unusual design — a "
+            f"value out here is a transcription error. Check the water "
+            f"depth and the monopile reference_axis.z, which together set "
+            f"the embedded length.",
+            "construction.embedded_length",
+        ))
+
+
+def check_solved_frequencies(
+    model: _Model, frequencies: np.ndarray,
+) -> list[ModelWarning]:
+    """Post-solve scale check on a fixed-bottom tower's first mode (#102).
+
+    Every other gate looks at the inputs. This one looks at the answer,
+    which is the only place a compounding scale error shows up: get two
+    inputs wrong in compensating directions and each passes its own band
+    while the frequency lands nowhere near a wind turbine.
+
+    Deliberately narrow in scope and very wide in band. It applies only
+    to a fixed-bottom tower (``beam_type = 2``, ``hub_conn`` 1 or 3),
+    whose first mode is 0.15-1.5 Hz across every size of machine ever
+    built — a blade, a cable or a floating platform's rigid-body modes
+    have no such band. Outside ``[0.01, 10]`` Hz there is no turbine, only
+    a units or scale mistake.
+
+    Returned rather than raised, and routed through the same warning path
+    as the pre-solve findings by :meth:`Tower.run`. Suppressed along with
+    everything else by ``run(check_model=False)``.
+    """
+    bmi = model._bmi
+    if bmi.beam_type != 2 or bmi.hub_conn not in (1, 3):
+        return []
+    f = np.asarray(frequencies, dtype=float)
+    f = f[np.isfinite(f) & (f > 0.0)]
+    if f.size == 0:
+        return []
+    first = float(f.min())
+    lo, hi = 0.01, 10.0
+    if lo <= first <= hi:
+        return []
+    return [ModelWarning(
+        "WARN",
+        f"the tower's lowest natural frequency is {first:.4g} Hz, far "
+        f"outside the {lo:g}-{hi:g} Hz band any fixed-bottom wind-turbine "
+        f"tower falls in (real machines sit around 0.15-1.5 Hz). Each "
+        f"input may look plausible on its own while a scale error in one "
+        f"of them, or two errors that partly cancel, lands the answer "
+        f"here. Check the flexible length, the material units and the "
+        f"tower-top mass.",
+        "result.frequencies",
+    )]
 
 
 # ---------------------------------------------------------------------------

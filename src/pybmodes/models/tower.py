@@ -36,6 +36,7 @@ import pathlib
 from typing import TYPE_CHECKING
 
 from pybmodes.io.bmi import read_bmi
+from pybmodes.io.construction import ConstructionInputs, TubeSegment
 from pybmodes.io.sec_props import SectionProperties
 from pybmodes.models._pipeline import run_fem
 from pybmodes.models._platform import (
@@ -149,6 +150,11 @@ class Tower:
     # via ``cls.__new__(cls)`` (the from_elastodyn path bypasses
     # ``__init__``).
     coeff_validation: ValidationResult | None = None
+
+    # Raw tube geometry + material as supplied to a geometry-derived
+    # constructor, for the domain checks (issue #102). ``None`` on a
+    # deck-derived model, where those numbers don't exist.
+    _construction: ConstructionInputs | None = None
 
     def __init__(
         self, bmi_path: str | pathlib.Path, *, n_nodes: int | None = None,
@@ -369,6 +375,13 @@ class Tower:
         obj._bmi = bmi
         obj._sp = sp
         obj.coeff_validation = None
+        # Keep the raw tube and material the caller supplied so the
+        # domain checks can run on the user's own numbers rather than on
+        # the derived section properties (issue #102).
+        obj._construction = ConstructionInputs(segments=[TubeSegment(
+            name="tower", station_grid=grid, outer_diameter=od,
+            wall_thickness=wt, E=float(E), rho=float(rho), nu=float(nu),
+        )])
         return obj
 
     @classmethod
@@ -698,6 +711,21 @@ class Tower:
         obj._bmi = bmi
         obj._sp = mt.section_props
         obj.coeff_validation = None
+        obj._construction = ConstructionInputs(
+            segments=[
+                TubeSegment(
+                    name=name,
+                    station_grid=seg.station_grid,
+                    outer_diameter=seg.outer_diameter,
+                    wall_thickness=seg.wall_thickness,
+                    E=seg.E, rho=seg.rho, nu=seg.nu,
+                )
+                for name, seg in (("monopile", mt.monopile), ("tower", mt.tower))
+                if seg is not None
+            ],
+            is_monopile=True,
+            has_soil=has_soil,
+        )
 
         # Optional soil-pile interaction (issue #118): replace the rigid
         # mudline clamp with a soil foundation (hub_conn = 3). Pass a
@@ -756,8 +784,12 @@ class Tower:
                     foundation, distributed=True,
                     embedded_length=embedded, n_stations=soil_n_stations,
                 )
+                obj._construction.embedded_length = embedded
             else:
                 obj.attach_mudline_foundation(foundation)
+                obj._construction.embedded_length = (
+                    foundation.pile_length_embedded
+                )
         return obj
 
     @classmethod
@@ -1375,6 +1407,10 @@ class Tower:
         obj = cls.__new__(cls)
         obj._bmi = bmi
         obj._sp = sp
+        # Deck-derived, so there is no raw tube / material to check, but
+        # the geotechnical gate still wants to know this is a pile clamped
+        # in the seabed (issue #102).
+        obj._construction = ConstructionInputs(is_monopile=True)
         if n_nodes is not None:
             obj.refine_mesh(n_nodes)
         return obj
@@ -1677,4 +1713,12 @@ class Tower:
         if check_model:
             from pybmodes.checks import apply_findings
             apply_findings(self, n_modes=n_modes, on_error=on_error)
-        return run_fem(self._bmi, n_modes=n_modes, sp=self._sp, gravity=g)
+        result = run_fem(self._bmi, n_modes=n_modes, sp=self._sp, gravity=g)
+        if check_model:
+            import warnings as _warnings
+
+            from pybmodes.checks import check_solved_frequencies
+
+            for finding in check_solved_frequencies(self, result.frequencies):
+                _warnings.warn(str(finding), UserWarning, stacklevel=2)
+        return result
