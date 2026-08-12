@@ -8,7 +8,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+### Fixed
+
+- **The symmetric eigensolvers could return confidently wrong low modes
+  on a near-singular mass matrix, silently.** Both `scipy.linalg.eigh`
+  and `scipy.sparse.linalg.eigsh` reduce `K x = λ M x` through a Cholesky
+  factor of the mass matrix, and that reduction loses accuracy when a
+  very light beam carries a very heavy lump. LAPACK does not raise there
+  — it returns wrong frequencies. On a 100 m cantilever with a 4000:1
+  lump-to-beam mass ratio the reported fundamental was 0.103 Hz against a
+  true 0.0436 Hz, a factor of 2.4, and the answer wandered
+  non-monotonically with mesh density.
+
+  `solve_modes` now checks the backward error `||K x - λ M x|| / ||K x||`
+  of every symmetric solve and, when it is large, redoes it through the
+  general dense path, which factorises neither matrix. The retried result
+  is taken only when it is better by an order of magnitude, and a
+  `RuntimeWarning` names the swap. `SolverDiagnostics` gains
+  `residual_fallback` recording it.
+
+  **No existing result changes.** The decisive-improvement condition is
+  what guarantees that: a real deck can carry a large backward error
+  without being broken, and on the bundled NREL 5MW land tower (whose
+  adapter leaves the mass matrix at cond ~4e10) the general path is only
+  1.4× better while *splitting* a degenerate fore-aft / side-side pair
+  the symmetric solver resolves exactly. Rigid-body modes are excluded
+  from the check for the same reason — their relative residual is a ratio
+  of two near-zero quantities and is ~1 however exact the eigenpair is,
+  so judging a floating solve by the raw maximum would have condemned it
+  and then deleted its zero-frequency mode.
+
+- `SolverOptions` gains `residual_retry_threshold` and
+  `residual_retry_improvement` for the two conditions above.
 
 ## [1.18.0] — 2026-08-12
 

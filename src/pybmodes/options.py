@@ -70,10 +70,36 @@ class SolverOptions:
         :func:`scipy.linalg.eig` instead of the symmetric
         :func:`scipy.linalg.eigh`. The OC3 Hywind cross-coupled
         ``hydro_K + mooring_K`` exercises this branch.
+    residual_retry_threshold : float, default 0.1
+        Largest per-mode relative residual
+        ``||K x - λ M x|| / ||K x||`` a symmetric solve may return before
+        the general dense path is tried as well. ``scipy.linalg.eigh``
+        reduces the generalised problem through a Cholesky factor of the
+        **mass** matrix, which loses accuracy once that matrix is nearly
+        singular — a very light beam carrying a very heavy lump — and
+        returns confidently wrong low modes rather than failing.
+
+        The band this sits in is narrower than it looks. Ordinary solves
+        land at or below ~1e-3; a real deck whose adapter leaves ``M``
+        genuinely ill-conditioned (the bundled NREL 5MW land tower, cond
+        ~4e10) reaches ~2e-2 and is *not* meant to trigger; the degraded
+        regime starts around 0.7. The default splits the last two gaps
+        with roughly 5x either side.
+    residual_retry_improvement : float, default 0.1
+        How much better the general path's backward error must be before
+        its result is taken. The second, and more important, guard: on
+        that same land deck the general path is only ~1.4x better while
+        *breaking* a physically real degenerate fore-aft / side-side pair
+        the symmetric solver resolves exactly, which the downstream FA /
+        SS classifier depends on. A genuine breakdown is not marginal —
+        it improves by nine orders — so requiring a decisive win keeps
+        validated results untouched and still catches the real failure.
     """
 
     sparse_ndof_threshold: int = 500
     symmetry_rtol: float = 1.0e-12
+    residual_retry_threshold: float = 0.1
+    residual_retry_improvement: float = 0.1
 
 
 @dataclass(frozen=True)

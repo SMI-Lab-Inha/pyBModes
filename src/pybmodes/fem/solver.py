@@ -32,7 +32,33 @@ Three dispatch paths in priority order:
    when the sparse path fails to converge (logged as a warning).
 3. **Dense general** — ``scipy.linalg.eig`` for genuinely asymmetric
    systems (offshore decks where the rigid-arm transformation makes
-   the platform-support block non-symmetric). Matches BModes JJ.
+   the platform-support block non-symmetric). Matches BModes JJ. Also
+   the retry path when a symmetric solve comes back with a large
+   backward error — see below.
+
+Both symmetric paths reduce ``K x = λ M x`` through a Cholesky factor
+of the mass matrix, and that reduction degrades once ``M`` is nearly
+singular, which a very light beam carrying a very heavy lump produces.
+The failure mode is silent: LAPACK returns confidently wrong low modes
+rather than raising. :func:`solve_modes` therefore checks the backward
+error of the **elastic** modes of every symmetric solve (a rigid-body
+mode has ``K x ≈ 0`` and ``λ ≈ 0``, so its relative residual is a ratio
+of two near-zero quantities and carries no information — see
+:func:`_max_elastic_residual`) and, when it exceeds
+:attr:`~pybmodes.options.SolverOptions.residual_retry_threshold`, tries
+the general path as well — taking its result only if it is better by
+:attr:`~pybmodes.options.SolverOptions.residual_retry_improvement`, and
+warning when it does.
+
+That second condition is the load-bearing one. A real deck can sit above
+the threshold without being broken (the bundled NREL 5MW land tower
+reaches ~2e-2, its adapter leaving ``M`` at cond ~4e10), and there the
+general path is only marginally better while *splitting* the degenerate
+fore-aft / side-side pair the symmetric solver resolves exactly — which
+the FA / SS classifier downstream depends on. A true breakdown is not
+marginal: it improves by nine orders of magnitude. Demanding a decisive
+win keeps every validated frequency untouched and still catches the
+failure this guard exists for.
 
 Note on the user-spec mode choice: ``eigsh(..., sigma=0,
 mode='buckling')`` reduces to ``OP = K^-1 K = I`` for ``sigma=0``,
@@ -94,6 +120,14 @@ class SolverDiagnostics:
         attempted and failed, so the result came from the dense fallback.
     fallback_reason : the repr of the exception that triggered the
         fallback, or ``None`` when no fallback happened.
+    residual_fallback : ``True`` when a symmetric path returned modes whose
+        backward error exceeded
+        :attr:`~pybmodes.options.SolverOptions.residual_retry_threshold`
+        and the result was redone through the general dense path. The
+        symmetric routines factorise the mass matrix, which a very light
+        beam carrying a very heavy lump makes nearly singular; there they
+        return wrong low modes rather than failing, so the residual is
+        what catches it.
     max_residual : the largest per-mode relative residual
         ``||K x - λ M x|| / ||K x||`` over the returned modes (``0.0``
         when no modes were returned). A healthy modal solve sits near
@@ -114,6 +148,7 @@ class SolverDiagnostics:
     max_residual: float
     residuals: tuple[float, ...]
     matrix_cond: float | None
+    residual_fallback: bool = False
 
 # Sparse path activates once the reduced system has more than this
 # many DOFs and the caller asked for a small subset of modes. Below
@@ -223,6 +258,47 @@ def solve_modes(
 
     _normalize_columns_l2(eigvecs)
 
+    # Accuracy guarantee for the symmetric paths. Both ``eigh`` and
+    # ``eigsh`` reduce ``K x = λ M x`` through a Cholesky factor of one of
+    # the matrices, and that reduction degrades once the factored matrix
+    # is nearly singular — a very light beam carrying a very heavy lump
+    # does exactly that to ``M``. The failure is silent: LAPACK returns
+    # confidently wrong low modes rather than raising. The backward error
+    # catches it (healthy solves sit at ~1e-4 or below, degraded ones
+    # above 1), and the general path, which factorises neither matrix,
+    # stays exact there.
+    residual_fallback = False
+    if sym:
+        worst = _max_elastic_residual(gk, gm, eigvals, eigvecs)
+        if worst > _SOLVER_OPTIONS.residual_retry_threshold:
+            alt_vals, alt_vecs = _solve_dense_general(gk, gm, n_modes)
+            _normalize_columns_l2(alt_vecs)
+            alt_worst = _max_elastic_residual(gk, gm, alt_vals, alt_vecs)
+            # Only take the general result on a decisive win. A marginal
+            # one is not a breakdown, and switching for it would churn
+            # validated frequencies and break the degenerate fore-aft /
+            # side-side pairs the symmetric solver resolves exactly — the
+            # bundled NREL 5MW land deck does exactly that. A genuine
+            # breakdown improves by many orders, not by a factor.
+            if alt_worst < _SOLVER_OPTIONS.residual_retry_improvement * worst:
+                warnings.warn(
+                    f"the symmetric eigensolver returned modes with a "
+                    f"backward error of {worst:.2e}, so the eigenpairs do "
+                    f"not satisfy K x = lambda M x. Its Cholesky reduction "
+                    f"of the mass matrix loses accuracy when that matrix is "
+                    f"nearly singular, which a very light beam carrying a "
+                    f"very heavy lump produces. Redone through the general "
+                    f"dense path, which factorises neither matrix "
+                    f"(backward error {alt_worst:.2e}); the returned modes "
+                    f"come from that solve. Worth checking the mass "
+                    f"distribution is the one you intended.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                eigvals, eigvecs = alt_vals, alt_vecs
+                path = "dense_general"
+                residual_fallback = True
+
     # Mode-count guarantee: the general path filters complex / non-
     # positive eigenvalues, so it can return fewer modes than requested.
     # Surface that rather than letting it pass silently (a downstream
@@ -258,6 +334,7 @@ def solve_modes(
         gk, gm, eigvals, eigvecs, path=path, symmetric=sym,
         n_requested=n_modes, sparse_fallback=sparse_fallback,
         fallback_reason=fallback_reason,
+        residual_fallback=residual_fallback,
     )
     return eigvals, eigvecs, diagnostics
 
@@ -273,6 +350,7 @@ def _build_diagnostics(
     n_requested: int | None,
     sparse_fallback: bool,
     fallback_reason: str | None,
+    residual_fallback: bool = False,
 ) -> SolverDiagnostics:
     """Assemble a :class:`SolverDiagnostics` for a completed solve."""
     residuals = _modal_residuals(gk, gm, eigvals, eigvecs)
@@ -287,7 +365,45 @@ def _build_diagnostics(
         max_residual=float(residuals.max()) if residuals.size else 0.0,
         residuals=tuple(float(r) for r in residuals),
         matrix_cond=cond,
+        residual_fallback=residual_fallback,
     )
+
+
+# A mode whose eigenvalue is below this fraction of the largest returned
+# one is a rigid-body mode: a free-free floating platform has up to six,
+# and an unrestrained DOF (a symmetric column's yaw) gives an exactly
+# zero one.
+_RIGID_BODY_EIGVAL_RTOL = 1.0e-8
+
+
+def _max_elastic_residual(
+    gk: np.ndarray, gm: np.ndarray, eigvals: np.ndarray, eigvecs: np.ndarray,
+) -> float:
+    """Largest backward error over the **elastic** modes only.
+
+    The relative residual ``||K x - λ M x|| / ||K x||`` is undefined for a
+    rigid-body mode: there ``K x ≈ 0`` and ``λ ≈ 0``, so it is a ratio of
+    two near-zero quantities and evaluates to ≈ 1 no matter how exact the
+    eigenpair is. A free-free floating model legitimately has up to six of
+    them, so judging a solve by the raw maximum would condemn every
+    floating result — and the general path drops zero eigenvalues
+    entirely, so acting on that verdict would delete a physically real
+    mode rather than improve anything.
+
+    Rigid-body modes are therefore excluded before taking the maximum.
+    Returns ``0.0`` when every returned mode is rigid-body, i.e. when
+    there is nothing the metric can speak to.
+    """
+    if eigvals.size == 0:
+        return 0.0
+    scale = float(np.max(np.abs(eigvals)))
+    if scale <= 0.0:
+        return 0.0
+    elastic = np.abs(eigvals) > _RIGID_BODY_EIGVAL_RTOL * scale
+    if not elastic.any():
+        return 0.0
+    r = _modal_residuals(gk, gm, eigvals, eigvecs)
+    return float(r[elastic].max())
 
 
 def _modal_residuals(
