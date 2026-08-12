@@ -108,6 +108,13 @@ class PointMass:
     mass: float        # kg
 
     def __post_init__(self) -> None:
+        for name, value in (("height", self.height), ("mass", self.mass)):
+            if isinstance(value, bool):
+                raise ValueError(
+                    f"PointMass.{name} must be a number in "
+                    f"{'metres' if name == 'height' else 'kilograms'}, not a "
+                    f"bool; got {value!r}"
+                )
         h = float(self.height)
         m = float(self.mass)
         if not math.isfinite(h):

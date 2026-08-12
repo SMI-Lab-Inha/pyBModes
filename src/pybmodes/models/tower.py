@@ -771,6 +771,9 @@ class Tower:
                     "environment.water_depth in the ontology."
                 )
             if soil_distributed:
+                # clamp_at_mudline=False skipped the reader's own mudline
+                # placement guards (it never resolved a depth), so both
+                # ends are re-checked here against the spliced beam.
                 embedded = -wd - mt.z_base
                 if embedded <= 0.0:
                     raise ValueError(
@@ -778,6 +781,15 @@ class Tower:
                         f"above the mudline (z = {-wd:g} m), so there is no "
                         f"embedded length for the distributed soil springs to "
                         f"act over. Check water_depth and the monopile "
+                        f"reference_axis.z."
+                    )
+                if -wd >= mt.z_transition:
+                    raise ValueError(
+                        f"water_depth={wd:g} m places the mudline "
+                        f"(z = {-wd:g} m) at or above the transition piece "
+                        f"(z = {mt.z_transition:g} m), which would bury the "
+                        f"tower in the seabed and run the soil springs up "
+                        f"into it. Check water_depth and the components' "
                         f"reference_axis.z."
                     )
                 obj.attach_mudline_foundation(

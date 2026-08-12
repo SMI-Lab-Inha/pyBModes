@@ -1297,3 +1297,38 @@ def test_windio_monopile_soil_distributed_needs_an_embedded_length(
         Tower.from_windio_with_monopile(
             p, tip_mass=5.0e5, soil_E=1.4e8, soil_distributed=True,
         )
+
+
+def test_windio_monopile_soil_distributed_rejects_a_mudline_above_the_tp(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Keeping the embedded pile skips the reader's own mudline placement
+    guards, so the constructor re-checks both ends itself.
+
+    Needs a transition piece below MSL for the case to exist at all,
+    hence a fixture of its own rather than the shared one whose TP sits
+    at +15 m, and a pre-built ``soil=`` rather than ``soil_E=``, since
+    the auto-build path resolves the same geometry itself and rejects it
+    one step earlier.
+    """
+    pytest.importorskip("yaml")
+    from pybmodes.foundation import MudlineFoundation
+
+    p = tmp_path / "submerged_tp.yaml"
+    p.write_text(
+        _WINDIO_MONOPILE_EMBEDDED
+        .replace("values: [-75.0, 15.0]", "values: [-75.0, -10.0]")
+        .replace("values: [15.0, 115.0]", "values: [-10.0, 115.0]"),
+        encoding="utf-8",
+    )
+    soil = MudlineFoundation.from_soil_properties(
+        pile_diameter=9.0, pile_length_embedded=45.0, pile_EI=2.0e12,
+        soil_E=1.4e8, pile_behaviour="flexible",
+    )
+    # The transition piece is now at z = -10, so a 5 m depth puts the
+    # mudline above it and would run the spring bed up into the tower.
+    with pytest.raises(ValueError, match="at or above the transition piece"):
+        Tower.from_windio_with_monopile(
+            p, tip_mass=5.0e5, water_depth=5.0, soil=soil,
+            soil_distributed=True,
+        )

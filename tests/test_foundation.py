@@ -721,3 +721,20 @@ def test_distributed_defaults_the_length_to_the_foundation() -> None:
     tower = _winkler_tube(_WK_ABOVE + _WK_EMBEDDED, n=40)
     tower.attach_mudline_foundation(_winkler_foundation(), distributed=True)
     assert tower._bmi.support.distr_k_z[-1] == pytest.approx(_WK_EMBEDDED)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("pile_length_embedded", 0.0),
+        ("pile_length_embedded", float("nan")),
+        ("soil_E", -1.0),
+        ("pile_diameter", 0.0),
+    ],
+)
+def test_distributed_springs_reject_non_physical_stored_inputs(field, value) -> None:
+    """A hand-mutated foundation must not silently emit a garbage bed."""
+    f = _winkler_foundation()
+    setattr(f, field, value)
+    with pytest.raises(ValueError, match=field.split("_")[0]):
+        f.distributed_springs()

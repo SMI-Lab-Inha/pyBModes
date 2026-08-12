@@ -307,6 +307,21 @@ class MudlineFoundation:
                 "it from the three stiffnesses directly."
             )
         length = float(self.pile_length_embedded)
+        if not (math.isfinite(length) and length > 0.0):
+            raise ValueError(
+                f"pile_length_embedded must be positive and finite to lay a "
+                f"spring bed along it; got {self.pile_length_embedded!r}"
+            )
+        if not (math.isfinite(float(self.soil_E)) and float(self.soil_E) > 0.0):
+            raise ValueError(
+                f"soil_E must be positive and finite; got {self.soil_E!r}"
+            )
+        if not (math.isfinite(float(self.pile_diameter))
+                and float(self.pile_diameter) > 0.0):
+            raise ValueError(
+                f"pile_diameter must be positive and finite; got "
+                f"{self.pile_diameter!r}"
+            )
         depth = np.linspace(0.0, length, n_stations)
         exponent = {"homogeneous": 0.0, "parabolic": 0.5, "linear": 1.0}[
             self.soil_profile
