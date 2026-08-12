@@ -857,7 +857,7 @@ class TestARetryThatTradesModesIsRefused:
         from pybmodes.options import DEFAULT_SOLVER_OPTIONS as opt
 
         t = opt.residual_retry_threshold
-        bound = opt.residual_retry_improvement * t
+        bound = opt.residual_regression_floor
         grid = np.logspace(-16, 2, 37)
         for s in grid:
             if s > t:
@@ -927,22 +927,64 @@ class TestARetryThatTradesModesIsRefused:
         assert improved[1]
         assert not regressed.any()
 
-    def test_rigid_body_noise_cannot_justify_a_swap(self):
-        """The assumption that rigid residuals sit near 1 in both
-        candidates is false: both sides of the ratio are roundoff, so it
-        is unbounded. Measured at 12.39 from ``eigh`` against 0.794 from
-        ``eig`` on a healthy pencil — a tenfold "win" on pure noise.
-
-        Requiring the candidate to *resolve* the mode rather than merely
-        improve it ignores that, since 0.794 is still failing.
+    @pytest.mark.parametrize("alt_rigid", [12.39, 0.794, 0.0762, 0.05])
+    def test_rigid_body_noise_cannot_justify_a_swap(self, alt_rigid):
+        """Rigid residuals divide roundoff by roundoff, so the value is
+        arbitrary — 12.39, 0.794 and 0.0762 have all been measured on
+        healthy models, and the last two sit *below* the failure
+        threshold. No threshold can exclude them; a resolution bar near
+        machine precision can, because roundoff does not land there.
         """
         from pybmodes.fem.solver import _compare_candidate_modes
 
-        sym_r = np.array([12.39, 3.0e-15, 2.0e-15, 1.0e-15])
-        alt_r = np.array([0.794, 1.0e-15, 2.0e-15, 3.0e-15])
-        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 4, 4)
+        sym_r = np.array([0.848, 3.0e-15, 2.0e-15])
+        alt_r = np.array([alt_rigid, 1.0e-15, 2.0e-15])
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 3, 3)
         assert not improved.any()
         assert not regressed.any()
+
+    def test_the_two_populations_are_separated_by_the_ratio(self):
+        """The measurement the rule is calibrated on, kept as a test so
+        the constants cannot drift away from their evidence.
+
+        The mode that justifies a swap is judged by *how much* the
+        candidate improves it, because a rigid residual's value is
+        arbitrary while its ratio is not. Genuine rescues improve by 1e5
+        to 1e10; rigid roundoff by 11x to 16x.
+        """
+        from pybmodes.options import DEFAULT_SOLVER_OPTIONS as opt
+
+        rescues = [(1.56e0, 4.10e-10), (3.01e0, 1.96e-09),
+                   (7.55e1, 4.93e-09), (3.98e1, 3.17e-04)]
+        noise = [(12.39, 0.794), (0.848, 0.0762)]
+
+        worst_rescue = max(a / s for s, a in rescues)
+        best_noise = min(a / s for s, a in noise)
+        assert worst_rescue < opt.residual_retry_improvement < best_noise
+        # And the absolute bar admits every rescue.
+        assert max(a for _s, a in rescues) <= opt.residual_retry_resolved
+
+    @pytest.mark.parametrize("seed", [14946, 7, 101, 2024, 55555])
+    def test_healthy_free_free_pencils_never_trigger_a_swap(self, seed):
+        """The empirical half of the argument, over several draws rather
+        than one. A rank-deficient K with a well-conditioned M is a
+        healthy free-free model; whatever its null-mode roundoff happens
+        to read, it must never replace the spectrum."""
+        rng = np.random.default_rng(seed)
+        n = 3
+        a = rng.normal(size=(n, n))
+        gm = a @ a.T + n * np.eye(n)
+        b = rng.normal(size=(n, n - 1))
+        gk = b @ b.T
+        gk, gm = 0.5 * (gk + gk.T), 0.5 * (gm + gm.T)
+        assert np.linalg.cond(gm) < 100.0          # genuinely healthy
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            eigvals, _v, diag = solve_modes(
+                gk, gm, n_modes=n, return_diagnostics=True,
+            )
+        assert diag.residual_fallback is False
+        assert eigvals.size == n
 
     def test_a_healthy_free_free_pencil_is_left_alone(self):
         """End to end on the shape from the report: rank-deficient K, a

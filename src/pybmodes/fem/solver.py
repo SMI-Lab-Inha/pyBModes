@@ -526,22 +526,25 @@ def _compare_candidate_modes(
     orders below anything that matters, and flagging it would block
     nearly every legitimate rescue.
 
-    A mode already failing in the symmetric solve gets **no verdict** in
-    either direction. That is the single rule that makes rigid-body modes
-    tractable without identifying them, which two earlier attempts showed
-    cannot be done reliably here. Their residual divides one roundoff
-    quantity by another, so it is *not* dependably near 1 — the ratio is
-    unbounded and has been measured at 12.4 from one solver against 0.79
-    from the other on a perfectly healthy pencil. Read as an improvement
-    that is a tenfold win on pure noise; read as a regression it would
-    veto every rescue that happens to sit beside a free-free mode.
-    Declining to judge the untrustworthy side avoids both, and
-    ``max_residual`` still reports the mode to the caller.
+    A mode already failing in the symmetric solve gets **no regression
+    verdict**. Above the threshold neither candidate is trustworthy, and
+    judging that region would let noise veto every rescue that happens to
+    sit beside a free-free mode. ``max_residual`` still reports it.
+
+    Rigid-body modes are kept out of the *acceptance* side by the
+    resolution bar rather than by being identified, which three attempts
+    established cannot be done reliably here — not by eigenvalue scale,
+    not by strain, and not by which side of the failure threshold the
+    residual happens to fall on. Dividing one roundoff quantity by
+    another produces an arbitrary number: 12.4, 0.79 and 0.076 have all
+    been measured on healthy models, and the last is *below* the failure
+    threshold, so it looked exactly like a mode being resolved. The one
+    thing roundoff reliably does not do is land near machine precision.
 
     The cost is a real case declined: a breakdown the alternative
-    improves a hundredfold but leaves failing anyway is not acted on.
-    Neither result is trustworthy there, so keeping the original and
-    reporting the backward error is the honest outcome.
+    improves substantially without resolving is not acted on. Neither
+    result is trustworthy there, so keeping the original and reporting
+    the backward error is the honest outcome.
 
     Together the two verdicts give the guarantee the caller relies on: a
     mode that was acceptable can only end up above a tenth of the
@@ -577,18 +580,20 @@ def _compare_candidate_modes(
     threshold = _SOLVER_OPTIONS.residual_retry_threshold
     factor = _SOLVER_OPTIONS.residual_retry_improvement
     sym, alt = sym_r[:n], alt_r[:n]
-    # Improvement is the mirror of regression: the mode must cross the
-    # threshold the *other* way, from failing to acceptable, and do so
-    # decisively. Requiring the crossing — rather than a factor alone —
-    # is what keeps a rigid-body mode from justifying a swap. Its
-    # residual divides one roundoff quantity by another, so it is not
-    # merely "~1 in both candidates" as it first appears: the ratio is
-    # unbounded and can read 12.4 from one solver and 0.79 from the
-    # other on a perfectly healthy pencil. That is a tenfold "win" on
-    # pure noise, and it used to be enough to replace the whole spectrum.
-    # Demanding that the candidate actually *resolve* the mode ignores
-    # it, because 0.79 is still a failing residual.
-    improved = (sym > threshold) & (alt <= threshold) & (alt < factor * sym)
+    # What separates a rescue from noise is the *size* of the win, not
+    # which side of a line the candidate lands on. A rigid-body mode's
+    # residual divides one near-zero quantity by another, so its value is
+    # arbitrary — 12.4, 0.79 and 0.076 have all been measured on healthy
+    # models, and the last is below the failure threshold, so no absolute
+    # threshold can exclude it. Its *ratio*, though, stays around 11x to
+    # 16x, while a genuine rescue improves by 1e5 to 1e10. Four orders
+    # separate the two populations.
+    #
+    # The absolute bar is kept as a second condition for the case the
+    # ratio cannot see: a wildly broken 1e6 against a candidate at 100
+    # clears any ratio while both remain garbage.
+    resolved = _SOLVER_OPTIONS.residual_retry_resolved
+    improved = (sym > threshold) & (alt <= resolved) & (alt < factor * sym)
     # A mode that was acceptable must not come back materially worse.
     # Any worsening counts, at any ratio — the tenfold margin belongs to
     # the improvement side, and requiring it here left a mode free to
@@ -604,7 +609,8 @@ def _compare_candidate_modes(
     # region. Judging it would be judging noise, and doing so in this
     # direction would let that noise veto every legitimate rescue.
     # ``max_residual`` still reports such a mode to the caller.
-    regressed = (sym <= threshold) & (alt > factor * threshold) & (alt > sym)
+    floor = _SOLVER_OPTIONS.residual_regression_floor
+    regressed = (sym <= threshold) & (alt > floor) & (alt > sym)
     return improved, regressed
 
 
