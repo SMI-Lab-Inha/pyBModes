@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+(nothing yet)
+
+## [1.18.0] — 2026-08-12
+
 ### Added
 
 - **Discrete point masses at any station (#35).**

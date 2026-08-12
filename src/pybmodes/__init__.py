@@ -243,7 +243,7 @@ try:
 except PackageNotFoundError:
     # Fallback for an uninstalled source tree (no package metadata).
     # Keep in step with ``pyproject.toml`` ``[project] version``.
-    __version__ = "1.17.0"
+    __version__ = "1.18.0"
 
 __all__ = [
     "CheckOptions",
