@@ -56,14 +56,17 @@ pair the symmetric solver resolves exactly — which the FA / SS
 classifier downstream depends on. A true breakdown is not marginal: it
 improves by nine orders of magnitude.
 
-The same condition disposes of rigid-body modes, on which the residual
-is a ratio of two near-zero quantities and reads ~1 however exact the
-eigenpair is. Rather than trying to identify such modes — neither their
-eigenvalue nor their strain distinguishes them reliably from a genuinely
-soft mode — both candidates are measured identically, so a mode the
-metric cannot speak to says the same thing twice and cannot tip the
-decision. The retry additionally runs with ``keep_rigid_body=True`` so
-the two candidates describe the same spectrum; otherwise a retry
+The comparison is made **per mode** rather than on the two maxima, which
+is what keeps rigid-body modes from distorting it. Their backward error
+is a ratio of two near-zero quantities and reads ~1 in both candidates
+however exact each is; on a maximum that puts a floor under the
+alternative and hides a genuinely corrupted elastic mode alongside them,
+while per mode they simply register as ~1 against ~1, i.e. no
+improvement. Identifying such modes and excluding them was tried twice
+and abandoned — neither their eigenvalue nor their strain separates them
+reliably from a genuinely soft mode. The retry additionally runs with
+``keep_rigid_body=True`` so the two candidates describe the same
+spectrum and equal indices mean the same mode; otherwise a retry
 triggered by a free-free model's zero modes would swap in a mode set
 with those modes filtered out, which is worse than the imprecision it
 was trying to fix.
@@ -277,8 +280,8 @@ def solve_modes(
     # stays exact there.
     residual_fallback = False
     if sym:
-        worst = _max_residual(gk, gm, eigvals, eigvecs)
-        if worst > _SOLVER_OPTIONS.residual_retry_threshold:
+        sym_r = _modal_residuals(gk, gm, eigvals, eigvecs)
+        if sym_r.size and float(sym_r.max()) > _SOLVER_OPTIONS.residual_retry_threshold:
             # ``keep_rigid_body`` so the two candidates describe the same
             # spectrum. Without it a free-free model's zero modes would be
             # filtered out of the alternative only, and a retry triggered
@@ -287,25 +290,23 @@ def solve_modes(
                 gk, gm, n_modes, keep_rigid_body=True,
             )
             _normalize_columns_l2(alt_vecs)
-            alt_worst = _max_residual(gk, gm, alt_vals, alt_vecs)
-            # Only take the general result on a decisive win. A marginal
-            # one is not a breakdown, and switching for it would churn
-            # validated frequencies and break the degenerate fore-aft /
-            # side-side pairs the symmetric solver resolves exactly — the
-            # bundled NREL 5MW land deck does exactly that. A genuine
-            # breakdown improves by many orders, not by a factor.
-            if alt_worst < _SOLVER_OPTIONS.residual_retry_improvement * worst:
+            alt_r = _modal_residuals(gk, gm, alt_vals, alt_vecs)
+            improved = _decisively_improved_modes(sym_r, alt_r, alt_vals.size,
+                                                  eigvals.size)
+            if improved.any():
+                idx = int(np.argmax(np.where(improved, sym_r[:improved.size], 0.0)))
                 warnings.warn(
-                    f"the symmetric eigensolver returned modes with a "
-                    f"backward error of {worst:.2e}, so the eigenpairs do "
-                    f"not satisfy K x = lambda M x. Its Cholesky reduction "
-                    f"of the mass matrix loses accuracy when that matrix is "
-                    f"nearly singular, which a very light beam carrying a "
-                    f"very heavy lump produces. Redone through the general "
-                    f"dense path, which factorises neither matrix "
-                    f"(backward error {alt_worst:.2e}); the returned modes "
-                    f"come from that solve. Worth checking the mass "
-                    f"distribution is the one you intended.",
+                    f"the symmetric eigensolver returned "
+                    f"{int(improved.sum())} mode(s) that do not satisfy "
+                    f"K x = lambda M x — worst at index {idx}, backward "
+                    f"error {sym_r[idx]:.2e} against {alt_r[idx]:.2e} from "
+                    f"the general dense path. Its Cholesky reduction of the "
+                    f"mass matrix loses accuracy when that matrix is nearly "
+                    f"singular, which a very light beam carrying a very "
+                    f"heavy lump produces. The returned modes come from the "
+                    f"general solve, which factorises neither matrix. Worth "
+                    f"checking the mass distribution is the one you "
+                    f"intended.",
                     RuntimeWarning,
                     stacklevel=2,
                 )
@@ -387,30 +388,44 @@ def _build_diagnostics(
 # one is a rigid-body mode: a free-free floating platform has up to six,
 # and an unrestrained DOF (a symmetric column's yaw) gives an exactly
 # zero one.
-def _max_residual(
-    gk: np.ndarray, gm: np.ndarray, eigvals: np.ndarray, eigvecs: np.ndarray,
-) -> float:
-    """Largest per-mode backward error, or ``0.0`` for an empty solve.
+def _decisively_improved_modes(
+    sym_r: np.ndarray,
+    alt_r: np.ndarray,
+    n_alt: int,
+    n_sym: int,
+) -> np.ndarray:
+    """Which modes the general path solves decisively better, per mode.
 
-    Deliberately taken over **every** returned mode, with no attempt to
-    classify them first. On a rigid-body mode the metric is a ratio of
-    two near-zero quantities and reads ~1 regardless of how exact the
-    eigenpair is, which invites excluding those modes — but nothing
-    reliably identifies them here. Their eigenvalue is only "near zero"
-    relative to a scale the returned subset may not contain; their strain
-    ``||K x||`` is small, but so is a genuinely soft mode's on a stiff
-    structure (the 0.08 Hz lump mode of a 1e10 N.m^2 beam carries less
-    strain than the rigid-body modes of a floating platform do).
-    Attempting either classification blinded this guard to a case it had
-    previously caught.
+    The comparison has to be **per mode**, not on the two maxima. A
+    rigid-body mode's backward error is a ratio of two near-zero
+    quantities and reads ~1 in *both* candidates however exact each is,
+    so it sets a floor under the alternative's maximum: with one present,
+    ``max(alt_r)`` stays near 1 and no amount of improvement elsewhere
+    can drive it below a tenth of ``max(sym_r)`` unless the symmetric
+    solve is worse than ~10. A free-free model with a genuinely corrupted
+    elastic mode at a backward error of ~0.8 would sail through, which is
+    exactly the breakdown this guard exists to catch.
 
-    The meaningless component cancels instead. Both candidate solves are
-    measured the same way, and the retry is accepted only on a decisive
-    improvement, so a mode on which the metric says nothing says the same
-    nothing twice and cannot tip the decision.
+    Comparing mode by mode removes the floor: the rigid modes contribute
+    ~1 against ~1 and register as no improvement, while a corrupted
+    elastic mode contributes ~0.8 against ~1e-9 and registers clearly.
+    Both candidates are sorted ascending over the same spectrum (the
+    retry preserves rigid-body modes for this reason), so equal indices
+    describe the same mode.
+
+    Returns a boolean mask over the compared modes. Empty when the
+    alternative recovered fewer modes than the symmetric solve — losing a
+    mode is never an improvement, whatever the residuals say.
     """
-    r = _modal_residuals(gk, gm, eigvals, eigvecs)
-    return float(r.max()) if r.size else 0.0
+    if n_alt < n_sym:
+        return np.zeros(0, dtype=bool)
+    n = min(sym_r.size, alt_r.size)
+    if n == 0:
+        return np.zeros(0, dtype=bool)
+    return (
+        (sym_r[:n] > _SOLVER_OPTIONS.residual_retry_threshold)
+        & (alt_r[:n] < _SOLVER_OPTIONS.residual_retry_improvement * sym_r[:n])
+    )
 
 
 def _modal_residuals(

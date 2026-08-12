@@ -314,6 +314,78 @@ class TestRigidBodyModesAreNotMistakenForBreakdown:
         assert max(diag.residuals[6:]) < 1.0e-8
 
 
+class TestRigidModesCannotMaskAnElasticBreakdown:
+    """A corrupted elastic mode must be caught even when rigid-body modes
+    sit alongside it.
+
+    Comparing the two candidates on their *maxima* fails here: a
+    rigid-body mode reads ~1 in both, so it floors the alternative's
+    maximum and no improvement among the elastic modes can clear a
+    decisive-win bar unless the symmetric solve is worse than ~10. A
+    free-free model with an elastic mode corrupted to a backward error of
+    ~0.8 would then pass silently — the exact failure this guard exists
+    to catch, reintroduced by the rigid modes' presence.
+
+    Comparing per mode removes the floor.
+    """
+
+    def _rigid_plus_ill_conditioned(self, nselt: int = 27):
+        """Six free rigid DOFs bolted onto the ill-conditioned cantilever,
+        then rotated so the two blocks are not separable by inspection."""
+        gk, gm = _cantilever_with_tip_lump(nselt, LIGHT)
+        n = gk.shape[0]
+        big_k = np.zeros((n + 6, n + 6))
+        big_m = np.zeros((n + 6, n + 6))
+        big_k[:n, :n] = gk
+        big_m[:n, :n] = gm
+        # Zero stiffness, unit mass on the six extra DOFs: rigid-body.
+        big_m[n:, n:] = np.eye(6) * float(np.trace(gm)) / n
+        q, _ = np.linalg.qr(np.random.default_rng(3).normal(size=(n + 6, n + 6)))
+        k_rot = q.T @ big_k @ q
+        m_rot = q.T @ big_m @ q
+        return 0.5 * (k_rot + k_rot.T), 0.5 * (m_rot + m_rot.T)
+
+    def test_the_rigid_modes_really_do_floor_the_maximum(self):
+        """The mechanism, pinned: on the maxima the alternative cannot
+        look decisively better even though it is exact where it counts."""
+        from pybmodes.fem.solver import _modal_residuals, _solve_dense_general
+
+        gk, gm = self._rigid_plus_ill_conditioned()
+        from scipy.linalg import eigh
+
+        w, v = eigh(gk, gm, subset_by_index=(0, 9))
+        v = v / np.linalg.norm(v, axis=0)
+        sym_r = _modal_residuals(gk, gm, w, v)
+        aw, av = _solve_dense_general(gk, gm, 10, keep_rigid_body=True)
+        av = av / np.linalg.norm(av, axis=0)
+        alt_r = _modal_residuals(gk, gm, aw, av)
+        # The alternative's maximum is pinned near 1 by the rigid modes...
+        assert alt_r.max() > 0.1
+        # ...so a maxima comparison sees no decisive win.
+        assert not alt_r.max() < 0.1 * sym_r.max()
+        # ...yet some mode really is corrupted and really is fixed.
+        assert ((sym_r > 0.1) & (alt_r < 0.1 * sym_r)).any()
+
+    def test_the_breakdown_is_caught_and_corrected(self):
+        gk, gm = self._rigid_plus_ill_conditioned()
+        with pytest.warns(RuntimeWarning, match="do not satisfy"):
+            eigvals, _v, diag = solve_modes(
+                gk, gm, n_modes=10, return_diagnostics=True,
+            )
+        assert diag.residual_fallback is True
+        assert eigvals.size == 10
+
+    def test_the_corrected_spectrum_matches_the_underlying_one(self):
+        """The rotation and the extra rigid DOFs do not change the
+        cantilever's own eigenvalues, so the corrected solve must still
+        contain the analytic lump frequency."""
+        gk, gm = self._rigid_plus_ill_conditioned()
+        with pytest.warns(RuntimeWarning):
+            eigvals, _v = solve_modes(gk, gm, n_modes=10)
+        f = eigvals_to_hz(eigvals, ROMG)
+        assert np.min(np.abs(f - _analytic())) < 5.0e-3 * _analytic()
+
+
 class TestDiagnosticsContract:
     def test_residual_fallback_defaults_to_false(self):
         gk, gm = _cantilever_with_tip_lump(13, REALISTIC)

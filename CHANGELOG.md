@@ -34,14 +34,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   1.4× better while *splitting* a degenerate fore-aft / side-side pair
   the symmetric solver resolves exactly.
 
-  The same condition disposes of rigid-body modes, on which the residual
-  is a ratio of two near-zero quantities and reads ~1 however exact the
-  eigenpair is. They are not identified and excluded — nothing separates
-  them reliably from a genuinely soft mode — instead both candidates are
-  measured identically, so a mode the metric cannot speak to says the
-  same thing twice and cannot tip the decision. The retry also preserves
-  zero eigenvalues, so a spurious trigger on a free-free model costs a
-  little time rather than deleting a physical mode.
+  The comparison is made **per mode** rather than on the two maxima, so
+  that rigid-body modes cannot distort it. Their backward error is a
+  ratio of two near-zero quantities and reads ~1 in both candidates
+  however exact each is; on a maximum that floors the alternative and
+  hides a genuinely corrupted elastic mode sitting alongside them, while
+  per mode it simply registers as no improvement. The retry also
+  preserves zero eigenvalues, so a spurious trigger on a free-free model
+  costs a little time rather than deleting a physical mode.
 
 - `SolverOptions` gains `residual_retry_threshold` and
   `residual_retry_improvement` for the two conditions above.
