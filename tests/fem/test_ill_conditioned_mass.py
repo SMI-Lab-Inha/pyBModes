@@ -1225,9 +1225,8 @@ class TestTheGuardDoesNotTaxEverySolve:
         on Linux while passing on Windows, having measured reuse rather
         than cost.
 
-        The model itself is measured, in ``scripts`` runs recorded on the
-        pull request: split form ``3nk``, built form ``2n^2``, crossing
-        at ``k = 2n/3``.
+        The cost model asserted against — ``3nk`` split, ``2n^2`` built —
+        and where it came from are on :func:`_prefer_materialised`.
         """
         from pybmodes.fem.solver import _prefer_materialised
 
