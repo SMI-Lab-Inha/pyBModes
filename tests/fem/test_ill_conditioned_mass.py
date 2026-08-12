@@ -367,7 +367,7 @@ class TestRigidModesCannotMaskAnElasticBreakdown:
         two rigid-body modes reading ~1 in both candidates, one elastic
         mode corrupted to 0.8 and fixed to 1e-9, one mode already exact.
         """
-        from pybmodes.fem.solver import _decisively_improved_modes
+        from pybmodes.fem.solver import _compare_candidate_modes
 
         sym_r = np.array([1.0, 1.0, 0.8, 1.0e-12])
         alt_r = np.array([1.0, 1.0, 1.0e-9, 1.0e-12])
@@ -378,15 +378,18 @@ class TestRigidModesCannotMaskAnElasticBreakdown:
 
         # Per mode, the corrupted one is unmissable and the rigid ones
         # register as exactly what they are: no improvement either way.
-        improved = _decisively_improved_modes(sym_r, alt_r, 4, 4)
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 4, 4)
         assert improved.tolist() == [False, False, True, False]
+        assert not regressed.any()
 
     def test_a_shorter_alternative_is_never_an_improvement(self):
-        from pybmodes.fem.solver import _decisively_improved_modes
+        from pybmodes.fem.solver import _compare_candidate_modes
 
         sym_r = np.array([1.0, 0.8, 1.0e-12])
         alt_r = np.array([1.0e-9, 1.0e-9])
-        assert not _decisively_improved_modes(sym_r, alt_r, 2, 3).any()
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 2, 3)
+        assert not improved.any()
+        assert not regressed.any()
 
     def test_the_result_is_never_made_worse(self):
         """The portable guarantee when rigid modes and an ill-conditioned
@@ -785,6 +788,78 @@ class TestARetryFailureIsNotAHardFailure:
                 gk, gm, n_modes=4, return_diagnostics=True,
             )
         assert diag.residual_fallback is False
+
+
+class TestARetryThatTradesModesIsRefused:
+    """Accepting replaces the whole spectrum, so a candidate that fixes
+    one mode while ruining another is not an improvement to the result.
+
+    The failing shape: the general solve is exact on the modes that
+    prompted the retry but pushes a previously acceptable mode above the
+    failure threshold. Judging on "any mode improved" would take it and
+    hand back a spectrum with a new bad mode in place of an old one.
+    """
+
+    def test_a_trade_is_not_an_improvement(self):
+        from pybmodes.fem.solver import _compare_candidate_modes
+
+        # Mode 0 rescued decisively; mode 3 was fine and is now above the
+        # threshold and an order worse.
+        sym_r = np.array([0.52, 1.1e-3, 5.7e-6, 0.017])
+        alt_r = np.array([1.1e-10, 3.0e-11, 3.5e-5, 0.26])
+
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 4, 4)
+        assert improved[0]
+        assert regressed[3]
+        # The rule the caller applies.
+        assert not (improved.any() and not regressed.any())
+
+    def test_a_mode_that_worsens_but_stays_acceptable_is_not_a_regression(self):
+        """Mode 2 above goes from 5.7e-6 to 3.5e-5 — six times worse and
+        entirely irrelevant, since it is nowhere near the threshold."""
+        from pybmodes.fem.solver import _compare_candidate_modes
+
+        sym_r = np.array([0.52, 5.7e-6])
+        alt_r = np.array([1.1e-10, 3.5e-5])
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 2, 2)
+        assert improved[0]
+        assert not regressed.any()
+
+    def test_rigid_body_noise_is_not_a_regression(self):
+        """Residuals that read ~1 in both candidates wobble either way.
+        A bare ``alt > sym`` test would call that a regression and block
+        every rescue that happens to sit beside a free-free mode."""
+        from pybmodes.fem.solver import _compare_candidate_modes
+
+        sym_r = np.array([1.0, 0.8])
+        alt_r = np.array([1.0001, 1.0e-9])
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 2, 2)
+        assert improved[1]
+        assert not regressed.any()
+
+    def test_end_to_end_a_trading_candidate_is_declined(self, monkeypatch):
+        import pybmodes.fem.solver as solvermod
+
+        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
+        real = solvermod._general_spectrum_for_retry
+
+        def trading(gk_, gm_, n_modes):
+            vals, vecs, sound = real(gk_, gm_, n_modes)
+            # Corrupt the last returned mode so it is decisively worse.
+            vecs = vecs.copy()
+            vecs[:, -1] = np.roll(vecs[:, -1], 1)
+            return vals, vecs, sound
+
+        monkeypatch.setattr(
+            solvermod, "_general_spectrum_for_retry", trading,
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _v, _x, diag = solve_modes(
+                gk, gm, n_modes=4, return_diagnostics=True,
+            )
+        assert diag.residual_fallback is False
+        assert diag.path == "dense_symmetric"
 
 
 class TestTheModeCountWarningStaysHonest:

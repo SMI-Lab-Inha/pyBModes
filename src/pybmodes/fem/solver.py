@@ -392,14 +392,17 @@ def solve_modes(
             if alt_vecs.size:
                 _normalize_columns_l2(alt_vecs)
             alt_r = _modal_residuals(gk_s, gm_s, alt_vals, alt_vecs)
-            improved = (
-                _decisively_improved_modes(
+            improved, regressed = (
+                _compare_candidate_modes(
                     sym_r, alt_r, alt_vals.size, eigvals.size,
                 )
                 if ordering_sound
-                else np.zeros(0, dtype=bool)
+                else (np.zeros(0, dtype=bool), np.zeros(0, dtype=bool))
             )
-            if improved.any():
+            # Accepting replaces the whole spectrum, not just the modes
+            # that prompted the retry, so a candidate that fixes one mode
+            # while ruining another is not an improvement to the result.
+            if improved.any() and not regressed.any():
                 idx = int(np.argmax(np.where(improved, sym_r[:improved.size], 0.0)))
                 warnings.warn(
                     f"the symmetric eigensolver returned "
@@ -497,13 +500,29 @@ def _build_diagnostics(
 # one is a rigid-body mode: a free-free floating platform has up to six,
 # and an unrestrained DOF (a symmetric column's yaw) gives an exactly
 # zero one.
-def _decisively_improved_modes(
+def _compare_candidate_modes(
     sym_r: np.ndarray,
     alt_r: np.ndarray,
     n_alt: int,
     n_sym: int,
-) -> np.ndarray:
-    """Which modes the general path solves decisively better, per mode.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Per-mode verdicts on the alternative: ``(improved, regressed)``.
+
+    Both are needed because accepting the retry replaces the **whole**
+    spectrum, not the modes that prompted it. A candidate that fixes one
+    mode while ruining another is not an improvement to the result even
+    though it is an improvement to that mode, so "some mode got
+    decisively better" is only half the test; the other half is that no
+    mode got decisively worse.
+
+    Regression mirrors improvement exactly, using the same threshold and
+    the same factor rather than a second notion of acceptable: a mode has
+    regressed when it ends up above the failure threshold *and* is worse
+    there by the margin that would have counted as decisive in the other
+    direction. The symmetry matters for rigid-body modes, whose residual
+    is ~1 in both candidates and wobbles a little either way — that is
+    noise, not a regression, and a bare ``alt > sym`` test would read it
+    as one and block every rescue that happens to sit beside them.
 
     The comparison has to be **per mode**, not on the two maxima. A
     rigid-body mode's backward error is a ratio of two near-zero
@@ -522,19 +541,22 @@ def _decisively_improved_modes(
     retry preserves rigid-body modes for this reason), so equal indices
     describe the same mode.
 
-    Returns a boolean mask over the compared modes. Empty when the
-    alternative recovered fewer modes than the symmetric solve — losing a
-    mode is never an improvement, whatever the residuals say.
+    Returns two boolean masks over the compared modes, both empty when
+    the alternative recovered fewer modes than the symmetric solve —
+    losing a mode is never an improvement, whatever the residuals say.
     """
+    empty = np.zeros(0, dtype=bool)
     if n_alt < n_sym:
-        return np.zeros(0, dtype=bool)
+        return empty, empty
     n = min(sym_r.size, alt_r.size)
     if n == 0:
-        return np.zeros(0, dtype=bool)
-    return (
-        (sym_r[:n] > _SOLVER_OPTIONS.residual_retry_threshold)
-        & (alt_r[:n] < _SOLVER_OPTIONS.residual_retry_improvement * sym_r[:n])
-    )
+        return empty, empty
+    threshold = _SOLVER_OPTIONS.residual_retry_threshold
+    factor = _SOLVER_OPTIONS.residual_retry_improvement
+    sym, alt = sym_r[:n], alt_r[:n]
+    improved = (sym > threshold) & (alt < factor * sym)
+    regressed = (alt > threshold) & (sym < factor * alt)
+    return improved, regressed
 
 
 def _modal_residuals(

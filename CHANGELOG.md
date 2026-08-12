@@ -42,6 +42,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   1.4× better while *splitting* a degenerate fore-aft / side-side pair
   the symmetric solver resolves exactly.
 
+  Acceptance requires the candidate to be **non-regressive** as well as
+  decisively better somewhere. Taking the retry replaces the whole
+  spectrum, not the modes that prompted it, so a candidate that rescues
+  one mode while pushing a previously acceptable one above the failure
+  threshold is refused — it would hand back a new bad mode in place of an
+  old one. Regression mirrors improvement with the same threshold and
+  factor, so rigid-body modes reading ~1 in both candidates are not
+  mistaken for it.
+
   The comparison is made **per mode** rather than on the two maxima, so
   that rigid-body modes cannot distort it. Their backward error is a
   ratio of two near-zero quantities and reads ~1 in both candidates
