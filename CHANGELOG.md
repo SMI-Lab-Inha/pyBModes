@@ -23,7 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Self-weight geometric softening (#134).**
   `Tower.run(gravity=True)` (or `gravity=9.80665`) puts the weight of the
   tower, the RNA and any point masses into the column as an axial load,
-  which lowers the bending frequencies — typically 2-3 % on the 1st
+  which lowers the bending frequencies — typically around 2 % on the 1st
   fore-aft mode of a large machine, and usually the single largest term
   when reconciling against a tool that models gravity by default. **Off
   by default**, so every existing result is unchanged and the validated

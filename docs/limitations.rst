@@ -162,7 +162,7 @@ Numerical scope
 - **Self-weight softening is opt-in and fixed-bottom only.**
   ``Tower.run(gravity=True)`` adds the geometric stiffness of
   the tower's own weight plus the RNA and any point masses,
-  which lowers the bending frequencies (typically 2-3 % on the
+  which lowers the bending frequencies (around 2 % on the
   1st fore-aft mode of a large machine, and usually the single
   largest term when reconciling against a tool that models
   gravity by default). It is **off by default**, which is what

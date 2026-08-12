@@ -1726,7 +1726,7 @@ class Tower:
             yourself. The weight of the tower, the RNA ``tip_mass`` and
             any :meth:`add_point_mass` lumps puts the tower into
             compression, which lowers the bending frequencies — typically
-            2–3 % on the 1st fore-aft mode of a modern large turbine, and
+            around 2 % on the 1st fore-aft mode of a modern large turbine, and
             the single largest term when reconciling against a tool that
             models gravity by default (OrcaFlex, most multibody codes).
 
