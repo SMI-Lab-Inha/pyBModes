@@ -671,7 +671,18 @@ def _compare_candidate_modes(
 # temporaries, so they cross over at ``k = 2 n / 3`` — measured, not
 # derived: a first estimate of ``n / 3`` was wrong by a factor of two and
 # would have taken the more expensive route across a third of the range.
-_THIN_BLOCK_NUM, _THIN_BLOCK_DEN = 3, 2
+def _prefer_materialised(n_rows: int, n_cols: int) -> bool:
+    """Is ``sym(A) v`` cheaper built than split into two products?
+
+    The split form peaks at three ``n x k`` temporaries and the built one
+    at an ``n x n`` copy plus the ``n x k`` result, so they cross over at
+    ``3 n k = 2 n^2``, i.e. ``k = 2n/3``.
+
+    Measured, not derived. A flop-count estimate put the crossover at
+    ``n/3``, which would have taken the dearer route across a third of
+    the range — precisely the middling widths this sees in practice.
+    """
+    return n_cols * 3 >= n_rows * 2
 
 
 def _apply(a: np.ndarray, v: np.ndarray, symmetrise: bool) -> np.ndarray:
@@ -679,8 +690,8 @@ def _apply(a: np.ndarray, v: np.ndarray, symmetrise: bool) -> np.ndarray:
 
     ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``. The right-hand side avoids
     a dense ngd-square allocation, which is what a modal solve usually
-    wants: residuals are computed on every solve that asks for
-    diagnostics, and a handful of modes out of a few thousand DOFs makes
+    wants: residuals are measured on every eligible solve, healthy ones
+    included, and a handful of modes out of a few thousand DOFs makes
     those products very thin.
 
     It is not free, though, and the assumption fails at the other end.
@@ -692,9 +703,7 @@ def _apply(a: np.ndarray, v: np.ndarray, symmetrise: bool) -> np.ndarray:
     """
     if not symmetrise:
         return np.asarray(a @ v)
-    if v.ndim > 1 and (
-        v.shape[1] * _THIN_BLOCK_NUM >= a.shape[0] * _THIN_BLOCK_DEN
-    ):
+    if v.ndim > 1 and _prefer_materialised(a.shape[0], v.shape[1]):
         return np.asarray(0.5 * (a + a.T) @ v)
     return np.asarray(0.5 * (a @ v + a.T @ v))
 
@@ -705,8 +714,9 @@ def _modal_residuals(
 ) -> np.ndarray:
     """Per-mode relative backward error ``||K x - λ M x|| / ||K x||``.
 
-    The honest health metric for a generalised modal solve. Cheap
-    (matrix-times-thin-matrix), so computed for every path.
+    The honest health metric for a generalised modal solve, and cheap
+    enough to compute on every path — a matrix against a block of
+    eigenvectors, usually a thin one.
 
     ``symmetrise`` measures against ``sym(A)`` instead, which is what a
     symmetric path actually solved — see :func:`_apply` for why that is

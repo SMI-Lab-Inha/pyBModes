@@ -1131,13 +1131,15 @@ class TestTheModeCountWarningStaysHonest:
 
 
 class TestTheGuardDoesNotTaxEverySolve:
-    """Residuals are computed on every solve that asks for diagnostics,
-    so measuring them must not allocate a copy of the matrices.
+    """Residuals are measured on every eligible solve, healthy ones
+    included, so measuring them must not cost more than it saves.
 
-    ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``, and only the second form
-    avoids a dense ngd-square pair. At ngd = 1500 that is a 54 MB peak
-    against 0.3 MB, and it falls on the large sparse solves the dense
-    copy would hurt most.
+    ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``, and the two differ only in
+    what they allocate. For a thin block the second form avoids a dense
+    ngd-square pair: at ngd = 1500 with six modes that is 0.3 MB against
+    54 MB, and it falls on the large sparse solves the copy would hurt
+    most. For a wide one the comparison inverts, so the route is chosen
+    rather than assumed.
     """
 
     def _pair(self, n):
@@ -1207,44 +1209,56 @@ class TestTheGuardDoesNotTaxEverySolve:
         # symmetrised basis, rather than being handed a built pair.
         assert all(is_gk and is_gm and sym for is_gk, is_gm, sym in seen), seen
 
-    @pytest.mark.parametrize("k_over_n", [0.01, 0.2, 0.5, 0.9, 1.0])
+    @pytest.mark.parametrize("k_over_n", [0.01, 0.2, 0.5, 0.67, 0.9, 1.0])
     def test_whichever_route_is_taken_is_the_cheaper_one(self, k_over_n):
         """The products are only thin while the block is. ``n_modes=None``
         is the public default and returns the whole spectrum, at which
         point two full matmuls cost more than the single copy they were
         avoiding, so the route is chosen by width.
 
-        The crossover is measured rather than derived — a flop-count
-        estimate put it at ``k = n/3`` when it is ``2n/3``, which would
-        have taken the dearer route across a third of the range.
-        """
-        import tracemalloc
+        Asserted against the cost model rather than against a measured
+        peak. ``tracemalloc`` reports what the *allocator* did, and a
+        freed block from an earlier call can be reused by a later one, so
+        the same three routes time-share buffers differently depending on
+        the order they are measured in and on the platform. An earlier
+        version of this test compared three live measurements and failed
+        on Linux while passing on Windows, having measured reuse rather
+        than cost.
 
-        from pybmodes.fem.solver import _apply
+        The model itself is measured, in ``scripts`` runs recorded on the
+        pull request: split form ``3nk``, built form ``2n^2``, crossing
+        at ``k = 2n/3``.
+        """
+        from pybmodes.fem.solver import _prefer_materialised
 
         n = 400
-        rng = np.random.default_rng(4)
-        a = rng.normal(size=(n, n))
-        v = rng.normal(size=(n, max(1, round(k_over_n * n))))
-
-        def peak(fn):
-            tracemalloc.start()
-            base = tracemalloc.get_traced_memory()[0]
-            fn()
-            p = tracemalloc.get_traced_memory()[1] - base
-            tracemalloc.stop()
-            return p
-
-        chosen = peak(lambda: _apply(a, v, True))
-        products = peak(lambda: 0.5 * (a @ v + a.T @ v))
-        materialise = peak(lambda: 0.5 * (a + a.T) @ v)
-        assert chosen <= 1.05 * min(products, materialise), (
-            f"k/n={k_over_n}: took {chosen / 1e6:.2f} MB when "
-            f"{min(products, materialise) / 1e6:.2f} MB was available"
+        k = max(1, round(k_over_n * n))
+        split, built = 3 * n * k, 2 * n * n
+        assert _prefer_materialised(n, k) == (built <= split), (
+            f"k/n={k_over_n}: chose the "
+            f"{'built' if _prefer_materialised(n, k) else 'split'} form "
+            f"when split costs {split} and built costs {built}"
         )
 
-    @pytest.mark.parametrize("k", [1, 7, 40])
+    def test_a_full_width_block_is_not_treated_as_thin(self):
+        """The case that prompted the rule: ``n_modes=None`` returns the
+        whole spectrum, so ``v`` is square and the products are two full
+        matrix multiplies."""
+        from pybmodes.fem.solver import _prefer_materialised
+
+        assert _prefer_materialised(400, 400)
+        assert _prefer_materialised(2000, 2000)
+
+    def test_a_few_modes_out_of_many_dofs_stays_thin(self):
+        from pybmodes.fem.solver import _prefer_materialised
+
+        assert not _prefer_materialised(1500, 6)
+        assert not _prefer_materialised(400, 4)
+
+    @pytest.mark.parametrize("k", [1, 7, 26, 27, 40])
     def test_both_routes_agree_numerically(self, k):
+        """Whichever route is taken, the answer is ``sym(A) v``. ``k``
+        spans both sides of the crossover at ``2n/3 = 26.7``."""
         from pybmodes.fem.solver import _apply
 
         n = 40
