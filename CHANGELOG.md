@@ -22,9 +22,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `solve_modes` now checks the backward error `||K x - λ M x|| / ||K x||`
   of a **dense** symmetric solve and, when it is large, redoes it through
   the general dense path, which factorises neither matrix. The retried
-  result is taken only when it resolves a mode the symmetric solve had
-  failed, by a margin that separates a rescue from roundoff, and a
-  `RuntimeWarning` names the swap. `SolverDiagnostics` gains
+  result is taken only when it **resolves** a mode the symmetric solve
+  had failed — improving it by more than 1000× and reaching a backward
+  error of 1e-3 or better. Both conditions are needed because a
+  rigid-body mode's residual divides one roundoff quantity by another,
+  so its value is arbitrary (0.076, 0.79 and 12.4 have all been measured
+  on healthy models) while its improvement ratio stays near 10×, an
+  order of magnitude short of any real rescue. A `RuntimeWarning` names
+  the swap, and attributes it to the mass matrix only when the mass
+  conditioning supports that — a wide stiffness range trips the same
+  guard with a perfectly conditioned mass. `SolverDiagnostics` gains
   `residual_fallback` recording it.
 
   The **sparse** path is deliberately not retried and never sets

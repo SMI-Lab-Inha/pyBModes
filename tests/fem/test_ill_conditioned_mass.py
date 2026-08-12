@@ -663,6 +663,44 @@ class TestTheRetryVerifiesItsOrderingRatherThanAssumingIt:
         assert vals.size == 2
 
 
+class TestTheWarningAttributesTheCauseHonestly:
+    """The near-singular mass matrix motivated this guard but is not the
+    only thing that trips it, and naming it unconditionally sends the
+    reader to check something that may be perfectly fine."""
+
+    def test_a_singular_mass_names_the_mass_matrix(self):
+        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
+        with pytest.warns(RuntimeWarning, match="nearly singular here"):
+            solve_modes(gk, gm, n_modes=4)
+
+    def test_a_well_conditioned_mass_does_not_blame_it(self):
+        """``M = I`` with a stiffness spectrum spanning 1e-16 to 1 trips
+        the guard at ``cond(M) = 1``."""
+        rng = np.random.default_rng(474)
+        q, _r = np.linalg.qr(rng.normal(size=(3, 3)))
+        gk = q @ np.diag([1.0e-16, 1.0e-8, 1.0]) @ q.T
+        gk = 0.5 * (gk + gk.T)
+        gm = np.eye(3)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            _v, _x, diag = solve_modes(gk, gm, n_modes=3,
+                                       return_diagnostics=True)
+        text = " ".join(str(w.message) for w in caught)
+        if diag.residual_fallback:
+            assert "well conditioned" in text
+            assert "nearly singular" not in text
+            assert "stiffness ratio" in text
+
+    def test_the_message_states_what_was_measured(self):
+        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            solve_modes(gk, gm, n_modes=4)
+        text = " ".join(str(w.message) for w in caught)
+        assert "do not satisfy" in text
+        assert "cond =" in text
+
+
 class TestTheRetryIsScopedToTheDensePath:
     """Only the dense symmetric path is retried, and that is about which
     matrix each routine factorises.

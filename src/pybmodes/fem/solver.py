@@ -409,13 +409,9 @@ def solve_modes(
                     f"{int(improved.sum())} mode(s) that do not satisfy "
                     f"K x = lambda M x — worst at index {idx}, backward "
                     f"error {sym_r[idx]:.2e} against {alt_r[idx]:.2e} from "
-                    f"the general dense path. Its Cholesky reduction of the "
-                    f"mass matrix loses accuracy when that matrix is nearly "
-                    f"singular, which a very light beam carrying a very "
-                    f"heavy lump produces. The returned modes come from the "
-                    f"general solve, which factorises neither matrix. Worth "
-                    f"checking the mass distribution is the one you "
-                    f"intended.",
+                    f"the general dense path. The returned modes come from "
+                    f"the general solve, which factorises neither matrix. "
+                    + _retry_cause(gm_s),
                     RuntimeWarning,
                     stacklevel=2,
                 )
@@ -500,6 +496,56 @@ def _build_diagnostics(
 # one is a rigid-body mode: a free-free floating platform has up to six,
 # and an unrestrained DOF (a symmetric column's yaw) gives an exactly
 # zero one.
+# Above this the mass matrix is ill-conditioned enough for the Cholesky
+# reduction to be the credible culprit; below it, something else in the
+# pencil is.
+_MASS_COND_ATTRIBUTION = 1.0e8
+
+
+def _retry_cause(gm: np.ndarray) -> str:
+    """The explanatory half of the retry warning, attributed honestly.
+
+    The near-singular mass matrix is the *motivating* case, not the only
+    one: the symmetric reduction degrades on an ill-conditioned pencil
+    generally, and a stiffness spectrum spanning 1e-16 to 1 with ``M = I``
+    triggers this guard while ``cond(M) = 1``. Naming the mass matrix
+    there would send the reader to check a mass distribution that is
+    perfectly fine.
+
+    So the cause is measured before it is asserted. The condition number
+    is only computed on this branch, which is rare, and is skipped for a
+    system large enough for the O(n^3) estimate to matter — where the
+    text falls back to naming both possibilities.
+    """
+    if gm.shape[0] > _COND_DENSE_MAX:
+        return (
+            "This happens when the pencil is ill-conditioned — most often "
+            "a nearly singular mass matrix, from a very light beam "
+            "carrying a very heavy lump, but a very wide stiffness range "
+            "does it too. Worth checking the section properties for an "
+            "extreme mass or stiffness ratio."
+        )
+    try:
+        cond = float(np.linalg.cond(gm))
+    except np.linalg.LinAlgError:
+        cond = float("inf")
+    if cond > _MASS_COND_ATTRIBUTION:
+        return (
+            f"The symmetric reduction goes through a Cholesky factor of "
+            f"the mass matrix, which is nearly singular here "
+            f"(cond = {cond:.1e}) — a very light beam carrying a very "
+            f"heavy lump does this. Worth checking the mass distribution "
+            f"is the one you intended."
+        )
+    return (
+        f"The mass matrix is well conditioned (cond = {cond:.1e}), so the "
+        f"reduction was defeated by the pencil rather than by the mass: a "
+        f"stiffness range wide enough to put a soft mode at the level of "
+        f"roundoff will do it. Worth checking the section properties for "
+        f"an extreme stiffness ratio."
+    )
+
+
 def _compare_candidate_modes(
     sym_r: np.ndarray,
     alt_r: np.ndarray,
