@@ -150,16 +150,22 @@ class Tower:
     # ``__init__``).
     coeff_validation: ValidationResult | None = None
 
-    def __init__(self, bmi_path: str | pathlib.Path) -> None:
+    def __init__(
+        self, bmi_path: str | pathlib.Path, *, n_nodes: int | None = None,
+    ) -> None:
         self._bmi = read_bmi(bmi_path)
         self._sp: SectionProperties | None = None
         if self._bmi.beam_type != 2:
             raise ValueError(
                 f"Tower requires beam_type=2, got {self._bmi.beam_type}"
             )
+        if n_nodes is not None:
+            self.refine_mesh(n_nodes)
 
     @classmethod
-    def from_bmi(cls, bmi_path: str | pathlib.Path) -> Tower:
+    def from_bmi(
+        cls, bmi_path: str | pathlib.Path, *, n_nodes: int | None = None,
+    ) -> Tower:
         """Build a tower model from a BModes-format ``.bmi`` deck.
 
         Equivalent to ``Tower(bmi_path)`` — exposed as an explicit
@@ -174,8 +180,11 @@ class Tower:
         ``PlatformSupport`` carrying hydro / mooring / platform-inertia
         6×6 matrices). All of those flow through the standard FEM
         pipeline; this constructor is a thin handle.
+
+        ``n_nodes`` re-grids the deck's FE mesh — see :meth:`refine_mesh`
+        for what that does and does not preserve (issue #58).
         """
-        return cls(bmi_path)
+        return cls(bmi_path, n_nodes=n_nodes)
 
     @classmethod
     def from_elastodyn(
@@ -183,6 +192,7 @@ class Tower:
         main_dat_path: str | pathlib.Path,
         *,
         validate_coeffs: bool = False,
+        n_nodes: int | None = None,
     ) -> Tower:
         """Build a tower model from an OpenFAST ElastoDyn main ``.dat``.
 
@@ -202,6 +212,9 @@ class Tower:
             ``self.coeff_validation``. Emits a ``UserWarning`` if any
             block fails or warns. Default ``False`` so the standard
             constructor stays cheap.
+        n_nodes :
+            Optional FE-mesh refinement (issue #58) — see
+            :meth:`refine_mesh`. ``None`` keeps the deck's own mesh.
         """
         from pybmodes.io.elastodyn_reader import (
             read_elastodyn_blade,
@@ -226,6 +239,8 @@ class Tower:
         obj._bmi = bmi
         obj._sp = sp
         obj.coeff_validation = None
+        if n_nodes is not None:
+            obj.refine_mesh(n_nodes)
 
         if validate_coeffs:
             obj.coeff_validation = _run_validation_and_warn(main_dat_path)
@@ -751,6 +766,8 @@ class Tower:
         main_dat_path: str | pathlib.Path,
         moordyn_dat_path: str | pathlib.Path,
         hydrodyn_dat_path: str | pathlib.Path | None = None,
+        *,
+        n_nodes: int | None = None,
     ) -> Tower:
         """Build a free-free floating tower model with a populated
         :class:`~pybmodes.io.bmi.PlatformSupport` block.
@@ -927,6 +944,8 @@ class Tower:
         obj = cls.__new__(cls)
         obj._bmi = bmi
         obj._sp = sp
+        if n_nodes is not None:
+            obj.refine_mesh(n_nodes)
         return obj
 
     @classmethod
@@ -1309,6 +1328,8 @@ class Tower:
         cls,
         main_dat_path: str | pathlib.Path,
         subdyn_dat_path: str | pathlib.Path,
+        *,
+        n_nodes: int | None = None,
     ) -> Tower:
         """Build a combined pile + tower cantilever from an ElastoDyn deck
         plus a SubDyn substructure file.
@@ -1323,6 +1344,11 @@ class Tower:
         springs, hydrodynamic added mass, or non-circular substructure
         members. See :func:`pybmodes.io.subdyn_reader.to_pybmodes_pile_tower`
         for the assembly details.
+
+        ``n_nodes`` re-grids the spliced FE mesh (issue #58) — see
+        :meth:`refine_mesh`. Worth knowing here in particular: the splice
+        places a node on the transition piece, which a uniform re-grid
+        will move, so the warning it emits is expected on this path.
         """
         from pybmodes.io.elastodyn_reader import (
             read_elastodyn_blade,
@@ -1349,6 +1375,8 @@ class Tower:
         obj = cls.__new__(cls)
         obj._bmi = bmi
         obj._sp = sp
+        if n_nodes is not None:
+            obj.refine_mesh(n_nodes)
         return obj
 
     def attach_mudline_foundation(
@@ -1486,6 +1514,46 @@ class Tower:
         )
         self._bmi.tow_support = 1
         self._bmi.hub_conn = 3
+        return self
+
+    def refine_mesh(self, n_nodes: int) -> Tower:
+        """Re-grid the FE mesh onto ``n_nodes`` evenly-spaced nodes (issue #58).
+
+        The deck-reader counterpart to the ``n_nodes`` keyword the
+        geometry-derived constructors already carry, and available on every
+        constructor including :meth:`from_bmi` and the ElastoDyn paths.
+        Returns ``self`` for chaining.
+
+        The two are not the same operation, and the difference is the
+        reason this one is opt-in per call rather than a default. A
+        geometry-derived model re-grids *continuous* geometry and
+        recomputes exact closed-form tube properties at each new station,
+        so refinement is lossless. A deck carries an already **tabulated**
+        property table, so this re-samples it: the table itself is
+        untouched, but a uniform mesh will generally not put a node on a
+        deliberate property step (a wall-thickness jump, a material
+        change), and the element straddling one then takes a single
+        mid-element value. A ``UserWarning`` names any step that gets
+        smoothed, so the trade is visible rather than silent.
+
+        Raises ``ValueError`` when ``n_nodes < 2`` and when the model
+        carries tension-wire supports, whose attachments are FE *node
+        numbers* tied to the deck's own mesh.
+        """
+        from pybmodes.models._shared import refine_deck_mesh
+
+        sp = self._sp
+        if sp is None and self._bmi.sec_props_file:
+            # A BMI-only model reads its table lazily at solve time; the
+            # step detection needs it now. A missing / unreadable file is
+            # not this method's error to raise, so fall through quietly and
+            # let the solve report it.
+            try:
+                from pybmodes.io.sec_props import read_sec_props
+                sp = read_sec_props(self._bmi.resolve_sec_props_path())
+            except (OSError, ValueError):
+                sp = None
+        refine_deck_mesh(self._bmi, sp, n_nodes)
         return self
 
     def add_point_mass(
