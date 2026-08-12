@@ -200,15 +200,23 @@ class TestMarginalImprovementIsRefused:
 
 
 class TestRigidBodyModesAreNotMistakenForBreakdown:
-    """A free-free model's zero-frequency modes must not trip the guard.
+    """A free-free model's zero-frequency modes must not corrupt the result.
 
     For a rigid-body mode ``K x ~ 0`` and ``lambda ~ 0``, so the relative
-    residual is a ratio of two near-zero quantities and evaluates to ~1
-    however exact the eigenpair is. Judging a solve by the raw maximum
-    would condemn every floating result, and acting on that verdict is
-    worse than doing nothing: the general path filters out non-positive
-    eigenvalues, so it would delete the zero mode and shift every index
-    after it.
+    residual is a ratio of two near-zero quantities and reads ~1 however
+    exact the eigenpair is. Two attempts to *identify* such modes and
+    exclude them both failed — an eigenvalue-relative cutoff takes a
+    rigid-only subset's own noise as its scale, and a strain-relative one
+    cannot tell a rigid mode from a genuinely soft one (the 0.08 Hz lump
+    mode of a 1e10 N.m^2 beam carries less strain than a floating
+    platform's rigid modes do, and excluding it blinded the guard to a
+    case it had caught).
+
+    So they are not identified at all. Both candidate solves are measured
+    the same way and the retry needs a decisive win, so a mode the metric
+    cannot speak to says the same nothing twice. The retry also preserves
+    zero eigenvalues, which is what makes a false positive merely wasteful
+    instead of destructive.
     """
 
     def _free_free_with_a_zero_mode(self):
@@ -222,41 +230,88 @@ class TestRigidBodyModesAreNotMistakenForBreakdown:
         k = b @ b.T                          # rank n-1: one zero mode
         return 0.5 * (k + k.T), 0.5 * (m + m.T)
 
-    def test_zero_mode_present_and_no_retry(self):
-        import warnings as _w
-
+    def test_zero_mode_survives_whichever_path_runs(self):
         gk, gm = self._free_free_with_a_zero_mode()
-        with _w.catch_warnings():
-            _w.simplefilter("error")
-            eigvals, _v, diag = solve_modes(
-                gk, gm, n_modes=6, return_diagnostics=True,
-            )
-        assert diag.residual_fallback is False
-        assert diag.path == "dense_symmetric"
-        # The zero mode survives rather than being filtered away.
+        eigvals, _v, diag = solve_modes(
+            gk, gm, n_modes=6, return_diagnostics=True,
+        )
+        # The zero mode survives rather than being filtered away, and the
+        # spectrum keeps its full width either way.
         assert abs(eigvals[0]) < 1.0e-8 * abs(eigvals).max()
         assert eigvals.size == 6
+        assert diag.n_returned == 6
 
-    def test_raw_maximum_residual_would_have_condemned_it(self):
-        """The metric really is ~1 on the rigid-body mode, so excluding
-        it is what makes the guard usable rather than a nicety."""
-        from pybmodes.fem.solver import _max_elastic_residual, _modal_residuals
+    def test_the_metric_really_does_read_about_one_there(self):
+        """Why the naive raw-maximum reading is untrustworthy, pinned so
+        the reasoning above stays anchored to a number."""
+        from pybmodes.fem.solver import _modal_residuals
 
         gk, gm = self._free_free_with_a_zero_mode()
         eigvals, eigvecs = solve_modes(gk, gm, n_modes=6)
         raw = _modal_residuals(gk, gm, eigvals, eigvecs)
-        assert raw.max() > 0.1
-        assert _max_elastic_residual(gk, gm, eigvals, eigvecs) < 1.0e-8
+        rigid = np.argmin(np.abs(eigvals))
+        assert raw[rigid] > 0.1
+        # Every elastic mode is exact, so the ~1 is the metric failing,
+        # not the solve.
+        elastic = np.ones(raw.size, dtype=bool)
+        elastic[rigid] = False
+        assert raw[elastic].max() < 1.0e-8
 
-    def test_all_rigid_body_modes_report_zero(self):
-        """Nothing to judge means no verdict, not a bad one."""
-        from pybmodes.fem.solver import _max_elastic_residual
+    def test_the_retry_preserves_zero_eigenvalues(self):
+        """The property that makes a false positive harmless: the
+        alternative solve keeps the rigid modes rather than filtering
+        them, so both candidates describe the same spectrum."""
+        from pybmodes.fem.solver import _solve_dense_general
 
-        gk = np.zeros((4, 4))
-        gm = np.eye(4)
-        vals = np.zeros(4)
-        vecs = np.eye(4)
-        assert _max_elastic_residual(gk, gm, vals, vecs) == 0.0
+        gk, gm = self._free_free_with_a_zero_mode()
+        dropped, _v = _solve_dense_general(gk, gm, 6)
+        kept, _w = _solve_dense_general(gk, gm, 6, keep_rigid_body=True)
+        assert np.min(np.abs(kept)) == 0.0
+        assert np.min(np.abs(dropped)) > 0.0
+        # The default filter loses the zero mode and shifts the rest up.
+        assert kept[1] == pytest.approx(dropped[0], rel=1.0e-9)
+
+    def _six_rigid_dofs(self):
+        """A model with six genuinely free rigid-body DOFs above a set of
+        elastic ones — an unmoored floating platform in the limit."""
+        n = 14
+        rng = np.random.default_rng(11)
+        a = rng.normal(size=(n, n))
+        m = a @ a.T + n * np.eye(n)
+        b = rng.normal(size=(n, n - 6))
+        k = b @ b.T                          # rank n-6: six zero modes
+        return 0.5 * (k + k.T), 0.5 * (m + m.T)
+
+    @pytest.mark.parametrize("n_modes", [1, 3, 6])
+    def test_a_rigid_only_subset_keeps_its_modes(self, n_modes):
+        """The case that broke both classification attempts.
+
+        Every requested mode is rigid-body, so the metric reads ~1 on all
+        of them and no reference scale drawn from the subset can say
+        otherwise. The retry may well run; what matters is that it cannot
+        take modes away, because it now preserves zero eigenvalues and
+        has to win decisively to be accepted at all.
+        """
+        gk, gm = self._six_rigid_dofs()
+        eigvals, _v, diag = solve_modes(
+            gk, gm, n_modes=n_modes, return_diagnostics=True,
+        )
+        assert eigvals.size == n_modes
+        assert np.all(np.abs(eigvals) < 1.0e-8 * float(np.linalg.norm(gk)))
+        assert diag.n_returned == n_modes
+
+    def test_a_mixed_subset_is_measured_on_its_elastic_modes(self):
+        """With elastic modes present the metric is meaningful again and
+        reports them as exact."""
+        gk, gm = self._six_rigid_dofs()
+        eigvals, _v, diag = solve_modes(
+            gk, gm, n_modes=10, return_diagnostics=True,
+        )
+        assert eigvals.size == 10
+        assert np.max(np.abs(eigvals)) > 1.0e-8 * float(np.linalg.norm(gk))
+        # Six rigid modes at the bottom, four exact elastic ones above.
+        assert np.sum(np.abs(eigvals) < 1.0e-12 * np.max(eigvals)) == 6
+        assert max(diag.residuals[6:]) < 1.0e-8
 
 
 class TestDiagnosticsContract:

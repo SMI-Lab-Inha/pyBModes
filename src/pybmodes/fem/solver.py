@@ -41,24 +41,32 @@ of the mass matrix, and that reduction degrades once ``M`` is nearly
 singular, which a very light beam carrying a very heavy lump produces.
 The failure mode is silent: LAPACK returns confidently wrong low modes
 rather than raising. :func:`solve_modes` therefore checks the backward
-error of the **elastic** modes of every symmetric solve (a rigid-body
-mode has ``K x ≈ 0`` and ``λ ≈ 0``, so its relative residual is a ratio
-of two near-zero quantities and carries no information — see
-:func:`_max_elastic_residual`) and, when it exceeds
+error of every symmetric solve and, when it exceeds
 :attr:`~pybmodes.options.SolverOptions.residual_retry_threshold`, tries
 the general path as well — taking its result only if it is better by
 :attr:`~pybmodes.options.SolverOptions.residual_retry_improvement`, and
 warning when it does.
 
-That second condition is the load-bearing one. A real deck can sit above
-the threshold without being broken (the bundled NREL 5MW land tower
-reaches ~2e-2, its adapter leaving ``M`` at cond ~4e10), and there the
-general path is only marginally better while *splitting* the degenerate
-fore-aft / side-side pair the symmetric solver resolves exactly — which
-the FA / SS classifier downstream depends on. A true breakdown is not
-marginal: it improves by nine orders of magnitude. Demanding a decisive
-win keeps every validated frequency untouched and still catches the
-failure this guard exists for.
+That second condition is the load-bearing one, and it is what lets the
+check be simple. A real deck can sit above the threshold without being
+broken (the bundled NREL 5MW land tower reaches ~2e-2, its adapter
+leaving ``M`` at cond ~4e10), and there the general path is only
+marginally better while *splitting* the degenerate fore-aft / side-side
+pair the symmetric solver resolves exactly — which the FA / SS
+classifier downstream depends on. A true breakdown is not marginal: it
+improves by nine orders of magnitude.
+
+The same condition disposes of rigid-body modes, on which the residual
+is a ratio of two near-zero quantities and reads ~1 however exact the
+eigenpair is. Rather than trying to identify such modes — neither their
+eigenvalue nor their strain distinguishes them reliably from a genuinely
+soft mode — both candidates are measured identically, so a mode the
+metric cannot speak to says the same thing twice and cannot tip the
+decision. The retry additionally runs with ``keep_rigid_body=True`` so
+the two candidates describe the same spectrum; otherwise a retry
+triggered by a free-free model's zero modes would swap in a mode set
+with those modes filtered out, which is worse than the imprecision it
+was trying to fix.
 
 Note on the user-spec mode choice: ``eigsh(..., sigma=0,
 mode='buckling')`` reduces to ``OP = K^-1 K = I`` for ``sigma=0``,
@@ -269,11 +277,17 @@ def solve_modes(
     # stays exact there.
     residual_fallback = False
     if sym:
-        worst = _max_elastic_residual(gk, gm, eigvals, eigvecs)
+        worst = _max_residual(gk, gm, eigvals, eigvecs)
         if worst > _SOLVER_OPTIONS.residual_retry_threshold:
-            alt_vals, alt_vecs = _solve_dense_general(gk, gm, n_modes)
+            # ``keep_rigid_body`` so the two candidates describe the same
+            # spectrum. Without it a free-free model's zero modes would be
+            # filtered out of the alternative only, and a retry triggered
+            # by those very modes would swap in a different mode set.
+            alt_vals, alt_vecs = _solve_dense_general(
+                gk, gm, n_modes, keep_rigid_body=True,
+            )
             _normalize_columns_l2(alt_vecs)
-            alt_worst = _max_elastic_residual(gk, gm, alt_vals, alt_vecs)
+            alt_worst = _max_residual(gk, gm, alt_vals, alt_vecs)
             # Only take the general result on a decisive win. A marginal
             # one is not a breakdown, and switching for it would churn
             # validated frequencies and break the degenerate fore-aft /
@@ -373,37 +387,30 @@ def _build_diagnostics(
 # one is a rigid-body mode: a free-free floating platform has up to six,
 # and an unrestrained DOF (a symmetric column's yaw) gives an exactly
 # zero one.
-_RIGID_BODY_EIGVAL_RTOL = 1.0e-8
-
-
-def _max_elastic_residual(
+def _max_residual(
     gk: np.ndarray, gm: np.ndarray, eigvals: np.ndarray, eigvecs: np.ndarray,
 ) -> float:
-    """Largest backward error over the **elastic** modes only.
+    """Largest per-mode backward error, or ``0.0`` for an empty solve.
 
-    The relative residual ``||K x - λ M x|| / ||K x||`` is undefined for a
-    rigid-body mode: there ``K x ≈ 0`` and ``λ ≈ 0``, so it is a ratio of
-    two near-zero quantities and evaluates to ≈ 1 no matter how exact the
-    eigenpair is. A free-free floating model legitimately has up to six of
-    them, so judging a solve by the raw maximum would condemn every
-    floating result — and the general path drops zero eigenvalues
-    entirely, so acting on that verdict would delete a physically real
-    mode rather than improve anything.
+    Deliberately taken over **every** returned mode, with no attempt to
+    classify them first. On a rigid-body mode the metric is a ratio of
+    two near-zero quantities and reads ~1 regardless of how exact the
+    eigenpair is, which invites excluding those modes — but nothing
+    reliably identifies them here. Their eigenvalue is only "near zero"
+    relative to a scale the returned subset may not contain; their strain
+    ``||K x||`` is small, but so is a genuinely soft mode's on a stiff
+    structure (the 0.08 Hz lump mode of a 1e10 N.m^2 beam carries less
+    strain than the rigid-body modes of a floating platform do).
+    Attempting either classification blinded this guard to a case it had
+    previously caught.
 
-    Rigid-body modes are therefore excluded before taking the maximum.
-    Returns ``0.0`` when every returned mode is rigid-body, i.e. when
-    there is nothing the metric can speak to.
+    The meaningless component cancels instead. Both candidate solves are
+    measured the same way, and the retry is accepted only on a decisive
+    improvement, so a mode on which the metric says nothing says the same
+    nothing twice and cannot tip the decision.
     """
-    if eigvals.size == 0:
-        return 0.0
-    scale = float(np.max(np.abs(eigvals)))
-    if scale <= 0.0:
-        return 0.0
-    elastic = np.abs(eigvals) > _RIGID_BODY_EIGVAL_RTOL * scale
-    if not elastic.any():
-        return 0.0
     r = _modal_residuals(gk, gm, eigvals, eigvecs)
-    return float(r[elastic].max())
+    return float(r.max()) if r.size else 0.0
 
 
 def _modal_residuals(
@@ -497,20 +504,44 @@ def _solve_dense_symmetric(
     return np.asarray(eigvals), np.asarray(eigvecs)
 
 
+# A real eigenvalue this far below zero, relative to the spectrum's own
+# magnitude, is a rigid-body mode sitting at zero plus rounding rather
+# than a non-physical negative one.
+_RIGID_BODY_NEGATIVE_RTOL = 1.0e-10
+
+
 def _solve_dense_general(
     gk: np.ndarray, gm: np.ndarray, n_modes: int | None,
+    *, keep_rigid_body: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Dense LAPACK ``eig`` for genuinely asymmetric problems. Filters
     eigenvalues to the real, positive, finite subset (matches BModes
-    JJ's general-matrix path)."""
+    JJ's general-matrix path).
+
+    ``keep_rigid_body`` additionally retains eigenvalues that sit at zero
+    to within rounding, clamping them to exactly zero. Off by default, so
+    the asymmetric production path keeps the BModes-matching filter it is
+    validated against. The retry path in :func:`solve_modes` turns it on:
+    a free-free model's zero-frequency modes are physical, and dropping
+    them there would replace a possibly-imprecise spectrum with a
+    structurally different one — which is a worse outcome than the
+    imprecision, and would make a false-positive retry actively harmful
+    rather than merely wasteful.
+    """
     eigvals_all, eigvecs_all = eig(gk, gm)
     eigvals_real = np.real_if_close(eigvals_all, tol=1000)
-    valid = (
-        np.isreal(eigvals_real)
-        & np.isfinite(eigvals_real.real)
-        & (eigvals_real.real > 0.0)
-    )
-    eigvals = eigvals_real.real[valid]
+    real_finite = np.isreal(eigvals_real) & np.isfinite(eigvals_real.real)
+    vals = eigvals_real.real
+
+    if keep_rigid_body and real_finite.any():
+        scale = float(np.max(np.abs(vals[real_finite])))
+        floor = -_RIGID_BODY_NEGATIVE_RTOL * scale if scale > 0.0 else 0.0
+        valid = real_finite & (vals >= floor)
+        vals = np.where(vals < 0.0, 0.0, vals)
+    else:
+        valid = real_finite & (vals > 0.0)
+
+    eigvals = vals[valid]
     eigvecs = np.real_if_close(eigvecs_all[:, valid], tol=1000).real
     order = np.argsort(eigvals)
     if n_modes is not None:

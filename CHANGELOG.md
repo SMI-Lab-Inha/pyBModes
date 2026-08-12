@@ -32,11 +32,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   without being broken, and on the bundled NREL 5MW land tower (whose
   adapter leaves the mass matrix at cond ~4e10) the general path is only
   1.4× better while *splitting* a degenerate fore-aft / side-side pair
-  the symmetric solver resolves exactly. Rigid-body modes are excluded
-  from the check for the same reason — their relative residual is a ratio
-  of two near-zero quantities and is ~1 however exact the eigenpair is,
-  so judging a floating solve by the raw maximum would have condemned it
-  and then deleted its zero-frequency mode.
+  the symmetric solver resolves exactly.
+
+  The same condition disposes of rigid-body modes, on which the residual
+  is a ratio of two near-zero quantities and reads ~1 however exact the
+  eigenpair is. They are not identified and excluded — nothing separates
+  them reliably from a genuinely soft mode — instead both candidates are
+  measured identically, so a mode the metric cannot speak to says the
+  same thing twice and cannot tip the decision. The retry also preserves
+  zero eigenvalues, so a spurious trigger on a free-free model costs a
+  little time rather than deleting a physical mode.
 
 - `SolverOptions` gains `residual_retry_threshold` and
   `residual_retry_improvement` for the two conditions above.
