@@ -151,9 +151,16 @@ class SolverDiagnostics:
     path : which solver path produced the result. One of
         ``"sparse_shift_invert"``, ``"dense_symmetric"``,
         ``"dense_general"``.
-    symmetric : whether the assembled matrices were treated as symmetric
-        (``eigh`` / sparse) rather than routed through the general
-        ``eig`` path.
+    symmetric : whether the assembled matrices were **classified** as
+        symmetric, i.e. whether their asymmetry was within
+        :attr:`~pybmodes.options.SolverOptions.symmetry_rtol`. This is a
+        property of the input, not a record of which routine ran, so a
+        residual retry leaves it ``True`` while moving ``path`` to
+        ``"dense_general"``. That pairing is not a contradiction: the
+        matrices were symmetric, and the general routine was used on their
+        symmetrised form because the symmetric one had failed on it.
+        ``residual_fallback`` is what distinguishes that case from a
+        genuinely asymmetric solve.
     n_requested : modes asked for (``None`` means the full spectrum).
     n_returned : modes actually returned. Fewer than ``n_requested``
         means the general path filtered out complex / non-positive
@@ -343,7 +350,15 @@ def solve_modes(
     # post-buckling ``run(gravity=...)`` column — those are different
     # sets, and a per-index comparison between them would be pairing
     # unrelated modes.
-    if sym and path == "dense_symmetric":
+    #
+    # The size ceiling matters only because a sparse solve that fails to
+    # converge falls back to the dense path at *any* size, where an
+    # unbounded ``eig`` could spend minutes on a result already in hand.
+    if (
+        sym
+        and path == "dense_symmetric"
+        and ngd <= _SOLVER_OPTIONS.residual_retry_max_ndof
+    ):
         # Measure — and retry — against the matrices the symmetric paths
         # actually solved. Both symmetrise internally, and the accepted
         # skew is only guaranteed small relative to ``max|K|``: in a model
@@ -410,25 +425,28 @@ def solve_modes(
     # Surface that rather than letting it pass silently (a downstream
     # broadcast would otherwise fail with an opaque shape error).
     #
-    # Gate the warning to the general path only (Codex P2). The dense
-    # symmetric path also returns fewer than ``n_modes`` when the request
-    # simply exceeds the available DOFs (it truncates to
-    # ``min(n_modes, ngd)``), which is a benign "asked for more modes than
-    # the system has" case, not a defective eigenproblem — warning there
-    # would mislead, and would fail callers that treat warnings as errors.
+    # Gate on modes actually *discarded*, not on the path label. Two
+    # benign shortfalls would otherwise be reported as a defective
+    # eigenproblem. Asking for more modes than the system has is one:
+    # every path truncates to ``min(n_modes, ngd)``, which is a request
+    # the caller can reasonably make. A residual retry is the other — it
+    # relabels the path ``"dense_general"`` while preserving the whole
+    # spectrum, so nothing was filtered, and a 117-DOF system asked for
+    # 1000 modes would be reported as defective for returning its 117.
     n_returned = int(eigvecs.shape[1])
+    n_available = ngd if n_modes is None else min(n_modes, ngd)
     if (
         path == "dense_general"
-        and n_modes is not None
-        and n_returned < n_modes
+        and not residual_fallback
+        and n_returned < n_available
     ):
         warnings.warn(
-            f"solve_modes recovered only {n_returned} of the requested "
-            f"{n_modes} modes via the general (non-symmetric) eig path. "
-            f"The eigenproblem is likely near-degenerate or defective (a "
-            f"non-symmetric PlatformSupport block can do this); the "
-            f"missing modes had complex or non-positive eigenvalues and "
-            f"were filtered out.",
+            f"solve_modes recovered only {n_returned} of the "
+            f"{n_available} modes available via the general "
+            f"(non-symmetric) eig path. The eigenproblem is likely "
+            f"near-degenerate or defective (a non-symmetric "
+            f"PlatformSupport block can do this); the missing modes had "
+            f"complex or non-positive eigenvalues and were filtered out.",
             RuntimeWarning,
             stacklevel=2,
         )

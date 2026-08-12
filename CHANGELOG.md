@@ -10,22 +10,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **The symmetric eigensolvers could return confidently wrong low modes
-  on a near-singular mass matrix, silently.** Both `scipy.linalg.eigh`
-  and `scipy.sparse.linalg.eigsh` reduce `K x = λ M x` through a Cholesky
-  factor of the mass matrix, and that reduction loses accuracy when a
-  very light beam carries a very heavy lump. LAPACK does not raise there
-  — it returns wrong frequencies. On a 100 m cantilever with a 4000:1
-  lump-to-beam mass ratio the reported fundamental was 0.103 Hz against a
-  true 0.0436 Hz, a factor of 2.4, and the answer wandered
-  non-monotonically with mesh density.
+- **The dense symmetric eigensolver could return confidently wrong low
+  modes on a near-singular mass matrix, silently.** `scipy.linalg.eigh`
+  reduces `K x = λ M x` through a Cholesky factor of the **mass** matrix,
+  and that reduction loses accuracy when a very light beam carries a very
+  heavy lump. LAPACK does not raise there — it returns wrong frequencies.
+  On a 100 m cantilever with a 4000:1 lump-to-beam mass ratio the
+  reported fundamental was 0.103 Hz against a true 0.0436 Hz, a factor of
+  2.4, and the answer wandered non-monotonically with mesh density.
 
   `solve_modes` now checks the backward error `||K x - λ M x|| / ||K x||`
-  of every symmetric solve and, when it is large, redoes it through the
-  general dense path, which factorises neither matrix. The retried result
-  is taken only when it is better by an order of magnitude, and a
+  of a **dense** symmetric solve and, when it is large, redoes it through
+  the general dense path, which factorises neither matrix. The retried
+  result is taken only when it is better by an order of magnitude, and a
   `RuntimeWarning` names the swap. `SolverDiagnostics` gains
   `residual_fallback` recording it.
+
+  The **sparse** path is deliberately not retried and never sets
+  `residual_fallback`. `eigsh(sigma=0, mode='normal')` factorises `K`
+  rather than the mass matrix, so a near-singular `M` does not degrade
+  it — on the mesh sweep that motivated this work it returned correct
+  frequencies on exactly the meshes large enough to select it. Retrying
+  it would also mean comparing two different mode sets, since
+  `which="LM"` selects the modes nearest zero in magnitude while the
+  retry selects the algebraically smallest.
 
   **No existing result changes.** The decisive-improvement condition is
   what guarantees that: a real deck can carry a large backward error
@@ -55,8 +63,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reporting the problem. Declining is deliberate — a guard added to stop
   a silent wrong answer must not be able to introduce one.
 
-- `SolverOptions` gains `residual_retry_threshold` and
-  `residual_retry_improvement` for the two conditions above.
+  The retry is also bounded in size, since a sparse solve that fails to
+  converge falls back to dense at any size and an unbounded `eig` there
+  could take minutes on a result already in hand. And it can decline: if
+  the alternative solver raises on the same defective pencil, the
+  symmetric result and its diagnostics are kept rather than the whole
+  solve failing.
+
+- `SolverOptions` gains `residual_retry_threshold`,
+  `residual_retry_improvement` and `residual_retry_max_ndof` for the
+  conditions above.
 
 ## [1.18.0] — 2026-08-12
 

@@ -85,6 +85,17 @@ class SolverOptions:
         ~4e10) reaches ~2e-2 and is *not* meant to trigger; the degraded
         regime starts around 0.7. The default splits the last two gaps
         with roughly 5x either side.
+    residual_retry_max_ndof : int, default 2000
+        Largest reduced system the retry will attempt. The retry is a
+        dense ``eig``, whose cost grows as ``ngd^3`` with a much larger
+        constant than the ``eigh`` it is checking. Normally that is
+        bounded by ``sparse_ndof_threshold``, since anything bigger takes
+        the sparse path and is not retried — but a sparse solve that
+        *fails to converge* falls back to dense at any size, and there an
+        unbounded retry could spend minutes on a model whose result was
+        already available. A guard against a silent wrong answer should
+        not be able to turn one into a silent hang, so above this size it
+        declines and leaves the backward error to the diagnostics.
     residual_retry_improvement : float, default 0.1
         How much better the general path's backward error must be before
         its result is taken. The second, and more important, guard: on
@@ -100,6 +111,7 @@ class SolverOptions:
     symmetry_rtol: float = 1.0e-12
     residual_retry_threshold: float = 0.1
     residual_retry_improvement: float = 0.1
+    residual_retry_max_ndof: int = 2000
 
 
 @dataclass(frozen=True)

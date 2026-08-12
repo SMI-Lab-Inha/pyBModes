@@ -692,6 +692,63 @@ class TestTheRetryIsScopedToTheDensePath:
         assert f == pytest.approx(_analytic(), rel=5.0e-3)
 
 
+class TestTheRetryCostIsBounded:
+    """A guard against a silent wrong answer must not be able to turn one
+    into a silent hang.
+
+    The retry is a dense ``eig``, whose cost grows as ``ngd^3`` with a
+    much larger constant than the ``eigh`` it checks. Normally that is
+    bounded by the sparse dispatch threshold, but a sparse solve that
+    *fails to converge* falls back to dense at any size.
+    """
+
+    def test_a_system_above_the_ceiling_is_not_retried(self, monkeypatch):
+        import dataclasses
+
+        import pybmodes.fem.solver as solvermod
+
+        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
+        ngd = gk.shape[0]
+        monkeypatch.setattr(
+            solvermod, "_SOLVER_OPTIONS",
+            dataclasses.replace(
+                solvermod._SOLVER_OPTIONS, residual_retry_max_ndof=ngd - 1,
+            ),
+        )
+        called = []
+        real = solvermod._general_spectrum_for_retry
+        monkeypatch.setattr(
+            solvermod, "_general_spectrum_for_retry",
+            lambda *a, **k: (called.append(1), real(*a, **k))[1],
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _v, _x, diag = solve_modes(
+                gk, gm, n_modes=4, return_diagnostics=True,
+            )
+        assert called == []
+        assert diag.residual_fallback is False
+
+    def test_at_the_ceiling_it_still_runs(self, monkeypatch):
+        import dataclasses
+
+        import pybmodes.fem.solver as solvermod
+
+        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
+        monkeypatch.setattr(
+            solvermod, "_SOLVER_OPTIONS",
+            dataclasses.replace(
+                solvermod._SOLVER_OPTIONS,
+                residual_retry_max_ndof=gk.shape[0],
+            ),
+        )
+        with pytest.warns(RuntimeWarning):
+            _v, _x, diag = solve_modes(
+                gk, gm, n_modes=4, return_diagnostics=True,
+            )
+        assert diag.residual_fallback is True
+
+
 class TestARetryFailureIsNotAHardFailure:
     """A pencil defective enough to break the symmetric reduction can
     also break ``eig``. Turning that into an exception would make the
@@ -728,6 +785,49 @@ class TestARetryFailureIsNotAHardFailure:
                 gk, gm, n_modes=4, return_diagnostics=True,
             )
         assert diag.residual_fallback is False
+
+
+class TestTheModeCountWarningStaysHonest:
+    """A shortfall is only newsworthy when modes were actually discarded.
+
+    Two benign cases would otherwise be reported as a defective
+    eigenproblem: asking for more modes than the system has, which every
+    path truncates, and a residual retry, which relabels the path
+    ``"dense_general"`` while preserving the whole spectrum.
+    """
+
+    def test_an_overlarge_request_after_a_retry_is_not_reported(self):
+        gk, gm = _cantilever_with_tip_lump(13, LIGHT)
+        ngd = gk.shape[0]
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            eigvals, _v, diag = solve_modes(
+                gk, gm, n_modes=ngd + 500, return_diagnostics=True,
+            )
+        assert diag.residual_fallback is True
+        assert eigvals.size == ngd
+        assert not any(
+            "recovered only" in str(w.message) for w in caught
+        ), [str(w.message) for w in caught]
+
+    def test_an_overlarge_request_without_a_retry_is_not_reported(self):
+        gk, gm = _cantilever_with_tip_lump(13, REALISTIC)
+        ngd = gk.shape[0]
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            eigvals, _v = solve_modes(gk, gm, n_modes=ngd + 500)
+        assert eigvals.size == ngd
+        assert not any("recovered only" in str(w.message) for w in caught)
+
+    def test_a_genuine_shortfall_is_still_reported(self):
+        """An asymmetric pencil whose modes really are filtered away must
+        still say so."""
+        # Antisymmetric K: every eigenvalue is imaginary, so the general
+        # path recovers none of them.
+        gk = np.array([[0.0, -1.0], [1.0, 0.0]])
+        gm = np.eye(2)
+        with pytest.warns(RuntimeWarning, match="recovered only"):
+            solve_modes(gk, gm, n_modes=2)
 
 
 class TestDiagnosticsContract:
