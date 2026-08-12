@@ -792,6 +792,23 @@ class Tower:
                         f"into it. Check water_depth and the components' "
                         f"reference_axis.z."
                     )
+                # A pre-built foundation carries its own pile. If that is
+                # not the pile in the ontology, its coupled-spring
+                # constants describe a different structure, so refuse
+                # rather than lay a plausible-looking bed under the wrong
+                # one (Codex review on #138).
+                stored = foundation.pile_length_embedded
+                if stored is not None and abs(stored - embedded) > 0.01 * embedded:
+                    raise ValueError(
+                        f"the supplied soil foundation was built for a pile "
+                        f"embedded {stored:g} m, but this ontology and water "
+                        f"depth give {embedded:g} m. The foundation's spring "
+                        f"constants describe a different pile, so the two "
+                        f"cannot be combined. Rebuild it with "
+                        f"MudlineFoundation.from_windio(yaml, soil_E=..., "
+                        f"water_depth=...), or pass soil_E=... and let this "
+                        f"constructor build it."
+                    )
                 obj.attach_mudline_foundation(
                     foundation, distributed=True,
                     embedded_length=embedded, n_stations=soil_n_stations,
@@ -1468,7 +1485,12 @@ class Tower:
         embedded_length : embedded pile length in metres, i.e. how far up
             from the beam base the spring bed reaches. Defaults to the
             foundation's own ``pile_length_embedded``; override it when
-            the beam base is not exactly the pile toe. Ignored unless
+            the beam base is not exactly the pile toe. The profile is
+            generated over whatever length is used here, so the stations
+            and the bed always span the same range. Be aware that the
+            foundation's lumped ``K_hh`` / ``K_hr`` / ``K_rr`` still
+            correspond to its stored length, so a large override leaves
+            the two tiers describing different piles. Ignored unless
             ``distributed``.
         n_stations : number of spring stations along the embedded length
             (default 20). Ignored unless ``distributed``.
@@ -1538,7 +1560,14 @@ class Tower:
                     f"up, so the embedded pile is part of it — build the "
                     f"model without truncating at the mudline."
                 )
-            depth, k_line = foundation.distributed_springs(n_stations=n_stations)
+            # Generate the profile over the length it is actually laid
+            # into. Taking the foundation's own stored length here instead
+            # would misplace every station whenever the two differ, either
+            # running the bed past the beam base or leaving the pile toe
+            # unsprung (Codex review on #138).
+            depth, k_line = foundation.distributed_springs(
+                n_stations=n_stations, length=length,
+            )
             # ``distr_k_z`` is measured upward from the flexible beam base,
             # which is the pile toe here, so flip the mudline-down depths.
             distr_k_z = np.asarray(length - depth[::-1], dtype=float)

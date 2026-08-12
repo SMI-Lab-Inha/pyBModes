@@ -724,17 +724,61 @@ def test_distributed_defaults_the_length_to_the_foundation() -> None:
 
 
 @pytest.mark.parametrize(
-    ("field", "value"),
+    ("field", "value", "match"),
     [
-        ("pile_length_embedded", 0.0),
-        ("pile_length_embedded", float("nan")),
-        ("soil_E", -1.0),
-        ("pile_diameter", 0.0),
+        ("pile_length_embedded", 0.0, "embedded length"),
+        ("pile_length_embedded", float("nan"), "embedded length"),
+        ("soil_E", -1.0, "soil_E"),
+        ("pile_diameter", 0.0, "pile_diameter"),
     ],
 )
-def test_distributed_springs_reject_non_physical_stored_inputs(field, value) -> None:
+def test_distributed_springs_reject_non_physical_stored_inputs(
+    field, value, match,
+) -> None:
     """A hand-mutated foundation must not silently emit a garbage bed."""
     f = _winkler_foundation()
     setattr(f, field, value)
-    with pytest.raises(ValueError, match=field.split("_")[0]):
+    with pytest.raises(ValueError, match=match):
         f.distributed_springs()
+
+
+def test_distributed_springs_length_override_spans_that_length() -> None:
+    """The profile is generated over whatever length it will be laid into,
+    so stations and bed can never disagree (Codex review on #138)."""
+    f = _winkler_foundation()
+    depth, k = f.distributed_springs(n_stations=9, length=12.0)
+    assert depth[0] == pytest.approx(0.0)
+    assert depth[-1] == pytest.approx(12.0)
+    assert k.shape == depth.shape
+
+
+def test_distributed_springs_length_override_renormalises_the_profile() -> None:
+    """An inhomogeneous profile normalises against the length actually
+    used, not the stored one."""
+    f = _winkler_foundation(formula="shadlou", profile="linear")
+    depth, k = f.distributed_springs(n_stations=6, length=12.0)
+    assert np.allclose(k, _WK_D * _WK_SOIL_E * (depth / 12.0))
+    # Full rate at the toe of the *requested* length, zero at the mudline.
+    assert k[-1] == pytest.approx(_WK_D * _WK_SOIL_E)
+    assert k[0] == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize("bad", [0.0, -3.0, float("nan"), True])
+def test_distributed_springs_reject_bad_length_override(bad) -> None:
+    with pytest.raises(ValueError, match="length"):
+        _winkler_foundation().distributed_springs(length=bad)
+
+
+def test_attach_distributed_bed_spans_the_requested_length_exactly() -> None:
+    """A shorter override must not leave the pile toe unsprung, and a
+    longer one must not push stations past the beam base."""
+    for override in (0.5 * _WK_EMBEDDED, 1.5 * _WK_EMBEDDED):
+        tower = _winkler_tube(_WK_ABOVE + 2.0 * _WK_EMBEDDED, n=40)
+        tower.attach_mudline_foundation(
+            _winkler_foundation(), distributed=True,
+            embedded_length=override, n_stations=10,
+        )
+        z = tower._bmi.support.distr_k_z
+        assert z.min() == pytest.approx(0.0)
+        assert z.max() == pytest.approx(override)
+        assert np.all(z >= 0.0)

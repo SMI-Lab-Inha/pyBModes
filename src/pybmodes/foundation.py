@@ -258,7 +258,7 @@ class MudlineFoundation:
         return self.pile_behaviour
 
     def distributed_springs(
-        self, n_stations: int = 20,
+        self, n_stations: int = 20, length: float | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Winkler spring rate along the embedded pile (issue #118).
 
@@ -266,6 +266,17 @@ class MudlineFoundation:
         **downward from the mudline** in metres over the embedded length,
         and the lateral foundation stiffness per unit length of pile at
         each, in N/m per m (i.e. N/m^2).
+
+        ``length`` overrides the embedded length the bed is laid over,
+        defaulting to the foundation's own ``pile_length_embedded``. It
+        sets both the extent of the returned depths **and** the depth the
+        inhomogeneous profiles normalise against, so the two can never
+        disagree — a caller placing the bed over a different length gets
+        a profile generated for that length rather than one silently
+        stretched or truncated onto it. Note the lumped ``K_hh`` /
+        ``K_hr`` / ``K_rr`` on this instance still correspond to the
+        stored length, so a large override means the two tiers no longer
+        describe the same pile.
 
         The rate follows the same soil model the lumped springs use, so
         the two tiers describe one soil rather than two::
@@ -297,7 +308,8 @@ class MudlineFoundation:
             raise ValueError(
                 f"n_stations must be an integer >= 2; got {n_stations!r}"
             )
-        if (self.pile_diameter is None or self.pile_length_embedded is None
+        if (self.pile_diameter is None
+                or (length is None and self.pile_length_embedded is None)
                 or self.soil_E is None):
             raise ValueError(
                 "distributed_springs needs the pile geometry and soil modulus "
@@ -306,11 +318,18 @@ class MudlineFoundation:
                 "MudlineFoundation.from_windio(...) rather than constructing "
                 "it from the three stiffnesses directly."
             )
-        length = float(self.pile_length_embedded)
-        if not (math.isfinite(length) and length > 0.0):
+        raw_length = self.pile_length_embedded if length is None else length
+        if isinstance(raw_length, bool) or raw_length is None:
             raise ValueError(
-                f"pile_length_embedded must be positive and finite to lay a "
-                f"spring bed along it; got {self.pile_length_embedded!r}"
+                f"length must be a length in metres, not "
+                f"{'a bool' if raw_length is not None else 'None'}; "
+                f"got {raw_length!r}"
+            )
+        bed_length = float(raw_length)
+        if not (math.isfinite(bed_length) and bed_length > 0.0):
+            raise ValueError(
+                f"embedded length must be positive and finite to lay a spring "
+                f"bed along it; got {raw_length!r}"
             )
         if not (math.isfinite(float(self.soil_E)) and float(self.soil_E) > 0.0):
             raise ValueError(
@@ -322,13 +341,13 @@ class MudlineFoundation:
                 f"pile_diameter must be positive and finite; got "
                 f"{self.pile_diameter!r}"
             )
-        depth = np.linspace(0.0, length, n_stations)
+        depth = np.linspace(0.0, bed_length, n_stations)
         exponent = {"homogeneous": 0.0, "parabolic": 0.5, "linear": 1.0}[
             self.soil_profile
         ]
         k_line = (
             float(self.pile_diameter) * float(self.soil_E)
-            * (depth / length) ** exponent
+            * (depth / bed_length) ** exponent
         )
         return depth, k_line
 
