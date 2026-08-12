@@ -1207,6 +1207,52 @@ class TestTheGuardDoesNotTaxEverySolve:
         # symmetrised basis, rather than being handed a built pair.
         assert all(is_gk and is_gm and sym for is_gk, is_gm, sym in seen), seen
 
+    @pytest.mark.parametrize("k_over_n", [0.01, 0.2, 0.5, 0.9, 1.0])
+    def test_whichever_route_is_taken_is_the_cheaper_one(self, k_over_n):
+        """The products are only thin while the block is. ``n_modes=None``
+        is the public default and returns the whole spectrum, at which
+        point two full matmuls cost more than the single copy they were
+        avoiding, so the route is chosen by width.
+
+        The crossover is measured rather than derived — a flop-count
+        estimate put it at ``k = n/3`` when it is ``2n/3``, which would
+        have taken the dearer route across a third of the range.
+        """
+        import tracemalloc
+
+        from pybmodes.fem.solver import _apply
+
+        n = 400
+        rng = np.random.default_rng(4)
+        a = rng.normal(size=(n, n))
+        v = rng.normal(size=(n, max(1, round(k_over_n * n))))
+
+        def peak(fn):
+            tracemalloc.start()
+            base = tracemalloc.get_traced_memory()[0]
+            fn()
+            p = tracemalloc.get_traced_memory()[1] - base
+            tracemalloc.stop()
+            return p
+
+        chosen = peak(lambda: _apply(a, v, True))
+        products = peak(lambda: 0.5 * (a @ v + a.T @ v))
+        materialise = peak(lambda: 0.5 * (a + a.T) @ v)
+        assert chosen <= 1.05 * min(products, materialise), (
+            f"k/n={k_over_n}: took {chosen / 1e6:.2f} MB when "
+            f"{min(products, materialise) / 1e6:.2f} MB was available"
+        )
+
+    @pytest.mark.parametrize("k", [1, 7, 40])
+    def test_both_routes_agree_numerically(self, k):
+        from pybmodes.fem.solver import _apply
+
+        n = 40
+        rng = np.random.default_rng(6)
+        a = rng.normal(size=(n, n))
+        v = rng.normal(size=(n, k))
+        assert np.allclose(_apply(a, v, True), 0.5 * (a + a.T) @ v)
+
     def test_measuring_does_not_allocate_a_matrix_copy(self):
         import tracemalloc
 

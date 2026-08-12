@@ -667,17 +667,35 @@ def _compare_candidate_modes(
     return improved, regressed
 
 
-def _apply(a: np.ndarray, v: np.ndarray, symmetrise: bool) -> np.ndarray:
-    """``A v``, or ``sym(A) v`` without ever forming ``sym(A)``.
+# The two routes to ``sym(A) v`` peak at ``3 n k`` and ``2 n^2`` bytes of
+# temporaries, so they cross over at ``k = 2 n / 3`` — measured, not
+# derived: a first estimate of ``n / 3`` was wrong by a factor of two and
+# would have taken the more expensive route across a third of the range.
+_THIN_BLOCK_NUM, _THIN_BLOCK_DEN = 3, 2
 
-    ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``, and the right-hand side
-    costs two thin products rather than a dense ngd-square allocation.
-    That matters because the residuals are computed on every solve that
-    asks for diagnostics, including the large sparse ones the dense
-    allocation would hurt most.
+
+def _apply(a: np.ndarray, v: np.ndarray, symmetrise: bool) -> np.ndarray:
+    """``A v``, or ``sym(A) v`` by whichever route is cheaper.
+
+    ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``. The right-hand side avoids
+    a dense ngd-square allocation, which is what a modal solve usually
+    wants: residuals are computed on every solve that asks for
+    diagnostics, and a handful of modes out of a few thousand DOFs makes
+    those products very thin.
+
+    It is not free, though, and the assumption fails at the other end.
+    ``n_modes=None`` is the public default and returns the whole
+    spectrum, making ``v`` square — the "products" are then two full
+    matrix multiplies whose temporaries exceed the single copy they were
+    avoiding. So the route is chosen by the block width rather than
+    assumed.
     """
     if not symmetrise:
         return np.asarray(a @ v)
+    if v.ndim > 1 and (
+        v.shape[1] * _THIN_BLOCK_NUM >= a.shape[0] * _THIN_BLOCK_DEN
+    ):
+        return np.asarray(0.5 * (a + a.T) @ v)
     return np.asarray(0.5 * (a @ v + a.T @ v))
 
 
