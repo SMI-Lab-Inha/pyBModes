@@ -839,30 +839,57 @@ class TestARetryThatTradesModesIsRefused:
         assert improved[0]
         assert regressed[1]
 
-    def test_what_escapes_is_bounded_an_order_inside_tolerance(self):
-        """The honest limit of the rule, swept rather than argued.
+    def test_an_acceptable_mode_cannot_be_degraded_as_collateral(self):
+        """The guarantee, checked over **every** pair rather than only
+        the tenfold ones.
 
-        Some degradation is always tolerated, or rigid-body wobble and
-        harmless churn would block every rescue. What matters is that the
-        tolerated region is bounded: nothing unflagged can leave a mode
-        worse than a tenth of the failure threshold, which is an order of
-        magnitude inside tolerance.
+        An earlier version of this test swept only ``alt > 10 * sym``,
+        which is why it certified a bound the rule did not actually hold:
+        a mode sliding from 0.02 to 0.099 is under fivefold and lands at
+        the edge of tolerance, and nothing looked at it.
+
+        The claim is narrow and about the acceptable side only. A mode
+        that was acceptable can end up above a tenth of the threshold
+        solely by having improved, never as collateral of someone else's
+        rescue.
         """
         from pybmodes.fem.solver import _compare_candidate_modes
         from pybmodes.options import DEFAULT_SOLVER_OPTIONS as opt
 
-        bound = opt.residual_retry_improvement * opt.residual_retry_threshold
+        t = opt.residual_retry_threshold
+        bound = opt.residual_retry_improvement * t
         grid = np.logspace(-16, 2, 37)
         for s in grid:
+            if s > t:
+                continue                      # not the acceptable side
             for a in grid:
-                _imp, reg = _compare_candidate_modes(
+                imp, reg = _compare_candidate_modes(
                     np.array([s]), np.array([a]), 1, 1,
                 )
-                if a > 10.0 * s and not reg[0]:
-                    assert a <= bound, (
-                        f"sym={s:.2e} -> alt={a:.2e} escaped unflagged "
-                        f"above the {bound:.2e} bound"
-                    )
+                if reg[0] or imp[0]:
+                    continue
+                assert a <= bound or a <= s, (
+                    f"sym={s:.2e} -> alt={a:.2e} escaped unflagged above "
+                    f"the {bound:.2e} bound without improving"
+                )
+
+    def test_a_mode_already_failing_gets_no_verdict(self):
+        """The deliberate hole, stated so it is not mistaken for one.
+
+        Above the threshold neither candidate is trustworthy, and a
+        rigid-body mode lives entirely there. Judging that region either
+        way turns roundoff into a decision.
+        """
+        from pybmodes.fem.solver import _compare_candidate_modes
+        from pybmodes.options import DEFAULT_SOLVER_OPTIONS as opt
+
+        t = opt.residual_retry_threshold
+        for sym, alt in [(0.2, 5.0), (12.39, 0.794), (0.794, 12.39), (1.0, 1.0)]:
+            assert sym > t
+            _imp, reg = _compare_candidate_modes(
+                np.array([sym]), np.array([alt]), 1, 1,
+            )
+            assert not reg[0], f"sym={sym} alt={alt} should carry no verdict"
 
     def test_improved_and_regressed_are_mutually_exclusive(self):
         """A single mode cannot be both, or the caller's rule would be
@@ -876,17 +903,6 @@ class TestARetryThatTradesModesIsRefused:
                     np.array([s]), np.array([a]), 1, 1,
                 )
                 assert not (imp[0] and reg[0]), f"sym={s:.2e} alt={a:.2e}"
-
-    def test_an_already_failing_mode_driven_much_worse_is_a_regression(self):
-        """The other half: no crossing, because it was failing already,
-        but a decisive worsening all the same."""
-        from pybmodes.fem.solver import _compare_candidate_modes
-
-        sym_r = np.array([0.52, 0.2])
-        alt_r = np.array([1.0e-10, 5.0])
-        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 2, 2)
-        assert improved[0]
-        assert regressed[1]
 
     def test_a_mode_that_worsens_but_stays_acceptable_is_not_a_regression(self):
         """Mode 2 above goes from 5.7e-6 to 3.5e-5 — six times worse and
@@ -909,6 +925,52 @@ class TestARetryThatTradesModesIsRefused:
         alt_r = np.array([1.0001, 1.0e-9])
         improved, regressed = _compare_candidate_modes(sym_r, alt_r, 2, 2)
         assert improved[1]
+        assert not regressed.any()
+
+    def test_rigid_body_noise_cannot_justify_a_swap(self):
+        """The assumption that rigid residuals sit near 1 in both
+        candidates is false: both sides of the ratio are roundoff, so it
+        is unbounded. Measured at 12.39 from ``eigh`` against 0.794 from
+        ``eig`` on a healthy pencil — a tenfold "win" on pure noise.
+
+        Requiring the candidate to *resolve* the mode rather than merely
+        improve it ignores that, since 0.794 is still failing.
+        """
+        from pybmodes.fem.solver import _compare_candidate_modes
+
+        sym_r = np.array([12.39, 3.0e-15, 2.0e-15, 1.0e-15])
+        alt_r = np.array([0.794, 1.0e-15, 2.0e-15, 3.0e-15])
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 4, 4)
+        assert not improved.any()
+        assert not regressed.any()
+
+    def test_a_healthy_free_free_pencil_is_left_alone(self):
+        """End to end on the shape from the report: rank-deficient K, a
+        well-conditioned M, exact elastic modes."""
+        rng = np.random.default_rng(19)
+        a = rng.normal(size=(4, 4))
+        gm = a @ a.T + 4.0 * np.eye(4)
+        b = rng.normal(size=(4, 3))
+        gk = b @ b.T
+        gk, gm = 0.5 * (gk + gk.T), 0.5 * (gm + gm.T)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            eigvals, _v, diag = solve_modes(
+                gk, gm, n_modes=4, return_diagnostics=True,
+            )
+        assert diag.residual_fallback is False
+        assert eigvals.size == 4
+
+    def test_an_improvement_that_leaves_the_mode_failing_is_declined(self):
+        """The cost of the rule, stated rather than hidden: a hundredfold
+        gain that still ends above the threshold is not acted on, because
+        neither result is trustworthy there."""
+        from pybmodes.fem.solver import _compare_candidate_modes
+
+        sym_r = np.array([50.0])
+        alt_r = np.array([0.5])
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 1, 1)
+        assert not improved.any()
         assert not regressed.any()
 
     def test_end_to_end_a_trading_candidate_is_declined(self, monkeypatch):

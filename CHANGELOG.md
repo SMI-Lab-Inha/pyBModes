@@ -47,12 +47,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   spectrum, not the modes that prompted it, so a candidate that rescues
   one mode while pushing a previously acceptable one above the failure
   threshold is refused — it would hand back a new bad mode in place of an
-  old one. A mode counts as regressed if it crossed the failure threshold
-  at any size, or if it worsened decisively while ending up somewhere
-  that could matter. Some degradation is always tolerated, or rigid-body
-  wobble would block every rescue, but the tolerated region is bounded:
-  nothing unflagged can leave a mode worse than a tenth of the failure
-  threshold, an order of magnitude inside tolerance.
+  old one. The guarantee is one-sided and precise: a mode that was
+  acceptable can end up above a tenth of the failure threshold only by
+  having improved, never as collateral of another mode's rescue. A mode
+  already failing carries no verdict either way — above the threshold
+  neither candidate is trustworthy, and a rigid-body mode, whose residual
+  divides one roundoff quantity by another and has been measured at 12.4
+  against 0.79 on a healthy model, lives entirely in that region.
+  `max_residual` still reports it.
 
   The comparison is made **per mode** rather than on the two maxima, so
   that rigid-body modes cannot distort it. Their backward error is a

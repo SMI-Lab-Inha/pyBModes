@@ -515,30 +515,37 @@ def _compare_candidate_modes(
     decisively better" is only half the test; the other half is that no
     mode got decisively worse.
 
-    A mode has regressed in either of two independent ways. It **crossed**
-    the failure threshold, having been acceptable and no longer being so,
-    at any size — landing on the wrong side of the bar is what the bar is
-    for. Or it **worsened decisively**, by the same factor that defines
-    an improvement, while ending up somewhere that could matter.
+    A mode has regressed when it was acceptable, comes back worse, and
+    lands somewhere that could matter — above a tenth of the threshold.
+    Any worsening counts at any ratio: the tenfold margin belongs to the
+    improvement side, and requiring it here left a mode free to slide
+    from 0.02 to 0.099 unflagged, which is the edge of tolerance.
 
-    Both are needed, and the bounds on each were arrived at by finding
-    the cases the other misses.
-
-    - Without the crossing test, a mode sliding from 0.09 to 0.8 escapes:
-      8.9x falls short of the tenfold margin.
-    - Without the worsening test, an already-failing mode can be driven
-      from 0.2 to 5.0 with no crossing to observe.
-    - Gating the worsening test on the threshold itself, rather than a
-      tenth of it, lets an exact mode be driven to just under the bar —
-      1e-16 to 0.1 is fifteen orders and passed unflagged.
-
-    What must *not* be flagged bounds it from the other side. Rigid-body
-    modes read ~1 in both candidates and wobble either way: they never
-    cross, because they were never acceptable, and they never worsen
-    decisively, because the wobble is small. A mode going from 5.7e-6 to
-    3.5e-5 is six times worse and three orders below anything that
-    matters. A bare ``alt > sym`` comparison would flag both and block
+    The landing bound is what keeps this usable rather than paralysing:
+    a mode going from 5.7e-6 to 3.5e-5 is six times worse and three
+    orders below anything that matters, and flagging it would block
     nearly every legitimate rescue.
+
+    A mode already failing in the symmetric solve gets **no verdict** in
+    either direction. That is the single rule that makes rigid-body modes
+    tractable without identifying them, which two earlier attempts showed
+    cannot be done reliably here. Their residual divides one roundoff
+    quantity by another, so it is *not* dependably near 1 — the ratio is
+    unbounded and has been measured at 12.4 from one solver against 0.79
+    from the other on a perfectly healthy pencil. Read as an improvement
+    that is a tenfold win on pure noise; read as a regression it would
+    veto every rescue that happens to sit beside a free-free mode.
+    Declining to judge the untrustworthy side avoids both, and
+    ``max_residual`` still reports the mode to the caller.
+
+    The cost is a real case declined: a breakdown the alternative
+    improves a hundredfold but leaves failing anyway is not acted on.
+    Neither result is trustworthy there, so keeping the original and
+    reporting the backward error is the honest outcome.
+
+    Together the two verdicts give the guarantee the caller relies on: a
+    mode that was acceptable can only end up above a tenth of the
+    threshold by having *improved*, never as collateral.
 
     The comparison has to be **per mode**, not on the two maxima. A
     rigid-body mode's backward error is a ratio of two near-zero
@@ -570,21 +577,34 @@ def _compare_candidate_modes(
     threshold = _SOLVER_OPTIONS.residual_retry_threshold
     factor = _SOLVER_OPTIONS.residual_retry_improvement
     sym, alt = sym_r[:n], alt_r[:n]
-    improved = (sym > threshold) & (alt < factor * sym)
-    # Two independent ways to regress.
+    # Improvement is the mirror of regression: the mode must cross the
+    # threshold the *other* way, from failing to acceptable, and do so
+    # decisively. Requiring the crossing — rather than a factor alone —
+    # is what keeps a rigid-body mode from justifying a swap. Its
+    # residual divides one roundoff quantity by another, so it is not
+    # merely "~1 in both candidates" as it first appears: the ratio is
+    # unbounded and can read 12.4 from one solver and 0.79 from the
+    # other on a perfectly healthy pencil. That is a tenfold "win" on
+    # pure noise, and it used to be enough to replace the whole spectrum.
+    # Demanding that the candidate actually *resolve* the mode ignores
+    # it, because 0.79 is still a failing residual.
+    improved = (sym > threshold) & (alt <= threshold) & (alt < factor * sym)
+    # A mode that was acceptable must not come back materially worse.
+    # Any worsening counts, at any ratio — the tenfold margin belongs to
+    # the improvement side, and requiring it here left a mode free to
+    # slide from 0.02 to 0.099 unflagged. What bounds this instead is
+    # where the mode *lands*: below a tenth of the threshold the change
+    # cannot matter, which is what keeps harmless churn (5.7e-6 to
+    # 3.5e-5) from blocking every rescue.
     #
-    # A crossing: the mode was acceptable and is not any more. Size does
-    # not matter here — landing on the wrong side of the bar is the whole
-    # point of having one.
-    crossed = (alt > threshold) & (sym <= threshold)
-    # A decisive worsening that stays on the acceptable side. Gated at a
-    # tenth of the threshold so an exact mode driven to just under the
-    # bar still counts, while genuinely negligible churn does not: 1e-16
-    # to 0.1 is fifteen orders and matters, 5.7e-6 to 3.5e-5 is six times
-    # and does not. Reuses the two constants already in play rather than
-    # introducing a third.
-    worsened = (alt > factor * threshold) & (sym < factor * alt)
-    regressed = crossed | worsened
+    # Modes already failing in the symmetric solve get no verdict at all.
+    # Neither value is trustworthy there, and a rigid-body mode — whose
+    # residual divides roundoff by roundoff and has been seen to read
+    # 12.4 against 0.79 on a healthy pencil — lives entirely in that
+    # region. Judging it would be judging noise, and doing so in this
+    # direction would let that noise veto every legitimate rescue.
+    # ``max_residual`` still reports such a mode to the caller.
+    regressed = (sym <= threshold) & (alt > factor * threshold) & (alt > sym)
     return improved, regressed
 
 
