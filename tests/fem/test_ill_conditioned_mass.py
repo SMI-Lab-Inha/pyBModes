@@ -606,13 +606,28 @@ class TestTheRetryVerifiesItsOrderingRatherThanAssumingIt:
     def test_a_drop_above_the_window_leaves_the_ordering_sound(self):
         """Complex pairs at the stiff end are routine and harmless — they
         sit far above anything the caller asked for, so the window is
-        still the smallest ``n_modes``."""
+        still the smallest ``n_modes``.
+
+        Built from an explicit rotation block rather than by hoping a
+        real matrix produces one, so it says the same thing on every
+        LAPACK build. ``[[a, -b], [b, a]]`` has eigenvalues ``a ± bi``;
+        with ``a`` far above the window and ``b`` far too large for
+        ``real_if_close`` to coerce, the pair is dropped from well above
+        the modes being compared.
+        """
         from pybmodes.fem.solver import _general_spectrum_for_retry
 
-        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
-        vals, _v, sound = _general_spectrum_for_retry(gk, gm, 4)
+        gm = np.eye(4)
+        gk = np.array([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0e6, -1.0e3],
+            [0.0, 0.0, 1.0e3, 1.0e6],
+        ])
+        vals, _v, sound = _general_spectrum_for_retry(gk, gm, 2)
         assert sound is True
-        assert vals.size == 4
+        assert vals.size == 2
+        assert np.allclose(vals, [1.0, 2.0])
 
     def test_a_drop_inside_the_window_makes_the_ordering_unsound(self):
         """A discarded eigenvalue below the top of the window means the
