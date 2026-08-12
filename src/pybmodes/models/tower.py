@@ -782,6 +782,20 @@ class Tower:
             has_soil=has_soil,
         )
 
+        # The design embedment, recorded on every path rather than only the
+        # soil ones. On the rigid path the embedded pile is truncated out of
+        # the beam, but it is still a real quantity the ontology states, and
+        # an implausible one is exactly the transcription error the L/D gate
+        # exists to catch (Codex review on #138). ``z_pile_toe`` is the
+        # pre-truncation base, so this is the same number on all three paths.
+        from pybmodes.io.windio import _read_water_depth
+
+        resolved_wd = _read_water_depth(yaml_path, water_depth)
+        if resolved_wd is not None and mt.z_pile_toe is not None:
+            design_embedment = -resolved_wd - mt.z_pile_toe
+            if design_embedment > 0.0:
+                obj._construction.embedded_length = design_embedment
+
         # Optional soil-pile interaction (issue #118): replace the rigid
         # mudline clamp with a soil foundation (hub_conn = 3). Pass a
         # pre-built ``soil`` MudlineFoundation, or ``soil_E`` to auto-build
@@ -814,9 +828,7 @@ class Tower:
             # soil_E path already requires it (via MudlineFoundation
             # .from_windio); enforce it for the explicit ``soil`` path too
             # (Codex review #118).
-            from pybmodes.io.windio import _read_water_depth
-
-            wd = _read_water_depth(yaml_path, water_depth)
+            wd = resolved_wd
             if wd is None:
                 raise ValueError(
                     "a soil foundation needs a resolved water depth to place "
@@ -860,12 +872,10 @@ class Tower:
                     foundation, distributed=True,
                     embedded_length=embedded, n_stations=soil_n_stations,
                 )
-                obj._construction.embedded_length = embedded
             else:
                 obj.attach_mudline_foundation(foundation)
-                obj._construction.embedded_length = (
-                    foundation.pile_length_embedded
-                )
+            # ``embedded_length`` is already recorded above, from the
+            # pre-truncation pile toe, and is the same number on every path.
         return obj
 
     @classmethod

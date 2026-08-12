@@ -203,6 +203,33 @@ materials:
         )
         assert any("embedment ratio" in m for m in _messages(model, "WARN"))
 
+    def test_absurd_embedment_is_flagged_on_the_rigid_path_too(self, tmp_path):
+        """The rigid path truncates the embedded pile out of the beam, but
+        the ontology still states it and an absurd value is still a
+        transcription error (Codex review on #138)."""
+        model = Tower.from_windio_with_monopile(
+            self._yaml(tmp_path, z_base=-2030.0), tip_mass=1.0e6,
+        )
+        assert model._construction.embedded_length == pytest.approx(2000.0)
+        assert any("embedment ratio" in m for m in _messages(model, "WARN"))
+
+    def test_rigid_path_records_the_design_embedment(self, tmp_path):
+        """Recorded from the pile toe as drawn, not from the truncated beam
+        base, so it is the same number on every path."""
+        rigid = Tower.from_windio_with_monopile(
+            self._yaml(tmp_path), tip_mass=1.0e6,
+        )
+        lumped = Tower.from_windio_with_monopile(
+            self._yaml(tmp_path), tip_mass=1.0e6, soil_E=1.4e8,
+        )
+        distributed = Tower.from_windio_with_monopile(
+            self._yaml(tmp_path), tip_mass=1.0e6, soil_E=1.4e8,
+            soil_distributed=True,
+        )
+        assert rigid._construction.embedded_length == pytest.approx(45.0)
+        assert lumped._construction.embedded_length == pytest.approx(45.0)
+        assert distributed._construction.embedded_length == pytest.approx(45.0)
+
     def test_info_does_not_reach_the_solve_path(self, tmp_path):
         """INFO findings stay out of ``.run()`` — the existing contract."""
         import warnings as _w

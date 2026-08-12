@@ -381,6 +381,13 @@ class WindIOMonopileTower:
     # hand-built instance stays constructible.
     monopile: WindIOTubular | None = None
     tower: WindIOTubular | None = None
+    # The monopile base elevation **before** any mudline truncation, i.e.
+    # the pile toe as the ontology draws it. ``z_base`` above is the base
+    # of the beam that was actually built, which on the truncated path is
+    # the mudline instead. Kept so a caller can still recover the design
+    # embedment on the rigid path, where the embedded pile is dropped from
+    # the beam but is still a real quantity worth checking (issue #102).
+    z_pile_toe: float | None = None
 
 
 def _read_water_depth(
@@ -576,6 +583,10 @@ def read_windio_monopile_tower(
     # from the caller or the ontology's environment block. With no water
     # depth available the monopile base is taken as the clamp (the previous
     # behaviour, correct when the axis already begins at the mudline).
+    # The pile toe as drawn, captured before any truncation moves the
+    # segment base up to the mudline (issue #102).
+    z_pile_toe = float(mp.z_base)
+
     wd = _read_water_depth(yaml_path, water_depth) if clamp_at_mudline else None
     if wd is not None:
         mudline_z = -wd
@@ -699,6 +710,7 @@ def read_windio_monopile_tower(
         z_top=float(z_top),
         monopile=mp,
         tower=tw,
+        z_pile_toe=z_pile_toe,
     )
 
 
