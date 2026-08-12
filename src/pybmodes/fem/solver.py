@@ -515,19 +515,30 @@ def _compare_candidate_modes(
     decisively better" is only half the test; the other half is that no
     mode got decisively worse.
 
-    A mode has regressed when the candidate leaves it above the failure
-    threshold **and** either it was acceptable before — any crossing
-    counts, however small — or it was already failing and is now
-    decisively worse by the same factor that defines an improvement.
+    A mode has regressed in either of two independent ways. It **crossed**
+    the failure threshold, having been acceptable and no longer being so,
+    at any size — landing on the wrong side of the bar is what the bar is
+    for. Or it **worsened decisively**, by the same factor that defines
+    an improvement, while ending up somewhere that could matter.
 
-    The two halves cover different things and both are needed. Without
-    the crossing test a mode sliding from 0.09 to 0.8 escapes, since that
-    is less than the tenfold margin; without the decisive test a mode
-    already at 0.2 could be driven to 5.0 unremarked. And the crossing
-    test cannot mistake rigid-body noise for a regression, which is what
-    a bare ``alt > sym`` comparison would do: those modes read ~1 in both
-    candidates and wobble either way, so they were never on the
-    acceptable side of the threshold to cross from.
+    Both are needed, and the bounds on each were arrived at by finding
+    the cases the other misses.
+
+    - Without the crossing test, a mode sliding from 0.09 to 0.8 escapes:
+      8.9x falls short of the tenfold margin.
+    - Without the worsening test, an already-failing mode can be driven
+      from 0.2 to 5.0 with no crossing to observe.
+    - Gating the worsening test on the threshold itself, rather than a
+      tenth of it, lets an exact mode be driven to just under the bar —
+      1e-16 to 0.1 is fifteen orders and passed unflagged.
+
+    What must *not* be flagged bounds it from the other side. Rigid-body
+    modes read ~1 in both candidates and wobble either way: they never
+    cross, because they were never acceptable, and they never worsen
+    decisively, because the wobble is small. A mode going from 5.7e-6 to
+    3.5e-5 is six times worse and three orders below anything that
+    matters. A bare ``alt > sym`` comparison would flag both and block
+    nearly every legitimate rescue.
 
     The comparison has to be **per mode**, not on the two maxima. A
     rigid-body mode's backward error is a ratio of two near-zero
@@ -560,13 +571,20 @@ def _compare_candidate_modes(
     factor = _SOLVER_OPTIONS.residual_retry_improvement
     sym, alt = sym_r[:n], alt_r[:n]
     improved = (sym > threshold) & (alt < factor * sym)
-    # A mode regresses when the candidate leaves it failing, and either
-    # it was acceptable before — any crossing of the threshold counts,
-    # however small — or it was already failing and is now decisively
-    # worse. The crossing test cannot mistake rigid-body noise for a
-    # regression, because those modes read ~1 and so were never on the
-    # acceptable side to cross from.
-    regressed = (alt > threshold) & ((sym <= threshold) | (sym < factor * alt))
+    # Two independent ways to regress.
+    #
+    # A crossing: the mode was acceptable and is not any more. Size does
+    # not matter here — landing on the wrong side of the bar is the whole
+    # point of having one.
+    crossed = (alt > threshold) & (sym <= threshold)
+    # A decisive worsening that stays on the acceptable side. Gated at a
+    # tenth of the threshold so an exact mode driven to just under the
+    # bar still counts, while genuinely negligible churn does not: 1e-16
+    # to 0.1 is fifteen orders and matters, 5.7e-6 to 3.5e-5 is six times
+    # and does not. Reuses the two constants already in play rather than
+    # introducing a third.
+    worsened = (alt > factor * threshold) & (sym < factor * alt)
+    regressed = crossed | worsened
     return improved, regressed
 
 

@@ -827,6 +827,56 @@ class TestARetryThatTradesModesIsRefused:
         assert regressed[1]
         assert not (improved.any() and not regressed.any())
 
+    def test_an_exact_mode_driven_to_just_under_the_bar_is_a_regression(self):
+        """Gating the worsening test on the threshold itself would let a
+        mode go from machine precision to 0.1 — fifteen orders — while
+        staying nominally acceptable. It is gated a tenth lower."""
+        from pybmodes.fem.solver import _compare_candidate_modes
+
+        sym_r = np.array([0.52, 1.0e-16])
+        alt_r = np.array([1.0e-10, 0.099])
+        improved, regressed = _compare_candidate_modes(sym_r, alt_r, 2, 2)
+        assert improved[0]
+        assert regressed[1]
+
+    def test_what_escapes_is_bounded_an_order_inside_tolerance(self):
+        """The honest limit of the rule, swept rather than argued.
+
+        Some degradation is always tolerated, or rigid-body wobble and
+        harmless churn would block every rescue. What matters is that the
+        tolerated region is bounded: nothing unflagged can leave a mode
+        worse than a tenth of the failure threshold, which is an order of
+        magnitude inside tolerance.
+        """
+        from pybmodes.fem.solver import _compare_candidate_modes
+        from pybmodes.options import DEFAULT_SOLVER_OPTIONS as opt
+
+        bound = opt.residual_retry_improvement * opt.residual_retry_threshold
+        grid = np.logspace(-16, 2, 37)
+        for s in grid:
+            for a in grid:
+                _imp, reg = _compare_candidate_modes(
+                    np.array([s]), np.array([a]), 1, 1,
+                )
+                if a > 10.0 * s and not reg[0]:
+                    assert a <= bound, (
+                        f"sym={s:.2e} -> alt={a:.2e} escaped unflagged "
+                        f"above the {bound:.2e} bound"
+                    )
+
+    def test_improved_and_regressed_are_mutually_exclusive(self):
+        """A single mode cannot be both, or the caller's rule would be
+        reading a contradiction."""
+        from pybmodes.fem.solver import _compare_candidate_modes
+
+        grid = np.logspace(-16, 2, 37)
+        for s in grid:
+            for a in grid:
+                imp, reg = _compare_candidate_modes(
+                    np.array([s]), np.array([a]), 1, 1,
+                )
+                assert not (imp[0] and reg[0]), f"sym={s:.2e} alt={a:.2e}"
+
     def test_an_already_failing_mode_driven_much_worse_is_a_regression(self):
         """The other half: no crossing, because it was failing already,
         but a decisive worsening all the same."""
