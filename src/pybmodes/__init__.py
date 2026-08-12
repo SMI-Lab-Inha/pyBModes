@@ -75,11 +75,17 @@ minor releases.
     )
 
     # On Tower:
-    #   Tower.from_bmi(bmi_path)
-    #   Tower.from_elastodyn(main_dat)
-    #   Tower.from_elastodyn_with_subdyn(main_dat, subdyn_dat)
+    #   Tower.from_bmi(bmi_path, *, n_nodes=None)
+    #   Tower.from_elastodyn(main_dat, *, n_nodes=None)
+    #   Tower.from_elastodyn_with_subdyn(main_dat, subdyn_dat,
+    #                                    *, n_nodes=None)
     #   Tower.from_elastodyn_with_mooring(main_dat, moordyn_dat,
-    #                                     hydrodyn_dat=None)
+    #                                     hydrodyn_dat=None,
+    #                                     *, n_nodes=None)
+    #     n_nodes on a *deck* reader re-grids an already tabulated
+    #     property table, so it warns when a deliberate property step
+    #     falls between the new nodes (issue #58); the geometry
+    #     constructors below recompute exact tube properties instead.
     #   Tower.from_geometry(station_grid, outer_diameter,
     #                       wall_thickness, *, flexible_length,
     #                       E, rho, nu, outfitting_factor)
@@ -92,18 +98,31 @@ minor releases.
     #     only)
     #   Tower.from_windio_with_monopile(yaml_path, *,
     #       component_tower, component_monopile, thickness_interp,
-    #       tip_mass, n_nodes, water_depth, lumped_rna_cal)  # splice
+    #       tip_mass, n_nodes, water_depth, lumped_rna_cal,
+    #       soil, soil_E, soil_distributed, soil_n_stations)  # splice
     #       monopile + tower into one fixed-bottom cantilever clamped at
     #       the mudline (issue #92); water_depth clamps at the true
     #       seabed, dropping the embedded pile (issue #121);
-    #       lumped_rna_cal auto-derives the RNA (issue #82)
+    #       lumped_rna_cal auto-derives the RNA (issue #82); soil / soil_E
+    #       replace the rigid clamp with the soil-pile model, lumped at
+    #       the mudline or, with soil_distributed=True, as a Winkler bed
+    #       along the embedded pile (issue #118)
     #   Tower.from_windio_floating(yaml_path, *, water_depth,
     #                              hydrodyn_dat, moordyn_dat,
     #                              elastodyn_dat)  # coupled FOWT
 
+    # Fluent methods on an already-built Tower (each returns self):
+    #   .refine_mesh(n_nodes)               # issue #58
+    #   .add_point_mass(height_m, mass_kg)  # issue #35
+    #   .attach_mudline_foundation(foundation, *, distributed=False,
+    #        embedded_length=None, n_stations=20)   # issue #118
+    # And on .run():
+    #   .run(n_modes, *, check_model=True, on_error="raise",
+    #        gravity=False)   # gravity: self-weight softening, issue #134
+
     # On RotatingBlade:
-    #   RotatingBlade.from_bmi(bmi_path)
-    #   RotatingBlade.from_elastodyn(main_dat)
+    #   RotatingBlade.from_bmi(bmi_path, *, n_nodes=None)
+    #   RotatingBlade.from_elastodyn(main_dat, *, n_nodes=None)
     #   RotatingBlade.from_windio(yaml_path, *, component, n_span,
     #                             rot_rpm, elastic)
     #     elastic="auto" (default) uses the WindIO *published*
@@ -173,9 +192,19 @@ Known limitations of the 1.0 surface:
 - :class:`pybmodes.MudlineFoundation` computes the mudline coupled-
   spring stiffness for a soft monopile (Yu and Amdahl 2023) and
   emits a 6x6 block that drops into ``PlatformSupport.mooring_K``
-  for a ``hub_conn = 3`` BMI. The mudline stiffness affects the
-  coupled-system frequency only; ElastoDyn polynomial generation
-  remains on the cantilever path regardless of soil flexibility.
+  for a ``hub_conn = 3`` BMI, or a Winkler spring bed along the
+  embedded pile via ``distributed_springs()``. Either way the soil
+  affects the coupled-system frequency only; ElastoDyn polynomial
+  generation remains on the cantilever path regardless of soil
+  flexibility.
+- ``Tower.run(gravity=True)`` adds the self-weight geometric softening
+  of a fixed-bottom tower. It is off by default, which is what BModes
+  does and what every case in ``VALIDATION.md`` is pinned against, and
+  it is refused for a free-base floating model, where buoyancy would
+  have to be netted against the weight.
+- ``Tower.add_point_mass`` carries a lump's translational inertia
+  through the element shape functions but not its own rotary inertia
+  about its centre; use ``tip_mass`` where that term matters.
 - ``BMIFile.support.distr_m`` (distributed hydrodynamic added mass
   per unit tower length) is parsed by ``pybmodes.io.bmi.read_bmi``
   but NOT wired into the FEM mass matrix; ``distr_k`` (distributed
