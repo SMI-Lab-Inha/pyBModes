@@ -1495,9 +1495,12 @@ class Tower:
         n_stations : number of spring stations along the embedded length
             (default 20). Ignored unless ``distributed``.
 
-        Sets ``tow_support = 1`` (inline platform block) and flips
-        ``hub_conn`` to ``3``. The tower's section properties and tip
-        mass are preserved. Returns ``self`` for chaining.
+        Returns
+        -------
+        Tower
+            ``self``, for chaining. Sets ``tow_support = 1`` (inline
+            platform block) and flips ``hub_conn`` to ``3``; the tower's
+            section properties and tip mass are preserved.
 
         Use this to convert a rigid-clamped monopile model built via
         :meth:`from_windio_with_monopile`, :meth:`from_elastodyn_with_subdyn`,
@@ -1654,6 +1657,13 @@ class Tower:
             within the beam length.
         mass : lumped mass in kg, > 0.
 
+        Returns
+        -------
+        Tower
+            ``self``, for chaining; call repeatedly to add several.
+
+        Notes
+        -----
         The lump is assembled through the element shape functions at its
         exact station, so it does **not** have to coincide with a mesh
         node and the result is mesh-position-independent. Its own rotary
@@ -1661,7 +1671,6 @@ class Tower:
         :class:`pybmodes.io.bmi.PointMass`. With ``run(gravity=...)`` the
         lump's weight also loads the tower below it.
 
-        Returns ``self`` for chaining; call repeatedly to add several.
         Available on ``Tower`` only — on a rotating blade a mid-span lump
         would also change the centrifugal tension distribution, which is
         a separate modelling track.
