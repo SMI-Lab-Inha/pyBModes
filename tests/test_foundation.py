@@ -509,3 +509,276 @@ def test_attach_mudline_foundation_rejects_pinned_free_model() -> None:
 
     with pytest.raises(ValueError, match="hub_conn = 4"):
         tower.attach_mudline_foundation(_default_foundation())
+
+
+# -----------------------------------------------------------------------------
+# Distributed Winkler springs (issue #118)
+# -----------------------------------------------------------------------------
+
+# One uniform tube used for both soil tiers, so the Psaroudakis closed
+# form's constant-EI assumption holds and the two are comparable.
+_WK_D = 7.0
+_WK_T = 0.075
+_WK_E = 210e9
+_WK_EI = _WK_E * math.pi / 64.0 * (_WK_D**4 - (_WK_D - 2.0 * _WK_T) ** 4)
+_WK_EMBEDDED = 35.0
+_WK_ABOVE = 80.0
+_WK_SOIL_E = 30e6
+_WK_TIP = 3.5e5
+
+
+def _winkler_tube(length: float, n: int = 60):
+    """A uniform steel tube of ``length`` metres carrying the same RNA."""
+    from pybmodes.models import Tower
+
+    grid = np.linspace(0.0, 1.0, n)
+    return Tower.from_geometry(
+        station_grid=grid,
+        outer_diameter=np.full(n, _WK_D),
+        wall_thickness=np.full(n, _WK_T),
+        flexible_length=length,
+        E=_WK_E, rho=7850.0, nu=0.3,
+        tip_mass=_WK_TIP,
+        hub_conn=1,
+    )
+
+
+def _winkler_foundation(
+    formula: str = "psaroudakis", profile: str = "homogeneous",
+    soil_E: float = _WK_SOIL_E,
+) -> MudlineFoundation:
+    return MudlineFoundation.from_soil_properties(
+        pile_diameter=_WK_D,
+        pile_length_embedded=_WK_EMBEDDED,
+        pile_EI=_WK_EI,
+        soil_E=soil_E,
+        soil_nu=0.3,
+        soil_profile=profile,
+        pile_behaviour="flexible",
+        formula=formula,
+    )
+
+
+def _winkler_first_frequency(n_stations: int = 20, **kwargs) -> float:
+    tower = _winkler_tube(_WK_ABOVE + _WK_EMBEDDED, n=120)
+    tower.attach_mudline_foundation(
+        _winkler_foundation(**kwargs), distributed=True,
+        embedded_length=_WK_EMBEDDED, n_stations=n_stations,
+    )
+    return float(tower.run(n_modes=6, check_model=False).frequencies[0])
+
+
+def test_distributed_springs_shape_and_endpoints() -> None:
+    depth, k = _winkler_foundation().distributed_springs(n_stations=9)
+    assert depth.shape == k.shape == (9,)
+    assert depth[0] == pytest.approx(0.0)
+    assert depth[-1] == pytest.approx(_WK_EMBEDDED)
+
+
+def test_distributed_springs_homogeneous_is_constant_D_times_E() -> None:
+    """``k_line = D_P * E_SO`` — the subgrade product Yu Eq 25 uses."""
+    _depth, k = _winkler_foundation().distributed_springs(n_stations=7)
+    assert np.allclose(k, _WK_D * _WK_SOIL_E)
+
+
+@pytest.mark.parametrize(
+    ("profile", "exponent"),
+    [("homogeneous", 0.0), ("parabolic", 0.5), ("linear", 1.0)],
+)
+def test_distributed_springs_follow_the_profile_exponent(
+    profile: str, exponent: float,
+) -> None:
+    """Shadlou's inhomogeneity exponents drive the depth variation."""
+    f = _winkler_foundation(formula="shadlou", profile=profile)
+    depth, k = f.distributed_springs(n_stations=11)
+    expected = _WK_D * _WK_SOIL_E * (depth / _WK_EMBEDDED) ** exponent
+    assert np.allclose(k, expected)
+
+
+def test_distributed_springs_are_non_negative_and_non_decreasing() -> None:
+    for profile in ("homogeneous", "parabolic", "linear"):
+        _depth, k = _winkler_foundation(
+            formula="shadlou", profile=profile,
+        ).distributed_springs()
+        assert np.all(k >= 0.0)
+        assert np.all(np.diff(k) >= -1.0e-9)
+
+
+def test_distributed_springs_need_the_pile_geometry() -> None:
+    bare = MudlineFoundation(
+        K_hh=1.0, K_hr=-1.0, K_rr=1.0,
+        pile_behaviour="flexible", soil_profile="homogeneous",
+        formula="shadlou",
+    )
+    with pytest.raises(ValueError, match="pile geometry"):
+        bare.distributed_springs()
+
+
+@pytest.mark.parametrize("bad", [1, 0, -3, 2.5, True])
+def test_distributed_springs_reject_bad_station_count(bad) -> None:
+    with pytest.raises(ValueError, match="n_stations"):
+        _winkler_foundation().distributed_springs(n_stations=bad)
+
+
+def test_distributed_bed_matches_the_psaroudakis_condensation() -> None:
+    """The two soil tiers describe the same physics, so they must agree.
+
+    Psaroudakis et al. (2021) — Yu and Amdahl (2023) Eq 25 — is the exact
+    static condensation of a constant-EI pile on a Winkler bed of rate
+    ``k = D_P E_SO`` onto its mudline node. Modelling that same pile and
+    bed explicitly as beam elements with ``distr_k`` must therefore land
+    on the same coupled frequency, up to the embedded pile's own inertia,
+    which the condensed form drops.
+    """
+    lumped_tower = _winkler_tube(_WK_ABOVE)
+    lumped_tower.attach_mudline_foundation(_winkler_foundation())
+    f_lumped = float(
+        lumped_tower.run(n_modes=6, check_model=False).frequencies[0]
+    )
+    f_distributed = _winkler_first_frequency()
+    assert f_distributed == pytest.approx(f_lumped, rel=0.01)
+
+
+def test_distributed_bed_softens_versus_the_rigid_clamp() -> None:
+    rigid = float(
+        _winkler_tube(_WK_ABOVE).run(n_modes=6, check_model=False).frequencies[0]
+    )
+    assert _winkler_first_frequency() < rigid
+
+
+def test_distributed_bed_approaches_the_rigid_clamp_for_very_stiff_soil() -> None:
+    """As E_SO grows the spring bed pins the pile and the answer converges
+    on the clamped-at-mudline model.
+
+    Convergence is slow by construction: the residual mudline compliance
+    scales with the elastic length ``1 / beta = (4 EI / k)^(1/4)``, so
+    each decade of soil modulus only buys a factor ``10^(1/4)``. Eight
+    decades leave under 1 percent, which is what this pins.
+    """
+    rigid = float(
+        _winkler_tube(_WK_ABOVE).run(n_modes=6, check_model=False).frequencies[0]
+    )
+    stiff = _winkler_first_frequency(soil_E=_WK_SOIL_E * 1.0e8)
+    assert stiff < rigid
+    assert stiff == pytest.approx(rigid, rel=0.01)
+
+
+def test_distributed_bed_stiffens_monotonically_with_soil_modulus() -> None:
+    f = [
+        _winkler_first_frequency(soil_E=e)
+        for e in (5e6, 30e6, 200e6, 2e9)
+    ]
+    assert np.all(np.diff(f) > 0.0)
+
+
+@pytest.mark.parametrize("n_stations", [4, 20, 60])
+def test_distributed_result_is_insensitive_to_the_station_count(
+    n_stations: int,
+) -> None:
+    """The profile is piecewise-linear in depth, so the FE mesh — not the
+    spring-station count — sets the resolution."""
+    assert _winkler_first_frequency(n_stations=n_stations) == pytest.approx(
+        _winkler_first_frequency(n_stations=20), rel=1.0e-6,
+    )
+
+
+def test_distributed_writes_distr_k_and_leaves_mooring_K_zero() -> None:
+    tower = _winkler_tube(_WK_ABOVE + _WK_EMBEDDED, n=40)
+    tower.attach_mudline_foundation(
+        _winkler_foundation(), distributed=True,
+        embedded_length=_WK_EMBEDDED, n_stations=12,
+    )
+    s = tower._bmi.support
+    assert tower._bmi.hub_conn == 3
+    assert s.distr_k.size == 12
+    assert s.distr_k_z.size == 12
+    # Measured up from the beam base (the pile toe) to the mudline, and
+    # ascending, as the FEM interpolator requires.
+    assert s.distr_k_z[0] == pytest.approx(0.0)
+    assert s.distr_k_z[-1] == pytest.approx(_WK_EMBEDDED)
+    assert np.all(np.diff(s.distr_k_z) > 0.0)
+    np.testing.assert_array_equal(s.mooring_K, np.zeros((6, 6)))
+
+
+def test_distributed_rejects_an_embedded_length_beyond_the_beam() -> None:
+    tower = _winkler_tube(20.0, n=20)
+    with pytest.raises(ValueError, match="exceeds the whole flexible beam"):
+        tower.attach_mudline_foundation(
+            _winkler_foundation(), distributed=True, embedded_length=_WK_EMBEDDED,
+        )
+
+
+@pytest.mark.parametrize("bad", [0.0, -5.0, float("nan")])
+def test_distributed_rejects_non_physical_embedded_length(bad) -> None:
+    tower = _winkler_tube(_WK_ABOVE + _WK_EMBEDDED, n=20)
+    with pytest.raises(ValueError, match="embedded_length"):
+        tower.attach_mudline_foundation(
+            _winkler_foundation(), distributed=True, embedded_length=bad,
+        )
+
+
+def test_distributed_defaults_the_length_to_the_foundation() -> None:
+    tower = _winkler_tube(_WK_ABOVE + _WK_EMBEDDED, n=40)
+    tower.attach_mudline_foundation(_winkler_foundation(), distributed=True)
+    assert tower._bmi.support.distr_k_z[-1] == pytest.approx(_WK_EMBEDDED)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("pile_length_embedded", 0.0, "embedded length"),
+        ("pile_length_embedded", float("nan"), "embedded length"),
+        ("soil_E", -1.0, "soil_E"),
+        ("pile_diameter", 0.0, "pile_diameter"),
+    ],
+)
+def test_distributed_springs_reject_non_physical_stored_inputs(
+    field, value, match,
+) -> None:
+    """A hand-mutated foundation must not silently emit a garbage bed."""
+    f = _winkler_foundation()
+    setattr(f, field, value)
+    with pytest.raises(ValueError, match=match):
+        f.distributed_springs()
+
+
+def test_distributed_springs_length_override_spans_that_length() -> None:
+    """The profile is generated over whatever length it will be laid into,
+    so stations and bed can never disagree (Codex review on #138)."""
+    f = _winkler_foundation()
+    depth, k = f.distributed_springs(n_stations=9, length=12.0)
+    assert depth[0] == pytest.approx(0.0)
+    assert depth[-1] == pytest.approx(12.0)
+    assert k.shape == depth.shape
+
+
+def test_distributed_springs_length_override_renormalises_the_profile() -> None:
+    """An inhomogeneous profile normalises against the length actually
+    used, not the stored one."""
+    f = _winkler_foundation(formula="shadlou", profile="linear")
+    depth, k = f.distributed_springs(n_stations=6, length=12.0)
+    assert np.allclose(k, _WK_D * _WK_SOIL_E * (depth / 12.0))
+    # Full rate at the toe of the *requested* length, zero at the mudline.
+    assert k[-1] == pytest.approx(_WK_D * _WK_SOIL_E)
+    assert k[0] == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize("bad", [0.0, -3.0, float("nan"), True])
+def test_distributed_springs_reject_bad_length_override(bad) -> None:
+    with pytest.raises(ValueError, match="length"):
+        _winkler_foundation().distributed_springs(length=bad)
+
+
+def test_attach_distributed_bed_spans_the_requested_length_exactly() -> None:
+    """A shorter override must not leave the pile toe unsprung, and a
+    longer one must not push stations past the beam base."""
+    for override in (0.5 * _WK_EMBEDDED, 1.5 * _WK_EMBEDDED):
+        tower = _winkler_tube(_WK_ABOVE + 2.0 * _WK_EMBEDDED, n=40)
+        tower.attach_mudline_foundation(
+            _winkler_foundation(), distributed=True,
+            embedded_length=override, n_stations=10,
+        )
+        z = tower._bmi.support.distr_k_z
+        assert z.min() == pytest.approx(0.0)
+        assert z.max() == pytest.approx(override)
+        assert np.all(z >= 0.0)

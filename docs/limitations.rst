@@ -159,6 +159,23 @@ Numerical scope
 - **Centrifugal stiffening only on the blade.** Tower
   centrifugal effects (negligible for fixed-base towers) are
   not modelled.
+- **Self-weight softening is opt-in and fixed-bottom only.**
+  ``Tower.run(gravity=True)`` adds the geometric stiffness of
+  the tower's own weight plus the RNA and any point masses,
+  which lowers the bending frequencies (around 2 % on the
+  1st fore-aft mode of a large machine, and usually the single
+  largest term when reconciling against a tool that models
+  gravity by default). It is **off by default**, which is what
+  BModes does and what every case in ``VALIDATION.md`` is
+  pinned against, and it is refused for a free-base floating
+  model: there the submerged structure's buoyancy cancels most
+  of the weight and pyBmodes carries no distributed buoyancy
+  column to net it against.
+- **A discrete lump's own rotary inertia is not modelled.**
+  ``Tower.add_point_mass`` places a mass at any station through
+  the element shape functions, exactly, but carries only its
+  translational inertia. Use ``tip_mass`` where the rotary term
+  about the lump's own centre matters.
 - **Rotor aerodynamics are not modelled.** A Campbell sweep
   does **not** include aeroelastic damping or unsteady
   aerodynamics — those belong in OpenFAST. ``pybmodes``
@@ -261,6 +278,20 @@ returns a 6 x 6 block in OpenFAST DOF order that drops into
 Reproduces the Yu and Amdahl (2023) Table 9 DTU 10 MW anchors
 to within 3 percent on K_hh, K_hr, K_rr for both flexible and
 rigid reference cases.
+
+For a higher-fidelity soil model,
+:meth:`~pybmodes.MudlineFoundation.distributed_springs`
+turns the same soil into a Winkler spring bed along the
+embedded pile, and
+``Tower.attach_mudline_foundation(foundation, distributed=True)``
+lays it into ``distr_k``. The pile then deflects against the
+soil over its real length instead of being condensed onto a
+base spring, at the cost of keeping the embedded pile in the
+beam. On the WindIO path this is one keyword:
+``Tower.from_windio_with_monopile(yaml, soil_E=..., soil_distributed=True)``.
+The two tiers agree to 0.4 percent on a uniform pile in
+homogeneous soil, the residual being the embedded pile's own
+inertia that the condensed form drops.
 
 The mudline stiffness affects the coupled-system frequency
 only; ElastoDyn polynomial generation continues to use the

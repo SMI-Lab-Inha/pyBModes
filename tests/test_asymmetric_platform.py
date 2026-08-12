@@ -339,7 +339,7 @@ def test_symmetric_emits_legacy_single_value_line(tmp_path) -> None:
     bundled sample is byte-identical."""
     bmi_path = _write_floating_bmi(tmp_path, _platform(0.0, 0.0), "sym")
     cm_lines = [
-        ln for ln in bmi_path.read_text().splitlines()
+        ln for ln in bmi_path.read_text(encoding="utf-8").splitlines()
         if "cm_pform" in ln and "below MSL" in ln
     ]
     assert len(cm_lines) == 1
@@ -360,12 +360,12 @@ def test_incomplete_cm_pform_offset_pair_rejected(tmp_path, bad_line) -> None:
     from pybmodes.io.bmi import read_bmi
 
     good = _write_floating_bmi(tmp_path, _platform(6.5, -3.25), "bad")
-    text = good.read_text()
+    text = good.read_text(encoding="utf-8")
     cm_line = next(
         ln for ln in text.splitlines() if "cm_pform_xyz" in ln
     )
     corrupted = tmp_path / "corrupt.bmi"
-    corrupted.write_text(text.replace(cm_line, bad_line))
+    corrupted.write_text(text.replace(cm_line, bad_line), encoding="utf-8")
     with pytest.raises(ValueError, match="cm_pform line must have"):
         read_bmi(corrupted)
 
@@ -403,7 +403,7 @@ def test_on_axis_ref_emits_legacy_single_value_line(tmp_path) -> None:
     single-value ref_msl line — byte-identical to every existing deck."""
     bmi_path = _write_floating_bmi(tmp_path, _platform(0.0, 0.0), "onaxis")
     ref_lines = [
-        ln for ln in bmi_path.read_text().splitlines()
+        ln for ln in bmi_path.read_text(encoding="utf-8").splitlines()
         if "ref_msl" in ln
     ]
     assert len(ref_lines) == 1

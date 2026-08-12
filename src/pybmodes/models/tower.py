@@ -36,6 +36,7 @@ import pathlib
 from typing import TYPE_CHECKING
 
 from pybmodes.io.bmi import read_bmi
+from pybmodes.io.construction import ConstructionInputs, TubeSegment
 from pybmodes.io.sec_props import SectionProperties
 from pybmodes.models._pipeline import run_fem
 from pybmodes.models._platform import (
@@ -93,6 +94,103 @@ def _coerce_tip_mass(
     )
 
 
+#: Standard gravity (ISO 80000-3), used when ``run(gravity=True)``.
+STANDARD_GRAVITY = 9.80665
+
+
+def _coerce_gravity(gravity: bool | float, hub_conn: int) -> float:
+    """Normalise the ``run(gravity=...)`` argument to ``g`` in m/s².
+
+    ``False`` -> 0.0 (self-weight softening off, the default and the
+    BModes-equivalent behaviour), ``True`` -> :data:`STANDARD_GRAVITY`,
+    a number -> itself. Rejects the boundary conditions where a pure
+    self-weight column would be wrong (issue #134).
+    """
+    import numpy as _np
+
+    if gravity is False or gravity is None:
+        return 0.0
+    g = STANDARD_GRAVITY if gravity is True else float(gravity)
+    if not _np.isfinite(g) or g < 0.0:
+        raise ValueError(
+            f"gravity must be True/False or a finite g >= 0 in m/s²; "
+            f"got {gravity!r}"
+        )
+    if g == 0.0:
+        return 0.0
+    if hub_conn == 2:
+        raise ValueError(
+            "gravity=True is not supported for a free-base floating model "
+            "(hub_conn = 2). The submerged structure's buoyancy cancels most "
+            "of the self-weight and pyBmodes carries no distributed buoyancy "
+            "column to net it against, so a weight-only axial load would "
+            "over-soften the tower. Use the fixed-bottom paths (hub_conn 1 "
+            "or 3) for the self-weight study."
+        )
+    if hub_conn == 4:
+        raise ValueError(
+            "gravity=True is not supported for the pinned-free cable BC "
+            "(hub_conn = 4), whose axial-tension state is set by the cable "
+            "pretension rather than by a self-weight column."
+        )
+    return g
+
+
+def _reject_foreign_pile(
+    foundation: MudlineFoundation,
+    mt: object,
+    embedded_length: float,
+    mudline_z: float,
+    rtol: float = 0.01,
+) -> None:
+    """Refuse a pre-built foundation describing a different pile (#118).
+
+    On the distributed path the soil model and the FE beam have to be the
+    same structure twice over: the bed's rate is ``D_P E_SO`` and its
+    extent is the embedded length, so either geometry term alone is
+    enough to decouple the soil from the beam it is supposed to act on.
+    A mismatch is silent otherwise — the model solves and returns a
+    plausible frequency for a pile that does not exist.
+
+    Both terms are compared against the ontology at the mudline. A
+    foundation that records neither (built straight from the three
+    stiffnesses) is left alone; it has nothing to contradict.
+    """
+    import numpy as _np
+
+    checks: list[tuple[str, float | None, float, str]] = [
+        ("embedded", foundation.pile_length_embedded, embedded_length,
+         "embedded length (m)"),
+    ]
+    monopile = getattr(mt, "monopile", None)
+    if monopile is not None and foundation.pile_diameter is not None:
+        z_phys = monopile.z_base + monopile.station_grid * (
+            monopile.z_top - monopile.z_base
+        )
+        checks.append((
+            "diameter",
+            foundation.pile_diameter,
+            float(_np.interp(mudline_z, z_phys, monopile.outer_diameter)),
+            "pile diameter at the mudline (m)",
+        ))
+
+    for _key, stored, actual, label in checks:
+        if stored is None or actual <= 0.0:
+            continue
+        if abs(float(stored) - actual) > rtol * actual:
+            raise ValueError(
+                f"the supplied soil foundation was built for a different "
+                f"pile: its {label} is {float(stored):g}, but this ontology "
+                f"and water depth give {actual:g}. The foundation's spring "
+                f"constants, and the distributed bed's own D_P.E_SO rate, "
+                f"would then describe a different structure from the beam "
+                f"they act on. Rebuild it with "
+                f"MudlineFoundation.from_windio(yaml, soil_E=..., "
+                f"water_depth=...), or pass soil_E=... and let this "
+                f"constructor build it."
+            )
+
+
 class Tower:
     """Compute natural frequencies and mode shapes for a tower.
 
@@ -108,16 +206,27 @@ class Tower:
     # ``__init__``).
     coeff_validation: ValidationResult | None = None
 
-    def __init__(self, bmi_path: str | pathlib.Path) -> None:
+    # Raw tube geometry + material as supplied to a geometry-derived
+    # constructor, for the domain checks (issue #102). ``None`` on a
+    # deck-derived model, where those numbers don't exist.
+    _construction: ConstructionInputs | None = None
+
+    def __init__(
+        self, bmi_path: str | pathlib.Path, *, n_nodes: int | None = None,
+    ) -> None:
         self._bmi = read_bmi(bmi_path)
         self._sp: SectionProperties | None = None
         if self._bmi.beam_type != 2:
             raise ValueError(
                 f"Tower requires beam_type=2, got {self._bmi.beam_type}"
             )
+        if n_nodes is not None:
+            self.refine_mesh(n_nodes)
 
     @classmethod
-    def from_bmi(cls, bmi_path: str | pathlib.Path) -> Tower:
+    def from_bmi(
+        cls, bmi_path: str | pathlib.Path, *, n_nodes: int | None = None,
+    ) -> Tower:
         """Build a tower model from a BModes-format ``.bmi`` deck.
 
         Equivalent to ``Tower(bmi_path)`` — exposed as an explicit
@@ -132,8 +241,11 @@ class Tower:
         ``PlatformSupport`` carrying hydro / mooring / platform-inertia
         6×6 matrices). All of those flow through the standard FEM
         pipeline; this constructor is a thin handle.
+
+        ``n_nodes`` re-grids the deck's FE mesh — see :meth:`refine_mesh`
+        for what that does and does not preserve (issue #58).
         """
-        return cls(bmi_path)
+        return cls(bmi_path, n_nodes=n_nodes)
 
     @classmethod
     def from_elastodyn(
@@ -141,6 +253,7 @@ class Tower:
         main_dat_path: str | pathlib.Path,
         *,
         validate_coeffs: bool = False,
+        n_nodes: int | None = None,
     ) -> Tower:
         """Build a tower model from an OpenFAST ElastoDyn main ``.dat``.
 
@@ -160,6 +273,9 @@ class Tower:
             ``self.coeff_validation``. Emits a ``UserWarning`` if any
             block fails or warns. Default ``False`` so the standard
             constructor stays cheap.
+        n_nodes :
+            Optional FE-mesh refinement (issue #58) — see
+            :meth:`refine_mesh`. ``None`` keeps the deck's own mesh.
         """
         from pybmodes.io.elastodyn_reader import (
             read_elastodyn_blade,
@@ -184,6 +300,8 @@ class Tower:
         obj._bmi = bmi
         obj._sp = sp
         obj.coeff_validation = None
+        if n_nodes is not None:
+            obj.refine_mesh(n_nodes)
 
         if validate_coeffs:
             obj.coeff_validation = _run_validation_and_warn(main_dat_path)
@@ -312,6 +430,13 @@ class Tower:
         obj._bmi = bmi
         obj._sp = sp
         obj.coeff_validation = None
+        # Keep the raw tube and material the caller supplied so the
+        # domain checks can run on the user's own numbers rather than on
+        # the derived section properties (issue #102).
+        obj._construction = ConstructionInputs(segments=[TubeSegment(
+            name="tower", station_grid=grid, outer_diameter=od,
+            wall_thickness=wt, E=float(E), rho=float(rho), nu=float(nu),
+        )])
         return obj
 
     @classmethod
@@ -472,6 +597,8 @@ class Tower:
         soil_profile: str = "homogeneous",
         pile_behaviour: str = "auto",
         soil_formula: str = "shadlou",
+        soil_distributed: bool = False,
+        soil_n_stations: int = 20,
     ) -> Tower:
         """Build a combined **monopile + tower** fixed-bottom cantilever
         from a WindIO ontology ``.yaml`` (issue #92).
@@ -543,6 +670,14 @@ class Tower:
             ``from_soil_properties``' defaults (``soil_nu=0.3``,
             ``soil_profile="homogeneous"``, ``pile_behaviour="auto"``,
             ``soil_formula="shadlou"``).
+        soil_distributed : select the **distributed Winkler** soil tier
+            instead of the lumped mudline springs (issue #118). The
+            embedded pile is kept in the beam rather than truncated at
+            the mudline, and a spring bed is laid along it, so the pile's
+            own deflection below the seabed is resolved instead of
+            condensed onto a base spring. Requires ``soil`` or ``soil_E``.
+        soil_n_stations : number of spring stations along the embedded
+            length when ``soil_distributed`` (default 20).
 
         Notes
         -----
@@ -551,12 +686,12 @@ class Tower:
         mudline with no soil flexibility, matching
         :meth:`from_elastodyn_with_subdyn` and the bundled monopile
         samples. Pass ``soil`` or ``soil_E`` for the soft-monopile tier
-        (lumped mudline coupled springs, ``hub_conn = 3``); this lowers the
-        coupled frequency relative to the rigid clamp. Fully distributed
-        Winkler ``distr_k`` springs and Morison hydrodynamics remain a
-        separate higher-fidelity follow-up. Raises ``ValueError`` if the
-        monopile top and tower base do not meet at a common
-        transition-piece elevation.
+        (``hub_conn = 3``), which lowers the coupled frequency relative to
+        the rigid clamp — lumped mudline springs by default, or the
+        distributed Winkler bed with ``soil_distributed=True``. Morison
+        hydrodynamics on the submerged length remains a separate
+        follow-up. Raises ``ValueError`` if the monopile top and tower
+        base do not meet at a common transition-piece elevation.
         """
         from pybmodes.io._elastodyn.adapter import _build_bmi_skeleton
         from pybmodes.io.windio import read_windio_monopile_tower
@@ -584,6 +719,22 @@ class Tower:
 
             tip_mass = read_windio_rna(yaml_path, angle_units=rna_angle_units)
 
+        if soil is not None and soil_E is not None:
+            raise ValueError(
+                "pass either soil (a MudlineFoundation) or soil_E (auto-build "
+                "from the ontology), not both."
+            )
+        has_soil = soil is not None or soil_E is not None
+        if soil_distributed and not has_soil:
+            raise ValueError(
+                "soil_distributed=True needs a soil model to distribute. Pass "
+                "soil_E=... (auto-build from the ontology) or a pre-built "
+                "soil=MudlineFoundation(...)."
+            )
+
+        # The distributed Winkler bed acts on the embedded pile, so that
+        # length has to stay in the beam; the lumped springs condense onto
+        # the mudline, so there the beam is truncated at the seabed.
         mt = read_windio_monopile_tower(
             yaml_path,
             component_tower=component_tower,
@@ -591,12 +742,13 @@ class Tower:
             thickness_interp=thickness_interp,
             n_nodes=n_nodes,
             water_depth=water_depth,
+            clamp_at_mudline=not soil_distributed,
             E=E, rho=rho, nu=nu, outfitting_factor=outfitting_factor,
         )
         tip = _coerce_tip_mass(tip_mass)
         bmi = _build_bmi_skeleton(
             title=(
-                f"WindIO monopile+tower (mudline z={mt.z_base:g} m, "
+                f"WindIO monopile+tower (base z={mt.z_base:g} m, "
                 f"TP z={mt.z_transition:g} m, top z={mt.z_top:g} m)"
             ),
             beam_type=2,
@@ -614,16 +766,40 @@ class Tower:
         obj._bmi = bmi
         obj._sp = mt.section_props
         obj.coeff_validation = None
+        obj._construction = ConstructionInputs(
+            segments=[
+                TubeSegment(
+                    name=name,
+                    station_grid=seg.station_grid,
+                    outer_diameter=seg.outer_diameter,
+                    wall_thickness=seg.wall_thickness,
+                    E=seg.E, rho=seg.rho, nu=seg.nu,
+                )
+                for name, seg in (("monopile", mt.monopile), ("tower", mt.tower))
+                if seg is not None
+            ],
+            is_monopile=True,
+            has_soil=has_soil,
+        )
+
+        # The design embedment, recorded on every path rather than only the
+        # soil ones. On the rigid path the embedded pile is truncated out of
+        # the beam, but it is still a real quantity the ontology states, and
+        # an implausible one is exactly the transcription error the L/D gate
+        # exists to catch (Codex review on #138). ``z_pile_toe`` is the
+        # pre-truncation base, so this is the same number on all three paths.
+        from pybmodes.io.windio import _read_water_depth
+
+        resolved_wd = _read_water_depth(yaml_path, water_depth)
+        if resolved_wd is not None and mt.z_pile_toe is not None:
+            design_embedment = -resolved_wd - mt.z_pile_toe
+            if design_embedment > 0.0:
+                obj._construction.embedded_length = design_embedment
 
         # Optional soil-pile interaction (issue #118): replace the rigid
-        # mudline clamp with a coupled-spring foundation (hub_conn = 3). Pass
-        # a pre-built ``soil`` MudlineFoundation, or ``soil_E`` to auto-build
+        # mudline clamp with a soil foundation (hub_conn = 3). Pass a
+        # pre-built ``soil`` MudlineFoundation, or ``soil_E`` to auto-build
         # it from the ontology's pile geometry.
-        if soil is not None and soil_E is not None:
-            raise ValueError(
-                "pass either soil (a MudlineFoundation) or soil_E (auto-build "
-                "from the ontology), not both."
-            )
         foundation = soil
         if soil_E is not None:
             from pybmodes.foundation import MudlineFoundation
@@ -643,24 +819,63 @@ class Tower:
                 thickness_interp=thickness_interp,
             )
         if foundation is not None:
-            # The springs act at the mudline, so the beam must be truncated
-            # there. read_windio_monopile_tower only truncates when a water
-            # depth resolves; without one it clamps at the pile toe, which
-            # would leave the embedded pile as a free beam and place the
-            # springs at the toe. The soil_E path already requires the depth
-            # (via MudlineFoundation.from_windio); enforce it for the explicit
-            # ``soil`` path too (Codex review #118).
-            from pybmodes.io.windio import _read_water_depth
-
-            if _read_water_depth(yaml_path, water_depth) is None:
+            # Both tiers need the mudline located. Lumped springs act there,
+            # so the beam must be truncated there — read_windio_monopile_tower
+            # only truncates when a water depth resolves, and without one it
+            # clamps at the pile toe, which would leave the embedded pile as a
+            # free beam with the springs at the wrong end. The distributed bed
+            # needs the depth to know how much of the beam is embedded. The
+            # soil_E path already requires it (via MudlineFoundation
+            # .from_windio); enforce it for the explicit ``soil`` path too
+            # (Codex review #118).
+            wd = resolved_wd
+            if wd is None:
                 raise ValueError(
-                    "a soil foundation needs a resolved water depth so the "
-                    "beam is truncated to the mudline (and the springs act "
-                    "there, not at the monopile toe with the embedded pile "
-                    "left as a free beam). Pass water_depth=... or set "
+                    "a soil foundation needs a resolved water depth to place "
+                    "the mudline (the lumped springs act there and the beam is "
+                    "truncated to it; the distributed bed measures the embedded "
+                    "length from it). Pass water_depth=... or set "
                     "environment.water_depth in the ontology."
                 )
-            obj.attach_mudline_foundation(foundation)
+            if soil_distributed:
+                # clamp_at_mudline=False skipped the reader's own mudline
+                # placement guards (it never resolved a depth), so both
+                # ends are re-checked here against the spliced beam.
+                embedded = -wd - mt.z_base
+                if embedded <= 0.0:
+                    raise ValueError(
+                        f"the monopile base (z = {mt.z_base:g} m) is at or "
+                        f"above the mudline (z = {-wd:g} m), so there is no "
+                        f"embedded length for the distributed soil springs to "
+                        f"act over. Check water_depth and the monopile "
+                        f"reference_axis.z."
+                    )
+                if -wd >= mt.z_transition:
+                    raise ValueError(
+                        f"water_depth={wd:g} m places the mudline "
+                        f"(z = {-wd:g} m) at or above the transition piece "
+                        f"(z = {mt.z_transition:g} m), which would bury the "
+                        f"tower in the seabed and run the soil springs up "
+                        f"into it. Check water_depth and the components' "
+                        f"reference_axis.z."
+                    )
+                # A pre-built foundation carries its own pile. If that is
+                # not the pile in the ontology, its coupled-spring
+                # constants — and the bed's own D_P E_SO rate — describe a
+                # different structure from the beam, so refuse rather than
+                # lay a plausible-looking bed under the wrong pile (Codex
+                # review on #138). Both geometry terms the foundation
+                # stores are checked, since either alone is enough to
+                # decouple the soil from the beam.
+                _reject_foreign_pile(foundation, mt, embedded, -wd)
+                obj.attach_mudline_foundation(
+                    foundation, distributed=True,
+                    embedded_length=embedded, n_stations=soil_n_stations,
+                )
+            else:
+                obj.attach_mudline_foundation(foundation)
+            # ``embedded_length`` is already recorded above, from the
+            # pre-truncation pile toe, and is the same number on every path.
         return obj
 
     @classmethod
@@ -669,6 +884,8 @@ class Tower:
         main_dat_path: str | pathlib.Path,
         moordyn_dat_path: str | pathlib.Path,
         hydrodyn_dat_path: str | pathlib.Path | None = None,
+        *,
+        n_nodes: int | None = None,
     ) -> Tower:
         """Build a free-free floating tower model with a populated
         :class:`~pybmodes.io.bmi.PlatformSupport` block.
@@ -845,6 +1062,8 @@ class Tower:
         obj = cls.__new__(cls)
         obj._bmi = bmi
         obj._sp = sp
+        if n_nodes is not None:
+            obj.refine_mesh(n_nodes)
         return obj
 
     @classmethod
@@ -1227,6 +1446,8 @@ class Tower:
         cls,
         main_dat_path: str | pathlib.Path,
         subdyn_dat_path: str | pathlib.Path,
+        *,
+        n_nodes: int | None = None,
     ) -> Tower:
         """Build a combined pile + tower cantilever from an ElastoDyn deck
         plus a SubDyn substructure file.
@@ -1241,6 +1462,11 @@ class Tower:
         springs, hydrodynamic added mass, or non-circular substructure
         members. See :func:`pybmodes.io.subdyn_reader.to_pybmodes_pile_tower`
         for the assembly details.
+
+        ``n_nodes`` re-grids the spliced FE mesh (issue #58) — see
+        :meth:`refine_mesh`. Worth knowing here in particular: the splice
+        places a node on the transition piece, which a uniform re-grid
+        will move, so the warning it emits is expected on this path.
         """
         from pybmodes.io.elastodyn_reader import (
             read_elastodyn_blade,
@@ -1267,22 +1493,71 @@ class Tower:
         obj = cls.__new__(cls)
         obj._bmi = bmi
         obj._sp = sp
+        # Deck-derived, so there is no raw tube / material to check, but
+        # the geotechnical gate still wants to know this is a pile clamped
+        # in the seabed (issue #102).
+        obj._construction = ConstructionInputs(is_monopile=True)
+        if n_nodes is not None:
+            obj.refine_mesh(n_nodes)
         return obj
 
     def attach_mudline_foundation(
-        self, foundation: MudlineFoundation,
+        self, foundation: MudlineFoundation, *,
+        distributed: bool = False,
+        embedded_length: float | None = None,
+        n_stations: int = 20,
     ) -> Tower:
-        """Attach a mudline coupled-spring soil foundation to a clamped
-        monopile model and switch the boundary condition to
-        ``hub_conn = 3`` (soft monopile, axial + torsion clamped,
-        lateral + rocking free).
+        """Attach a soil foundation to a monopile model and switch the
+        boundary condition to ``hub_conn = 3`` (soft monopile, axial +
+        torsion clamped, lateral + rocking free).
 
-        Wires the foundation's 6 x 6 ``mooring_K`` block into a fresh
+        Two fidelity tiers share this entry point (issue #118).
+
+        **Lumped** (``distributed=False``, the default) wires the
+        foundation's 6 x 6 ``mooring_K`` block into a fresh
         :class:`~pybmodes.io.bmi.PlatformSupport` carrying zero hydro
-        and zero platform inertia, sets ``tow_support = 1`` (inline
-        platform block) and flips ``hub_conn`` to ``3``. The tower's
-        section properties and tip mass are preserved. Returns ``self``
-        for chaining.
+        and zero platform inertia. The whole soil reaction is condensed
+        onto the beam's base node, so the model's beam must be the
+        structure **above the mudline**.
+
+        **Distributed** (``distributed=True``) instead lays a Winkler
+        spring bed along the embedded pile via
+        :meth:`~pybmodes.foundation.MudlineFoundation.distributed_springs`
+        and writes it into the support block's ``distr_k_z`` /
+        ``distr_k`` arrays, leaving ``mooring_K`` zero. Here the model's
+        beam must **include the embedded pile**, with its base at the
+        pile toe, because that is what the springs act on. The soil then
+        resists along its real length rather than through a condensed
+        base spring, which resolves the pile's own deflection shape below
+        the mudline instead of assuming it.
+
+        Parameters
+        ----------
+        foundation : the soil model. ``distributed=True`` additionally
+            requires it to carry the pile geometry it was derived from,
+            i.e. to have come from
+            :meth:`~pybmodes.foundation.MudlineFoundation.from_soil_properties`
+            or :meth:`~pybmodes.foundation.MudlineFoundation.from_windio`.
+        distributed : select the spring-bed tier described above.
+        embedded_length : embedded pile length in metres, i.e. how far up
+            from the beam base the spring bed reaches. Defaults to the
+            foundation's own ``pile_length_embedded``; override it when
+            the beam base is not exactly the pile toe. The profile is
+            generated over whatever length is used here, so the stations
+            and the bed always span the same range. Be aware that the
+            foundation's lumped ``K_hh`` / ``K_hr`` / ``K_rr`` still
+            correspond to its stored length, so a large override leaves
+            the two tiers describing different piles. Ignored unless
+            ``distributed``.
+        n_stations : number of spring stations along the embedded length
+            (default 20). Ignored unless ``distributed``.
+
+        Returns
+        -------
+        Tower
+            ``self``, for chaining. Sets ``tow_support = 1`` (inline
+            platform block) and flips ``hub_conn`` to ``3``; the tower's
+            section properties and tip mass are preserved.
 
         Use this to convert a rigid-clamped monopile model built via
         :meth:`from_windio_with_monopile`, :meth:`from_elastodyn_with_subdyn`,
@@ -1319,6 +1594,47 @@ class Tower:
                 "cable model (hub_conn = 4); the BC has no lateral "
                 "spring DOF to wire the mudline stiffness into."
             )
+
+        mooring_K = np.zeros((6, 6))
+        distr_k_z = np.zeros(0)
+        distr_k = np.zeros(0)
+        if distributed:
+            length = (foundation.pile_length_embedded
+                      if embedded_length is None else float(embedded_length))
+            if length is None:
+                raise ValueError(
+                    "distributed=True needs the embedded pile length. Build "
+                    "the foundation from soil properties (which records it) "
+                    "or pass embedded_length=... explicitly."
+                )
+            if not np.isfinite(length) or length <= 0.0:
+                raise ValueError(
+                    f"embedded_length must be a positive, finite length in "
+                    f"metres; got {length!r}"
+                )
+            if length > float(self._bmi.radius) * (1.0 + 1e-9):
+                raise ValueError(
+                    f"the embedded length ({length:g} m) exceeds the whole "
+                    f"flexible beam ({self._bmi.radius:g} m). With "
+                    f"distributed=True the beam must run from the pile toe "
+                    f"up, so the embedded pile is part of it — build the "
+                    f"model without truncating at the mudline."
+                )
+            # Generate the profile over the length it is actually laid
+            # into. Taking the foundation's own stored length here instead
+            # would misplace every station whenever the two differ, either
+            # running the bed past the beam base or leaving the pile toe
+            # unsprung (Codex review on #138).
+            depth, k_line = foundation.distributed_springs(
+                n_stations=n_stations, length=length,
+            )
+            # ``distr_k_z`` is measured upward from the flexible beam base,
+            # which is the pile toe here, so flip the mudline-down depths.
+            distr_k_z = np.asarray(length - depth[::-1], dtype=float)
+            distr_k = np.asarray(k_line[::-1], dtype=float)
+        else:
+            mooring_K = foundation.as_mooring_K()
+
         self._bmi.support = PlatformSupport(
             draft=0.0,
             cm_pform=0.0,
@@ -1327,19 +1643,116 @@ class Tower:
             ref_msl=0.0,
             hydro_M=np.zeros((6, 6)),
             hydro_K=np.zeros((6, 6)),
-            mooring_K=foundation.as_mooring_K(),
+            mooring_K=mooring_K,
             distr_m_z=np.zeros(0),
             distr_m=np.zeros(0),
-            distr_k_z=np.zeros(0),
-            distr_k=np.zeros(0),
+            distr_k_z=distr_k_z,
+            distr_k=distr_k,
         )
         self._bmi.tow_support = 1
         self._bmi.hub_conn = 3
         return self
 
+    def refine_mesh(self, n_nodes: int) -> Tower:
+        """Re-grid the FE mesh onto ``n_nodes`` evenly-spaced nodes (issue #58).
+
+        The deck-reader counterpart to the ``n_nodes`` keyword the
+        geometry-derived constructors already carry, and available on every
+        constructor including :meth:`from_bmi` and the ElastoDyn paths.
+        Returns ``self`` for chaining.
+
+        The two are not the same operation, and the difference is the
+        reason this one is opt-in per call rather than a default. A
+        geometry-derived model re-grids *continuous* geometry and
+        recomputes exact closed-form tube properties at each new station,
+        so refinement is lossless. A deck carries an already **tabulated**
+        property table, so this re-samples it: the table itself is
+        untouched, but a uniform mesh will generally not put a node on a
+        deliberate property step (a wall-thickness jump, a material
+        change), and the element straddling one then takes a single
+        mid-element value. A ``UserWarning`` names any step that gets
+        smoothed, so the trade is visible rather than silent.
+
+        Raises ``ValueError`` when ``n_nodes < 2`` and when the model
+        carries tension-wire supports, whose attachments are FE *node
+        numbers* tied to the deck's own mesh.
+        """
+        from pybmodes.models._shared import refine_deck_mesh
+
+        sp = self._sp
+        if sp is None and self._bmi.sec_props_file:
+            # A BMI-only model reads its table lazily at solve time; the
+            # step detection needs it now. A missing / unreadable file is
+            # not this method's error to raise, so fall through quietly and
+            # let the solve report it.
+            try:
+                from pybmodes.io.sec_props import read_sec_props
+                sp = read_sec_props(self._bmi.resolve_sec_props_path())
+            except (OSError, ValueError):
+                sp = None
+        refine_deck_mesh(self._bmi, sp, n_nodes)
+        return self
+
+    def add_point_mass(
+        self, height: float, mass: float,
+    ) -> Tower:
+        """Attach a discrete lumped mass at an arbitrary height (issue #35).
+
+        Fills the gap between ``outfitting_factor`` (a smeared
+        non-structural mass over the whole tower) and ``tip_mass`` (a
+        single lump at the very top): a flange, an internal platform, a
+        transformer, a boat-landing, a damper housing — anything the
+        distributed ``mass_den`` column cannot express.
+
+        Parameters
+        ----------
+        height : elevation above the **flexible beam base** in metres,
+            the datum ``el_loc = 0`` marks. For a cantilever that is the
+            clamp (the tower base or the mudline); for a beam that
+            extends below, it is the bottom of the beam (the pile toe,
+            or the platform-connection node on a floater). Must lie
+            within the beam length.
+        mass : lumped mass in kg, > 0.
+
+        Returns
+        -------
+        Tower
+            ``self``, for chaining; call repeatedly to add several.
+
+        Notes
+        -----
+        The lump is assembled through the element shape functions at its
+        exact station, so it does **not** have to coincide with a mesh
+        node and the result is mesh-position-independent. Its own rotary
+        inertia about its centre is not modelled — see
+        :class:`pybmodes.io.bmi.PointMass`. With ``run(gravity=...)`` the
+        lump's weight also loads the tower below it.
+
+        Available on ``Tower`` only — on a rotating blade a mid-span lump
+        would also change the centrifugal tension distribution, which is
+        a separate modelling track.
+        """
+        from pybmodes.io.bmi import PlatformSupport, PointMass
+
+        pm = PointMass(height=float(height), mass=float(mass))
+        # The flexible beam runs from the base datum up; offshore models
+        # extend ``draft`` metres below MSL, so mirror the pipeline's
+        # ``radius + draft - hub_rad`` beam length here.
+        draft = (self._bmi.support.draft
+                 if isinstance(self._bmi.support, PlatformSupport) else 0.0)
+        beam_len = float(self._bmi.radius) + float(draft) - float(self._bmi.hub_rad)
+        if pm.height > beam_len * (1.0 + 1e-9):
+            raise ValueError(
+                f"point-mass height {pm.height:g} m lies above the flexible "
+                f"beam (length {beam_len:g} m); use tip_mass for a lump at "
+                f"the very top."
+            )
+        self._bmi.point_masses = (*self._bmi.point_masses, pm)
+        return self
+
     def run(
         self, n_modes: int = 20, *, check_model: bool = True,
-        on_error: OnError = "raise",
+        on_error: OnError = "raise", gravity: bool | float = False,
     ) -> ModalResult:
         """Solve the eigenvalue problem and return frequencies + mode shapes.
 
@@ -1362,6 +1775,24 @@ class Tower:
             downgrade ERROR findings to ``UserWarning`` and continue, the
             pre-1.14.0 behaviour. WARN findings always emit as
             ``UserWarning`` regardless.
+        gravity : include the **self-weight geometric softening** of the
+            tower (issue #134). ``False`` (the default) omits it, which
+            is what BModes does and what every validated reference case
+            in ``VALIDATION.md`` is pinned against. ``True`` uses
+            standard gravity (9.80665 m/s²); pass a float to set ``g``
+            yourself. The weight of the tower, the RNA ``tip_mass`` and
+            any :meth:`add_point_mass` lumps puts the tower into
+            compression, which lowers the bending frequencies — typically
+            around 2 % on the 1st fore-aft mode of a modern large turbine, and
+            the single largest term when reconciling against a tool that
+            models gravity by default (OrcaFlex, most multibody codes).
+
+            Supported for cantilever (``hub_conn = 1``) and soft-monopile
+            (``hub_conn = 3``) towers. A free-base floating model
+            (``hub_conn = 2``) raises, because there the submerged
+            structure's buoyancy cancels most of the weight and pyBmodes
+            does not carry a distributed buoyancy column to net it
+            against.
 
         Warning
         -------
@@ -1385,7 +1816,16 @@ class Tower:
         """
         if not isinstance(n_modes, int) or n_modes < 1:
             raise ValueError(f"n_modes must be a positive integer; got {n_modes!r}")
+        g = _coerce_gravity(gravity, self._bmi.hub_conn)
         if check_model:
             from pybmodes.checks import apply_findings
             apply_findings(self, n_modes=n_modes, on_error=on_error)
-        return run_fem(self._bmi, n_modes=n_modes, sp=self._sp)
+        result = run_fem(self._bmi, n_modes=n_modes, sp=self._sp, gravity=g)
+        if check_model:
+            import warnings as _warnings
+
+            from pybmodes.checks import check_solved_frequencies
+
+            for finding in check_solved_frequencies(self, result.frequencies):
+                _warnings.warn(str(finding), UserWarning, stacklevel=2)
+        return result

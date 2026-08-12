@@ -23,7 +23,13 @@ import numpy as np
 
 from pybmodes.fem.assembly import assemble, compute_element_props
 from pybmodes.fem.boundary import active_dof_indices
-from pybmodes.fem.nondim import make_params, nondim_platform, nondim_section_props, nondim_tip_mass
+from pybmodes.fem.nondim import (
+    NondimParams,
+    make_params,
+    nondim_platform,
+    nondim_section_props,
+    nondim_tip_mass,
+)
 from pybmodes.fem.normalize import extract_mode_shapes
 from pybmodes.fem.solver import eigvals_to_hz, solve_modes
 from pybmodes.io.bmi import BMIFile, PlatformSupport, TensionWireSupport
@@ -102,16 +108,106 @@ class _SectionPropsView:
     edge_iner:  np.ndarray
 
 
+def _locate_point_masses(
+    point_masses: tuple,
+    nd: NondimParams,
+    el: np.ndarray,
+    xb: np.ndarray,
+) -> list[tuple[int, float, float]]:
+    """Map physical ``PointMass`` records onto ``(element, ξ, mass_nd)``.
+
+    Heights are measured up from the flexible beam base, the same datum
+    ``el_loc = 0`` marks, and are converted to the radius-normalised
+    coordinate the element arrays use (``(h + hub_rad) / radius`` — the
+    same mapping ``distr_k_z`` gets). Elements run tip-to-root, so the
+    ascending edge array is built from the reversed inboard positions.
+    """
+    if not point_masses:
+        return []
+    radius = float(nd.radius)
+    hub_rad = float(nd.hub_rad)
+    ref_mr = float(nd.ref_mr)
+    beam_len = radius - hub_rad
+    nselt = el.size
+    edges = np.concatenate([xb[::-1], [xb[0] + el[0]]])
+    located: list[tuple[int, float, float]] = []
+    for pm in point_masses:
+        height = float(pm.height)
+        if height > beam_len * (1.0 + 1e-9):
+            raise ValueError(
+                f"point mass at height {height:g} m lies above the flexible "
+                f"beam (length {beam_len:g} m). Heights are measured up from "
+                f"the beam base; use tip_mass for a lump at the very top."
+            )
+        x_nd = (min(height, beam_len) + hub_rad) / radius
+        idx_asc = int(np.searchsorted(edges, x_nd, side="right")) - 1
+        idx_asc = max(0, min(idx_asc, nselt - 1))
+        elem = nselt - 1 - idx_asc
+        xi = (x_nd - xb[elem]) / el[elem]
+        located.append((elem, float(np.clip(xi, 0.0, 1.0)),
+                        float(pm.mass) / ref_mr))
+    return located
+
+
+def _gravity_axial_force(
+    g: float,
+    nd: NondimParams,
+    el: np.ndarray,
+    xb: np.ndarray,
+    rmas: np.ndarray,
+    tip_mass_nd: float,
+    point_masses_nd: list[tuple[int, float, float]],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Self-weight axial force per element (issue #134).
+
+    Returns ``(axf_g, grav_w)``: the non-dimensional axial force carried
+    across each element's outboard face and the weight per unit length
+    that varies it linearly across the element. Both are negative /
+    positive respectively so the element sees compression below the
+    tower top, which softens the beam through the same geometric
+    stiffness integral the centrifugal tension uses.
+
+    A discrete lump inside an element is attributed to that element's
+    outboard face, so its weight is felt by every element below it. The
+    resulting error in the lump's own element is bounded by one element
+    length of lever and vanishes under mesh refinement.
+    """
+    g_nd = g / (float(nd.romg) ** 2 * float(nd.radius))
+
+    # Elements are tip-to-root, so index j < e lies outboard of e.
+    own_weight = rmas * el
+    mass_above = np.empty(el.size)
+    mass_above[0] = 0.0
+    mass_above[1:] = np.cumsum(own_weight[:-1])
+
+    x_out = xb + el
+    for elem, _xi, mass_nd in point_masses_nd:
+        # Felt by every element whose outboard face sits at or below the
+        # lump's own element outboard face.
+        mass_above += np.where(x_out <= x_out[elem] + 1e-12, mass_nd, 0.0)
+
+    axf_g = -g_nd * (tip_mass_nd + mass_above)
+    grav_w = g_nd * rmas
+    return axf_g, grav_w
+
+
 def run_fem(
     bmi: BMIFile,
     n_modes: int = 20,
     sp: SectionProperties | None = None,
+    *,
+    gravity: float = 0.0,
 ) -> ModalResult:
     """Execute the full FEM pipeline for a pre-parsed BMIFile.
 
     ``sp`` may be supplied directly when the section properties have been
     synthesised in memory (e.g. by an ElastoDyn adapter); otherwise they
     are read from ``bmi.resolve_sec_props_path()``.
+
+    ``gravity`` is the gravitational acceleration in m/s² used for the
+    self-weight geometric-softening term (issue #134); ``0.0`` (the
+    default) leaves it out entirely, which is the BModes-equivalent
+    behaviour every validated reference case is pinned against.
     """
     if sp is None:
         sp = read_sec_props(bmi.resolve_sec_props_path())
@@ -241,6 +337,20 @@ def run_fem(
         dk_nd    = k_dk / rmom2
         elm_distr_k = np.interp(xmid, z_dk_nd, dk_nd, left=0.0, right=0.0)
 
+    # Discrete lumped masses at arbitrary stations (issue #35) and the
+    # self-weight geometric softening they and the beam contribute to
+    # (issue #134).
+    point_masses_nd = _locate_point_masses(
+        tuple(getattr(bmi, "point_masses", ()) or ()), nd, el, xb,
+    )
+    elm_axf_g = elm_grav_w = None
+    if gravity:
+        elm_axf_g, elm_grav_w = _gravity_axial_force(
+            gravity, nd, el, xb, rmas,
+            tip_mass_nd.mass if tip_mass_nd is not None else 0.0,
+            point_masses_nd,
+        )
+
     gk, gm, _ = assemble(
         nselt            = bmi.n_elements,
         el               = el,
@@ -264,6 +374,9 @@ def run_fem(
         hub_conn         = hub_conn,
         platform_nd      = platform_nd,
         elm_distr_k      = elm_distr_k,
+        elm_axf_g        = elm_axf_g,
+        elm_grav_w       = elm_grav_w,
+        point_masses_nd  = point_masses_nd,
     )
 
     eigvals, eigvecs, diagnostics = solve_modes(

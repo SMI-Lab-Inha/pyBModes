@@ -1210,3 +1210,185 @@ def test_windio_older_dialect_same_turbine_ballpark(
     e_e = np.max(np.abs(w_ei - ted.tw_fa_stif) / ted.tw_fa_stif)
     assert e_m < 0.25, f"mass off by {e_m:.1%}"
     assert e_e < 0.30, f"EI off by {e_e:.1%}"
+
+
+# ---------------------------------------------------------------------------
+# 3d. Distributed Winkler soil on the WindIO monopile path (issue #118)
+# ---------------------------------------------------------------------------
+
+def test_windio_monopile_soil_distributed_keeps_the_embedded_pile(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The distributed tier models the pile below the mudline explicitly,
+    so the beam runs from the pile toe rather than being truncated."""
+    pytest.importorskip("yaml")
+    p = tmp_path / "embedded.yaml"
+    p.write_text(_WINDIO_MONOPILE_EMBEDDED, encoding="utf-8")
+
+    lumped = Tower.from_windio_with_monopile(
+        p, tip_mass=5.0e5, soil_E=1.4e8,
+    )
+    distributed = Tower.from_windio_with_monopile(
+        p, tip_mass=5.0e5, soil_E=1.4e8, soil_distributed=True,
+    )
+
+    # Lumped: clamped-at-mudline beam, 115 - (-30) = 145 m.
+    assert lumped._bmi.radius == pytest.approx(145.0)
+    # Distributed: pile toe to tower top, 115 - (-75) = 190 m.
+    assert distributed._bmi.radius == pytest.approx(190.0)
+
+    s = distributed._bmi.support
+    assert distributed._bmi.hub_conn == 3
+    assert s.distr_k.size > 0
+    np.testing.assert_array_equal(s.mooring_K, np.zeros((6, 6)))
+    # The bed spans the 45 m of embedded pile, measured up from the toe.
+    assert s.distr_k_z[0] == pytest.approx(0.0)
+    assert s.distr_k_z[-1] == pytest.approx(45.0)
+
+
+def test_windio_monopile_soil_distributed_softens_and_stiffens_with_soil(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Soil flexibility softens the rigid mudline clamp, and stiffer soil
+    walks the answer back towards it."""
+    pytest.importorskip("yaml")
+    p = tmp_path / "embedded.yaml"
+    p.write_text(_WINDIO_MONOPILE_EMBEDDED, encoding="utf-8")
+
+    def f1(**kw) -> float:
+        # The fixture's native grid is only a handful of stations, far too
+        # coarse to compare two different beam lengths meaningfully, so
+        # refine both models onto the same mesh density.
+        return float(
+            Tower.from_windio_with_monopile(p, tip_mass=5.0e5, n_nodes=40, **kw)
+            .run(n_modes=4, check_model=False).frequencies[0]
+        )
+
+    rigid = f1()
+    soft_soil = f1(soil_E=5.0e7, soil_distributed=True)
+    firm_soil = f1(soil_E=1.4e9, soil_distributed=True)
+
+    assert soft_soil < firm_soil < rigid
+
+
+def test_windio_monopile_soil_distributed_needs_a_soil(
+    tmp_path: pathlib.Path,
+) -> None:
+    pytest.importorskip("yaml")
+    p = tmp_path / "embedded.yaml"
+    p.write_text(_WINDIO_MONOPILE_EMBEDDED, encoding="utf-8")
+    with pytest.raises(ValueError, match="needs a soil model"):
+        Tower.from_windio_with_monopile(p, tip_mass=5.0e5, soil_distributed=True)
+
+
+def test_windio_monopile_soil_distributed_needs_an_embedded_length(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A monopile whose axis already starts at the mudline has nothing for
+    the spring bed to act on, and says so."""
+    pytest.importorskip("yaml")
+    p = tmp_path / "flush.yaml"
+    p.write_text(
+        "environment:\n  water_depth: 30.0\n"
+        + "components:" + _MIN_WINDIO_MONOPILE.split("components:", 1)[1],
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="no embedded length"):
+        Tower.from_windio_with_monopile(
+            p, tip_mass=5.0e5, soil_E=1.4e8, soil_distributed=True,
+        )
+
+
+def test_windio_monopile_soil_distributed_rejects_a_mudline_above_the_tp(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Keeping the embedded pile skips the reader's own mudline placement
+    guards, so the constructor re-checks both ends itself.
+
+    Needs a transition piece below MSL for the case to exist at all,
+    hence a fixture of its own rather than the shared one whose TP sits
+    at +15 m, and a pre-built ``soil=`` rather than ``soil_E=``, since
+    the auto-build path resolves the same geometry itself and rejects it
+    one step earlier.
+    """
+    pytest.importorskip("yaml")
+    from pybmodes.foundation import MudlineFoundation
+
+    p = tmp_path / "submerged_tp.yaml"
+    p.write_text(
+        _WINDIO_MONOPILE_EMBEDDED
+        .replace("values: [-75.0, 15.0]", "values: [-75.0, -10.0]")
+        .replace("values: [15.0, 115.0]", "values: [-10.0, 115.0]"),
+        encoding="utf-8",
+    )
+    soil = MudlineFoundation.from_soil_properties(
+        pile_diameter=9.0, pile_length_embedded=45.0, pile_EI=2.0e12,
+        soil_E=1.4e8, pile_behaviour="flexible",
+    )
+    # The transition piece is now at z = -10, so a 5 m depth puts the
+    # mudline above it and would run the spring bed up into the tower.
+    with pytest.raises(ValueError, match="at or above the transition piece"):
+        Tower.from_windio_with_monopile(
+            p, tip_mass=5.0e5, water_depth=5.0, soil=soil,
+            soil_distributed=True,
+        )
+
+
+def test_windio_monopile_soil_distributed_rejects_a_foreign_foundation(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A pre-built foundation for a different pile carries spring
+    constants that describe a different structure, so it is refused
+    rather than laid under this one (Codex review on #138)."""
+    pytest.importorskip("yaml")
+    from pybmodes.foundation import MudlineFoundation
+
+    p = tmp_path / "embedded.yaml"
+    p.write_text(_WINDIO_MONOPILE_EMBEDDED, encoding="utf-8")
+    # The ontology gives 45 m of embedment; this foundation is for 20 m.
+    soil = MudlineFoundation.from_soil_properties(
+        pile_diameter=9.0, pile_length_embedded=20.0, pile_EI=2.0e12,
+        soil_E=1.4e8, pile_behaviour="flexible",
+    )
+    with pytest.raises(ValueError, match="embedded length"):
+        Tower.from_windio_with_monopile(
+            p, tip_mass=5.0e5, soil=soil, soil_distributed=True,
+        )
+
+
+def test_windio_monopile_soil_distributed_rejects_a_foreign_diameter(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The bed's rate is D_P.E_SO, so a foundation with the right
+    embedment but the wrong pile diameter still describes a different
+    structure from the beam (Codex review on #138)."""
+    pytest.importorskip("yaml")
+    from pybmodes.foundation import MudlineFoundation
+
+    p = tmp_path / "embedded.yaml"
+    p.write_text(_WINDIO_MONOPILE_EMBEDDED, encoding="utf-8")
+    # Right embedment (45 m), wrong pile: the ontology's monopile is 9 m.
+    soil = MudlineFoundation.from_soil_properties(
+        pile_diameter=5.0, pile_length_embedded=45.0, pile_EI=2.0e12,
+        soil_E=1.4e8, pile_behaviour="flexible",
+    )
+    with pytest.raises(ValueError, match="pile diameter at the mudline"):
+        Tower.from_windio_with_monopile(
+            p, tip_mass=5.0e5, soil=soil, soil_distributed=True,
+        )
+
+
+def test_windio_monopile_soil_distributed_accepts_a_matching_foundation(
+    tmp_path: pathlib.Path,
+) -> None:
+    pytest.importorskip("yaml")
+    from pybmodes.foundation import MudlineFoundation
+
+    p = tmp_path / "embedded.yaml"
+    p.write_text(_WINDIO_MONOPILE_EMBEDDED, encoding="utf-8")
+    soil = MudlineFoundation.from_windio(p, soil_E=1.4e8)
+    t = Tower.from_windio_with_monopile(
+        p, tip_mass=5.0e5, soil=soil, soil_distributed=True, n_nodes=30,
+    )
+    assert t._bmi.hub_conn == 3
+    assert t._bmi.support.distr_k_z[-1] == pytest.approx(45.0)

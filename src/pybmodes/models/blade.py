@@ -92,13 +92,39 @@ class RotatingBlade:
     # the from_elastodyn(..., validate_coeffs=True) path.
     coeff_validation: ValidationResult | None = None
 
-    def __init__(self, bmi_path: str | pathlib.Path) -> None:
+    def __init__(
+        self, bmi_path: str | pathlib.Path, *, n_nodes: int | None = None,
+    ) -> None:
         self._bmi = read_bmi(bmi_path)
         self._sp: SectionProperties | None = None
         if self._bmi.beam_type != 1:
             raise ValueError(
                 f"RotatingBlade requires beam_type=1, got {self._bmi.beam_type}"
             )
+        if n_nodes is not None:
+            self.refine_mesh(n_nodes)
+
+    def refine_mesh(self, n_nodes: int) -> RotatingBlade:
+        """Re-grid the FE mesh onto ``n_nodes`` evenly-spaced nodes (issue #58).
+
+        The deck-reader counterpart to :meth:`from_windio`'s ``n_span``,
+        and the blade twin of :meth:`pybmodes.models.Tower.refine_mesh` —
+        see that method for what re-sampling a **tabulated** deck table
+        preserves and what it smooths, and for the warning emitted when a
+        deliberate property step falls between the new nodes. Returns
+        ``self`` for chaining.
+        """
+        from pybmodes.models._shared import refine_deck_mesh
+
+        sp = self._sp
+        if sp is None and self._bmi.sec_props_file:
+            try:
+                from pybmodes.io.sec_props import read_sec_props
+                sp = read_sec_props(self._bmi.resolve_sec_props_path())
+            except (OSError, ValueError):
+                sp = None
+        refine_deck_mesh(self._bmi, sp, n_nodes)
+        return self
 
     @classmethod
     def from_elastodyn(
@@ -107,6 +133,7 @@ class RotatingBlade:
         *,
         elastodyn_compatible: bool = True,
         validate_coeffs: bool = False,
+        n_nodes: int | None = None,
     ) -> RotatingBlade:
         """Build a blade model from an OpenFAST ElastoDyn main ``.dat``.
 
@@ -136,6 +163,9 @@ class RotatingBlade:
             building the model and attach the result as
             ``self.coeff_validation``. Emits a ``UserWarning`` if any
             block fails or warns. Default ``False``.
+        n_nodes :
+            Optional FE-mesh refinement (issue #58) — see
+            :meth:`refine_mesh`. ``None`` keeps the deck's own mesh.
         """
         from pybmodes.io.elastodyn_reader import (
             read_elastodyn_blade,
@@ -172,6 +202,8 @@ class RotatingBlade:
         obj._bmi = bmi
         obj._sp = sp
         obj.coeff_validation = None
+        if n_nodes is not None:
+            obj.refine_mesh(n_nodes)
 
         if validate_coeffs:
             obj.coeff_validation = _run_validation_and_warn(main_dat_path)

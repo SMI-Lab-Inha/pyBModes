@@ -8,7 +8,72 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+### Added
+
+- **Discrete point masses at any station (#35).**
+  `Tower.add_point_mass(height, mass)` attaches a lumped mass anywhere on
+  the beam, filling the gap between `outfitting_factor` (smeared over the
+  whole tower) and `tip_mass` (a single lump at the top) — a flange, an
+  internal platform, a transformer, a boat-landing. The lump is assembled
+  through the element shape functions at its exact station, so it does
+  not have to land on a mesh node and the answer does not move if the
+  mesh does. Validated against the closed-form cantilever-with-lump
+  frequency. Its own rotary inertia about its centre is not modelled;
+  use `tip_mass` where that term matters.
+- **Self-weight geometric softening (#134).**
+  `Tower.run(gravity=True)` (or `gravity=9.80665`) puts the weight of the
+  tower, the RNA and any point masses into the column as an axial load,
+  which lowers the bending frequencies — typically around 2 % on the 1st
+  fore-aft mode of a large machine, and usually the single largest term
+  when reconciling against a tool that models gravity by default. **Off
+  by default**, so every existing result is unchanged and the validated
+  reference cases stay pinned to the BModes-equivalent behaviour. The
+  geometric stiffness is anchored to two published buckling loads with
+  different load distributions, Euler tip-load and Greenhill self-weight,
+  both to 0.2 %. Refused for a free-base floating model, where buoyancy
+  would have to be netted against the weight, and for the pinned-free
+  cable BC.
+- **Distributed Winkler soil springs on the monopile path (#118).**
+  `MudlineFoundation.distributed_springs()` turns the soil the lumped
+  mudline springs were built from into a spring rate along the embedded
+  pile, `k = D_P E_SO (z / L_P)^n` with the Shadlou and Bhattacharya
+  inhomogeneity exponents. `Tower.attach_mudline_foundation(foundation,
+  distributed=True)` lays it into `distr_k`, and
+  `Tower.from_windio_with_monopile(..., soil_distributed=True)` keeps the
+  embedded pile in the beam so it deflects against the soil over its real
+  length rather than being condensed onto a base spring. Cross-validated
+  against the lumped tier, which is the exact static condensation of the
+  same beam and bed: the two agree to 0.4 %, the residual being the
+  embedded pile's own inertia the condensed form drops.
+- **`n_nodes` on the deck and BMI readers (#58).** `Tower` and
+  `RotatingBlade` gain a `refine_mesh(n_nodes)` method and an `n_nodes`
+  keyword on every deck constructor — `Tower(...)`, `from_bmi`,
+  `from_elastodyn`, `from_elastodyn_with_subdyn`,
+  `from_elastodyn_with_mooring`, `RotatingBlade(...)` and its
+  `from_elastodyn`. The geometry constructors already had it, so the
+  keyword is now uniform across the whole surface. It stays opt-in
+  because re-gridding a deck re-samples an **already tabulated** property
+  table rather than recomputing exact tube properties: a `UserWarning`
+  names any deliberate property step the new mesh misses, and a deck with
+  tension-wire supports is refused outright, since those attach to node
+  numbers that would silently move.
+- **Domain-aware validation for the civil-structural and geotechnical
+  disciplines (#102).** `check_model` gains a fixed-bottom `D / t` band —
+  the support-type-aware tightening of the deliberately wide band
+  `tubular_section_props` applies at construction, which cannot know the
+  boundary condition and has to admit a floating tower's far thinner
+  shell. It also reports a monopile clamped rigidly at the mudline with
+  no soil springs as non-conservative (INFO) and an implausible embedment
+  ratio `L / D` (WARN). New `check_solved_frequencies` flags a
+  fixed-bottom tower whose first mode lands outside 0.01-10 Hz, which is
+  where a compounding scale error shows up when two inputs are wrong in
+  compensating directions and each passes its own band; it runs
+  automatically on `Tower.run(check_model=True)`.
+- `CheckOptions` gains `diameter_thickness_min` / `_max` and
+  `embedment_ratio_min` / `_max` for the new bands.
+- `read_windio_monopile_tower` gains `clamp_at_mudline`, and its result
+  carries the two reduced segments so a caller can read the raw tube and
+  material each was built from.
 
 ## [1.17.0] — 2026-07-10
 

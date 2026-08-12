@@ -30,8 +30,93 @@ import pathlib
 import warnings
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
     from pybmodes.elastodyn.validate import ValidationResult
+    from pybmodes.io.bmi import BMIFile
+    from pybmodes.io.sec_props import SectionProperties
+
+
+# Two span stations closer than this (in normalised span) encode a
+# deliberate property *step* rather than two distinct sections — the
+# convention the ElastoDyn / WindIO adapters use to put a wall-thickness
+# or material discontinuity into a table that is otherwise interpolated.
+_STEP_TOL = 1.0e-9
+
+
+def refine_deck_mesh(
+    bmi: BMIFile,
+    sp: SectionProperties | None,
+    n_nodes: int,
+) -> None:
+    """Re-grid a deck-derived model onto ``n_nodes`` evenly-spaced FE nodes.
+
+    The uniform mesh replaces the deck's own ``el_loc`` in place; the
+    tabulated section properties are left untouched and the FE pipeline
+    re-samples them at the new element midpoints, exactly as it already
+    does for the deck's native mesh.
+
+    This is the deck-reader half of issue #58, and it is deliberately a
+    *different* operation from the ``n_nodes`` on the geometry-derived
+    constructors (``from_geometry`` / ``from_windio*``). Those re-grid
+    continuous geometry and recompute closed-form tube properties at each
+    new station, so refinement is exact. A deck carries an already
+    tabulated property table, so refinement re-samples it — and a uniform
+    grid will generally not put a node on a deliberate property step,
+    which then gets averaged across the straddling element. That is the
+    documented cost, and it is warned about rather than left silent.
+
+    Raises ``ValueError`` for a bad ``n_nodes`` or for a model whose
+    support block attaches to *node numbers* (tension wires), since those
+    indices refer to the old mesh and would silently move to a different
+    elevation under the new one.
+    """
+    if not isinstance(n_nodes, int) or isinstance(n_nodes, bool) or n_nodes < 2:
+        raise ValueError(f"n_nodes must be an integer >= 2; got {n_nodes!r}")
+
+    from pybmodes.io.bmi import PlatformSupport, TensionWireSupport
+
+    wires = None
+    if isinstance(bmi.support, TensionWireSupport):
+        wires = bmi.support
+    elif isinstance(bmi.support, PlatformSupport):
+        wires = bmi.support.wires
+    if wires is not None and getattr(wires, "n_attachments", 0) > 0:
+        raise ValueError(
+            "n_nodes cannot re-grid a model with tension-wire supports: the "
+            "wires attach to FE *node numbers*, which refer to the deck's own "
+            "mesh and would silently move to a different elevation on a new "
+            "one. Solve this deck on its native mesh, or rebuild it from "
+            "geometry (Tower.from_geometry) where the attachment can be "
+            "expressed as a height."
+        )
+
+    new_el_loc = np.linspace(0.0, 1.0, n_nodes)
+
+    if sp is not None:
+        span = np.asarray(sp.span_loc, dtype=float)
+        if span.size > 1:
+            steps = span[:-1][np.diff(span) <= _STEP_TOL]
+            missed = [
+                float(s) for s in steps
+                if np.min(np.abs(new_el_loc - s)) > _STEP_TOL
+            ]
+            if missed:
+                warnings.warn(
+                    f"n_nodes={n_nodes} re-grids this deck onto a uniform "
+                    f"mesh that does not land on {len(missed)} deliberate "
+                    f"property step(s) in the section-property table (first "
+                    f"at normalised span {missed[0]:.4f}). The element "
+                    f"straddling a step takes a single mid-element value, so "
+                    f"the step is smoothed. Omit n_nodes to keep the deck's "
+                    f"own mesh, which places nodes on the steps.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+
+    bmi.el_loc = new_el_loc
+    bmi.n_elements = n_nodes - 1
 
 
 def _run_validation_and_warn(

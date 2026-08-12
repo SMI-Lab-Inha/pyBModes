@@ -17,12 +17,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
 
 from .boundary import NESH, active_dof_indices, build_connectivity, n_total_dof
-from .element import _element_matrices_batch
+from .element import _element_matrices_batch, point_mass_element_matrix
 from .nondim import PlatformND, TipMassND
 
 
@@ -49,6 +50,9 @@ def assemble(
     hub_conn: int = 1,
     platform_nd: PlatformND | None = None,
     elm_distr_k: np.ndarray | None = None,
+    elm_axf_g: np.ndarray | None = None,
+    elm_grav_w: np.ndarray | None = None,
+    point_masses_nd: Sequence[tuple[int, float, float]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Assemble global stiffness gk and mass gm matrices.
 
@@ -74,6 +78,12 @@ def assemble(
     str_tw     : structural twist at each station (radians)
     hub_conn   : root BC (1=cantilever, 2=free-free, 3=axial+torsion only)
     platform_nd: optional non-dim platform 6×6 matrices added at root DOFs
+    elm_axf_g  : optional per-element self-weight axial force at the outboard
+                 face (non-dim, negative = compression) — issue #134
+    elm_grav_w : optional per-element self-weight per unit length (non-dim),
+                 the linear variation of ``elm_axf_g`` across the element
+    point_masses_nd : optional discrete lumps as ``(element index, local
+                 coordinate ξ ∈ [0, 1], non-dim mass)`` triples — issue #35
 
     Returns
     -------
@@ -92,7 +102,20 @@ def assemble(
         eli=el, xbi=xb, eiy=eiy, eiz=eiz, gj=gj, eac=eac, rmas=rmas,
         skm1=skm1, skm2=skm2, eg=eg, ea=ea, axfi=cfe,
         omega2=omega2, sec_loc=sec_loc, str_tw=str_tw, distr_k=distr_k,
+        axf_g=(None if elm_axf_g is None
+               else np.asarray(elm_axf_g, dtype=float)),
+        grav_w=(None if elm_grav_w is None
+                else np.asarray(elm_grav_w, dtype=float)),
     )
+
+    # Discrete lumped masses (issue #35) fold straight into the owning
+    # element's mass matrix, so they ride the existing scatter below and
+    # need no mesh node at their station.
+    if point_masses_nd:
+        for elem, xi, mass_nd in point_masses_nd:
+            em_batch[elem] += point_mass_element_matrix(
+                xi, float(el[elem]), mass_nd,
+            )
 
     # Scatter each element block into the global matrices.  Per-element
     # connectivity has 15 distinct global DOFs so a fancy-index block-add
