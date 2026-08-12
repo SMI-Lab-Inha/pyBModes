@@ -1175,6 +1175,38 @@ class TestTheGuardDoesNotTaxEverySolve:
         sym = _modal_residuals(gk, gm, w, v, symmetrise=True)
         assert not np.allclose(raw, sym)
 
+    def test_the_threshold_check_reads_the_caller_s_own_matrices(
+        self, monkeypatch,
+    ):
+        """The check runs on every eligible solve, healthy ones included,
+        before the threshold has been tested. It must therefore read the
+        arrays it was given rather than a symmetrised copy of them.
+
+        Asserted by identity rather than by measuring memory: the solve
+        legitimately allocates elsewhere — ``eigh`` takes matrices, so
+        ``_solve_dense_symmetric`` builds the pair it needs — which would
+        swamp any peak-usage threshold and make the test meaningless.
+        """
+        import pybmodes.fem.solver as solvermod
+
+        seen = []
+        real = solvermod._modal_residuals
+
+        def spy(k, m, vals, vecs, *, symmetrise=False):
+            seen.append((k is gk, m is gm, symmetrise))
+            return real(k, m, vals, vecs, symmetrise=symmetrise)
+
+        monkeypatch.setattr(solvermod, "_modal_residuals", spy)
+        gk, gm = self._pair(60)
+        _v, _x, diag = solve_modes(gk, gm, n_modes=4, return_diagnostics=True)
+
+        assert diag.path == "dense_symmetric"
+        assert diag.residual_fallback is False
+        assert seen, "the threshold check did not run"
+        # Every call took the caller's arrays and asked for the
+        # symmetrised basis, rather than being handed a built pair.
+        assert all(is_gk and is_gm and sym for is_gk, is_gm, sym in seen), seen
+
     def test_measuring_does_not_allocate_a_matrix_copy(self):
         import tracemalloc
 

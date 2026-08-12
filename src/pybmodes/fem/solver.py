@@ -352,22 +352,26 @@ def solve_modes(
         and path == "dense_symmetric"
         and ngd <= _SOLVER_OPTIONS.residual_retry_max_ndof
     ):
-        # Measure — and retry — against the matrices the symmetric paths
-        # actually solved. Both symmetrise internally, and the accepted
-        # skew is only guaranteed small relative to ``max|K|``: in a model
-        # with a wide dynamic range it can still be large relative to a
-        # soft mode's own eigenvalue. Judging an exact symmetric solve
-        # against the unsymmetrised matrices would then show a residual
-        # above the threshold, and ``eig`` on those same unsymmetrised
-        # matrices would "win decisively" purely by answering a different
-        # question — replacing a correct spectrum with the skew's.
-        # Only here is the symmetrised pair actually built: the retry
-        # feeds it to ``eig``, which needs matrices rather than products.
-        # Bounded by the size cap above, and this branch is rare.
-        gk_s = 0.5 * (gk + gk.T)
-        gm_s = 0.5 * (gm + gm.T)
-        sym_r = _modal_residuals(gk_s, gm_s, eigvals, eigvecs)
+        # Measured against the matrices the symmetric paths actually
+        # solved. Both symmetrise internally, and the accepted skew is
+        # only guaranteed small relative to ``max|K|``: in a model with a
+        # wide dynamic range it can still be large relative to a soft
+        # mode's own eigenvalue. Judging an exact symmetric solve against
+        # the unsymmetrised matrices would then show a residual above the
+        # threshold, and ``eig`` on those same unsymmetrised matrices
+        # would "win decisively" purely by answering a different question
+        # — replacing a correct spectrum with the skew's.
+        #
+        # Through the products, not the pair: this runs on every eligible
+        # solve, healthy ones included, and the threshold below has not
+        # been tested yet.
+        sym_r = _modal_residuals(gk, gm, eigvals, eigvecs, symmetrise=True)
         if sym_r.size and float(sym_r.max()) > _SOLVER_OPTIONS.residual_retry_threshold:
+            # Now the pair is worth building: ``eig`` needs matrices
+            # rather than products. Bounded by the size cap above, and
+            # this branch is rare.
+            gk_s = 0.5 * (gk + gk.T)
+            gm_s = 0.5 * (gm + gm.T)
             try:
                 alt_vals, alt_vecs, ordering_sound = _general_spectrum_for_retry(
                     gk_s, gm_s, n_modes,
