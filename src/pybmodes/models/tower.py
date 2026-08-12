@@ -93,6 +93,48 @@ def _coerce_tip_mass(
     )
 
 
+#: Standard gravity (ISO 80000-3), used when ``run(gravity=True)``.
+STANDARD_GRAVITY = 9.80665
+
+
+def _coerce_gravity(gravity: bool | float, hub_conn: int) -> float:
+    """Normalise the ``run(gravity=...)`` argument to ``g`` in m/s².
+
+    ``False`` -> 0.0 (self-weight softening off, the default and the
+    BModes-equivalent behaviour), ``True`` -> :data:`STANDARD_GRAVITY`,
+    a number -> itself. Rejects the boundary conditions where a pure
+    self-weight column would be wrong (issue #134).
+    """
+    import numpy as _np
+
+    if gravity is False or gravity is None:
+        return 0.0
+    g = STANDARD_GRAVITY if gravity is True else float(gravity)
+    if not _np.isfinite(g) or g < 0.0:
+        raise ValueError(
+            f"gravity must be True/False or a finite g >= 0 in m/s²; "
+            f"got {gravity!r}"
+        )
+    if g == 0.0:
+        return 0.0
+    if hub_conn == 2:
+        raise ValueError(
+            "gravity=True is not supported for a free-base floating model "
+            "(hub_conn = 2). The submerged structure's buoyancy cancels most "
+            "of the self-weight and pyBmodes carries no distributed buoyancy "
+            "column to net it against, so a weight-only axial load would "
+            "over-soften the tower. Use the fixed-bottom paths (hub_conn 1 "
+            "or 3) for the self-weight study."
+        )
+    if hub_conn == 4:
+        raise ValueError(
+            "gravity=True is not supported for the pinned-free cable BC "
+            "(hub_conn = 4), whose axial-tension state is set by the cable "
+            "pretension rather than by a self-weight column."
+        )
+    return g
+
+
 class Tower:
     """Compute natural frequencies and mode shapes for a tower.
 
@@ -1337,9 +1379,60 @@ class Tower:
         self._bmi.hub_conn = 3
         return self
 
+    def add_point_mass(
+        self, height: float, mass: float,
+    ) -> Tower:
+        """Attach a discrete lumped mass at an arbitrary height (issue #35).
+
+        Fills the gap between ``outfitting_factor`` (a smeared
+        non-structural mass over the whole tower) and ``tip_mass`` (a
+        single lump at the very top): a flange, an internal platform, a
+        transformer, a boat-landing, a damper housing — anything the
+        distributed ``mass_den`` column cannot express.
+
+        Parameters
+        ----------
+        height : elevation above the **flexible beam base** in metres,
+            the datum ``el_loc = 0`` marks. For a cantilever that is the
+            clamp (the tower base or the mudline); for a beam that
+            extends below, it is the bottom of the beam (the pile toe,
+            or the platform-connection node on a floater). Must lie
+            within the beam length.
+        mass : lumped mass in kg, > 0.
+
+        The lump is assembled through the element shape functions at its
+        exact station, so it does **not** have to coincide with a mesh
+        node and the result is mesh-position-independent. Its own rotary
+        inertia about its centre is not modelled — see
+        :class:`pybmodes.io.bmi.PointMass`. With ``run(gravity=...)`` the
+        lump's weight also loads the tower below it.
+
+        Returns ``self`` for chaining; call repeatedly to add several.
+        Available on ``Tower`` only — on a rotating blade a mid-span lump
+        would also change the centrifugal tension distribution, which is
+        a separate modelling track.
+        """
+        from pybmodes.io.bmi import PlatformSupport, PointMass
+
+        pm = PointMass(height=float(height), mass=float(mass))
+        # The flexible beam runs from the base datum up; offshore models
+        # extend ``draft`` metres below MSL, so mirror the pipeline's
+        # ``radius + draft - hub_rad`` beam length here.
+        draft = (self._bmi.support.draft
+                 if isinstance(self._bmi.support, PlatformSupport) else 0.0)
+        beam_len = float(self._bmi.radius) + float(draft) - float(self._bmi.hub_rad)
+        if pm.height > beam_len * (1.0 + 1e-9):
+            raise ValueError(
+                f"point-mass height {pm.height:g} m lies above the flexible "
+                f"beam (length {beam_len:g} m); use tip_mass for a lump at "
+                f"the very top."
+            )
+        self._bmi.point_masses = (*self._bmi.point_masses, pm)
+        return self
+
     def run(
         self, n_modes: int = 20, *, check_model: bool = True,
-        on_error: OnError = "raise",
+        on_error: OnError = "raise", gravity: bool | float = False,
     ) -> ModalResult:
         """Solve the eigenvalue problem and return frequencies + mode shapes.
 
@@ -1362,6 +1455,24 @@ class Tower:
             downgrade ERROR findings to ``UserWarning`` and continue, the
             pre-1.14.0 behaviour. WARN findings always emit as
             ``UserWarning`` regardless.
+        gravity : include the **self-weight geometric softening** of the
+            tower (issue #134). ``False`` (the default) omits it, which
+            is what BModes does and what every validated reference case
+            in ``VALIDATION.md`` is pinned against. ``True`` uses
+            standard gravity (9.80665 m/s²); pass a float to set ``g``
+            yourself. The weight of the tower, the RNA ``tip_mass`` and
+            any :meth:`add_point_mass` lumps puts the tower into
+            compression, which lowers the bending frequencies — typically
+            2–3 % on the 1st fore-aft mode of a modern large turbine, and
+            the single largest term when reconciling against a tool that
+            models gravity by default (OrcaFlex, most multibody codes).
+
+            Supported for cantilever (``hub_conn = 1``) and soft-monopile
+            (``hub_conn = 3``) towers. A free-base floating model
+            (``hub_conn = 2``) raises, because there the submerged
+            structure's buoyancy cancels most of the weight and pyBmodes
+            does not carry a distributed buoyancy column to net it
+            against.
 
         Warning
         -------
@@ -1385,7 +1496,8 @@ class Tower:
         """
         if not isinstance(n_modes, int) or n_modes < 1:
             raise ValueError(f"n_modes must be a positive integer; got {n_modes!r}")
+        g = _coerce_gravity(gravity, self._bmi.hub_conn)
         if check_model:
             from pybmodes.checks import apply_findings
             apply_findings(self, n_modes=n_modes, on_error=on_error)
-        return run_fem(self._bmi, n_modes=n_modes, sp=self._sp)
+        return run_fem(self._bmi, n_modes=n_modes, sp=self._sp, gravity=g)

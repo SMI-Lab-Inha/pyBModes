@@ -72,6 +72,57 @@ class TipMassProps:
     iyz: float
 
 
+@dataclass(frozen=True)
+class PointMass:
+    """A discrete lumped mass at an arbitrary station along the beam (issue #35).
+
+    Models a concentrated non-structural mass the distributed
+    ``mass_den`` column cannot represent — a flange, a platform, a
+    transformer, a boat-landing, a tuned-mass damper housing. The
+    smeared alternative is
+    :meth:`pybmodes.models.Tower.from_geometry`'s ``outfitting_factor``;
+    the tower-*top* lump is ``tip_mass``. This fills the gap between
+    them.
+
+    Attributes
+    ----------
+    height : float
+        Elevation above the **flexible beam base** in metres, i.e. the
+        same datum ``el_loc = 0`` marks (the tower base / clamp for a
+        cantilever, the pile toe or platform-connection node when the
+        beam extends below it). Must lie within the beam.
+    mass : float
+        Lumped mass in kg, > 0.
+
+    Notes
+    -----
+    The mass is assembled through the element shape functions at its
+    exact position, so it needs no mesh node there and contributes to
+    the axial, fore-aft and side-side inertia consistently. Rotary
+    inertia of the lump about its own centre is **not** modelled (a
+    flange-class lump is small compared with the beam section); use
+    ``tip_mass`` where the rotary term matters.
+    """
+
+    height: float      # m above the flexible beam base
+    mass: float        # kg
+
+    def __post_init__(self) -> None:
+        h = float(self.height)
+        m = float(self.mass)
+        if not math.isfinite(h):
+            raise ValueError(f"PointMass.height must be finite; got {self.height!r}")
+        if not math.isfinite(m) or m <= 0.0:
+            raise ValueError(
+                f"PointMass.mass (kg) must be finite and > 0; got {self.mass!r}"
+            )
+        if h < 0.0:
+            raise ValueError(
+                f"PointMass.height must be >= 0 (measured up from the flexible "
+                f"beam base); got {h!r}"
+            )
+
+
 @dataclass
 class ScalingFactors:
     """Multiplicative scaling factors applied to all section properties."""
@@ -291,6 +342,13 @@ class BMIFile:
     tow_support: int = 0
     support: TensionWireSupport | PlatformSupport | None = None
     source_file: pathlib.Path | None = None
+    # Discrete lumped masses at arbitrary stations along the beam
+    # (issue #35). Empty on every parsed ``.bmi`` deck — the format has
+    # no field for them — and populated through
+    # ``Tower.add_point_mass`` / the ``point_masses`` constructor
+    # keyword. Assembled via the element shape functions at the exact
+    # station, so no mesh node is needed there.
+    point_masses: tuple[PointMass, ...] = ()
 
     def resolve_sec_props_path(self) -> pathlib.Path:
         """Return absolute path to the section properties file."""

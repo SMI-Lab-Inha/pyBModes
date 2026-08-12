@@ -95,7 +95,7 @@ def test_examples_destination_conflict_without_force(
     rc = cli_main(["examples", "--copy", str(dest), "--kind", "samples"])
     assert rc == 2
     # The preexisting file is still there
-    assert (dest / "sample_inputs" / "preexisting.txt").read_text() == "hi"
+    assert (dest / "sample_inputs" / "preexisting.txt").read_text(encoding="utf-8") == "hi"
 
 
 def test_examples_force_overwrites(tmp_path: pathlib.Path) -> None:

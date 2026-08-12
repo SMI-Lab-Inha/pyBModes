@@ -135,6 +135,67 @@ _HFP_FACTOR = np.stack([
 
 
 # ---------------------------------------------------------------------------
+# Shape functions at an arbitrary local coordinate (discrete point masses)
+# ---------------------------------------------------------------------------
+
+def _shape_hu(xi: float) -> np.ndarray:
+    """Cubic-Lagrange axial shape functions at local coordinate ``xi`` ∈ [0, 1].
+
+    Same basis as the pre-evaluated ``_HU`` above, evaluated off the
+    Gauss grid so a discrete lump can sit anywhere inside an element.
+    """
+    c, c2, c3 = xi, xi ** 2, xi ** 3
+    return np.array([
+        -4.5  * c3 +  9.0 * c2 - 5.5 * c + 1.0,
+         13.5 * c3 - 22.5 * c2 + 9.0 * c,
+        -13.5 * c3 + 18.0 * c2 - 4.5 * c,
+         4.5  * c3 -  4.5 * c2 + c,
+    ])
+
+
+def _shape_h(xi: float, eli: float) -> np.ndarray:
+    """Hermite-cubic transverse shape functions at ``xi`` ∈ [0, 1].
+
+    Mirrors the ``_H_CONST + eli · _H_LIN`` split used on the Gauss
+    grid, so the slope DOFs carry the same ``eli`` scaling the rest of
+    the element assembly assumes.
+    """
+    c, c2, c3 = xi, xi ** 2, xi ** 3
+    return np.array([
+         2.0 * c3 - 3.0 * c2 + 1.0,
+        eli * (c3 - 2.0 * c2 + c),
+        -2.0 * c3 + 3.0 * c2,
+        eli * (c3 - c2),
+    ])
+
+
+def point_mass_element_matrix(xi: float, eli: float, mass: float) -> np.ndarray:
+    """15×15 consistent-mass increment for a lumped mass inside an element.
+
+    Parameters
+    ----------
+    xi   : local coordinate of the lump, ``(x - x_inboard) / eli`` ∈ [0, 1]
+    eli  : element length (non-dimensional)
+    mass : lumped mass (non-dimensional, ``m / (RM · radius)``)
+
+    The lump contributes to the axial and both transverse (flap / lag)
+    blocks through the element shape functions evaluated at ``xi`` —
+    exact for any position, so a point mass never has to land on a mesh
+    node. Its own rotary inertia about its centre is not modelled (see
+    :class:`pybmodes.io.bmi.PointMass`), so the torsion block and the
+    slope–slope coupling get only the translation-induced terms the
+    shape functions already carry.
+    """
+    em = np.zeros((15, 15))
+    hu = _shape_hu(xi)
+    h = _shape_h(xi, eli)
+    em[0:4, 0:4] = mass * np.outer(hu, hu)
+    em[4:8, 4:8] = mass * np.outer(h, h)
+    em[8:12, 8:12] = mass * np.outer(h, h)
+    return em
+
+
+# ---------------------------------------------------------------------------
 # Public single-element entry point
 # ---------------------------------------------------------------------------
 
@@ -155,6 +216,8 @@ def element_matrices(
     sec_loc: np.ndarray,
     str_tw: np.ndarray,
     distr_k: float = 0.0,
+    axf_g: float = 0.0,
+    grav_w: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute the 15×15 element stiffness and mass matrices.
 
@@ -176,6 +239,12 @@ def element_matrices(
     sec_loc: spanwise station locations (non-dimensional, for twist interpolation)
     str_tw : structural twist at each station (radians)
     distr_k: optional distributed foundation stiffness (non-dimensional)
+    axf_g : gravity axial force at the **outboard** end (non-dimensional,
+        negative = compression). Zero disables the self-weight geometric
+        term entirely, which is the default (issue #134).
+    grav_w : gravity force per unit length over this element
+        (non-dimensional, ``g_nd · rmas``), used to vary ``axf_g``
+        linearly across the element.
 
     Returns
     -------
@@ -198,6 +267,8 @@ def element_matrices(
         sec_loc = np.asarray(sec_loc, dtype=float),
         str_tw  = np.asarray(str_tw,  dtype=float),
         distr_k = np.atleast_1d(np.asarray(distr_k, dtype=float)),
+        axf_g   = np.atleast_1d(np.asarray(axf_g,  dtype=float)),
+        grav_w  = np.atleast_1d(np.asarray(grav_w, dtype=float)),
     )
     return ek_b[0], em_b[0]
 
@@ -223,6 +294,8 @@ def _element_matrices_batch(
     sec_loc: np.ndarray,
     str_tw:  np.ndarray,
     distr_k: np.ndarray,
+    axf_g:   np.ndarray | None = None,
+    grav_w:  np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Element matrices vectorised over Gauss points *and* elements.
 
@@ -277,6 +350,20 @@ def _element_matrices_batch(
     xbils = (xbi + eli) ** 2
     fi = (axfi[:, None] + 0.5 * rmas[:, None]
           * (xbils[:, None] - x * x)) * omega2          # (nselt, NG)
+
+    # --- Self-weight axial force at each Gauss point (issue #134) ----------
+    # ``axf_g`` is the gravity axial force carried across the element's
+    # outboard face (negative = compression for a tower hanging its own
+    # weight below the top); within the element it grows linearly with
+    # the weight of the material between the Gauss point and that face.
+    # Adding it to ``fi`` reuses the same geometric-stiffness integral
+    # the centrifugal term uses, so a compressive force softens the beam
+    # exactly as a tensile one stiffens it.
+    if axf_g is not None:
+        w = (np.zeros(nselt) if grav_w is None
+             else np.broadcast_to(grav_w, (nselt,)))
+        x_out = (xbi + eli)[:, None]
+        fi = fi + axf_g[:, None] - w[:, None] * (x_out - x)
 
     # --- Bending coupling --------------------------------------------------
     eiy_b   = eiy[:, None]
