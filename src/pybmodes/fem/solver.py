@@ -516,10 +516,10 @@ def _compare_candidate_modes(
     mode got decisively worse.
 
     A mode has regressed when it was acceptable, comes back worse, and
-    lands somewhere that could matter — above a tenth of the threshold.
-    Any worsening counts at any ratio: the tenfold margin belongs to the
-    improvement side, and requiring it here left a mode free to slide
-    from 0.02 to 0.099 unflagged, which is the edge of tolerance.
+    lands above the regression floor. Any worsening counts at any ratio:
+    the improvement side's margin answers a different question — rescue
+    or noise — and borrowing it here left a mode free to slide from 0.02
+    to 0.099 unflagged, which is the edge of tolerance.
 
     The landing bound is what keeps this usable rather than paralysing:
     a mode going from 5.7e-6 to 3.5e-5 is six times worse and three
@@ -595,12 +595,12 @@ def _compare_candidate_modes(
     resolved = _SOLVER_OPTIONS.residual_retry_resolved
     improved = (sym > threshold) & (alt <= resolved) & (alt < factor * sym)
     # A mode that was acceptable must not come back materially worse.
-    # Any worsening counts, at any ratio — the tenfold margin belongs to
-    # the improvement side, and requiring it here left a mode free to
-    # slide from 0.02 to 0.099 unflagged. What bounds this instead is
-    # where the mode *lands*: below a tenth of the threshold the change
-    # cannot matter, which is what keeps harmless churn (5.7e-6 to
-    # 3.5e-5) from blocking every rescue.
+    # Any worsening counts, at any ratio: the improvement side's margin
+    # answers "is this a rescue or noise", which is a different question,
+    # and borrowing it here left a mode free to slide from 0.02 to 0.099
+    # unflagged. What bounds this instead is where the mode *lands* —
+    # below the regression floor the change cannot matter, which is what
+    # keeps harmless churn (5.7e-6 to 3.5e-5) from blocking every rescue.
     #
     # Modes already failing in the symmetric solve get no verdict at all.
     # Neither value is trustworthy there, and a rigid-body mode — whose

@@ -9,16 +9,27 @@ wrong low modes rather than raising. On the case pinned below the dense
 symmetric path reported 0.103 Hz against a true 0.0436 Hz, a factor of
 2.4, with no error and no warning.
 
-The guard is the backward error ``||K x - lambda M x|| / ||K x||``. It
-has two conditions, and the second matters more than the first: the
-error must exceed the retry threshold, *and* the general path must beat
-it decisively. Being above the threshold alone is not evidence of a
-breakdown — the bundled NREL 5MW land deck sits at ~2e-2 because its
-adapter leaves ``M`` at cond ~4e10, and there the general path is only
-1.4x better while splitting a degenerate fore-aft / side-side pair the
-symmetric solver resolves exactly. Swapping for that would churn a
-validated frequency by 0.84 % and break the FA / SS classifier
-downstream. A real breakdown improves by nine orders, not by a factor.
+The guard is the backward error ``||K x - lambda M x|| / ||K x||``, and
+almost every test here exists because some reading of it turned out to
+be wrong. Three things it does *not* establish, each learned the hard
+way and each pinned below:
+
+- **A large error is not evidence of a breakdown.** The bundled NREL 5MW
+  land deck sits at ~2e-2 because its adapter leaves ``M`` at cond ~4e10;
+  swapping there churns a validated frequency by 0.84 % and splits a
+  degenerate fore-aft / side-side pair the symmetric solver resolves
+  exactly, which the FA / SS classifier depends on.
+- **A small error is not evidence of a rescue.** A rigid-body mode's
+  residual divides one roundoff quantity by another, so its value is
+  arbitrary: 12.4, 0.79 and 0.076 have all been measured on healthy
+  models, and the last sits *below* the failure threshold. No absolute
+  bar can separate that from a solved mode.
+- **A better mode does not make a better spectrum.** Accepting replaces
+  every mode, so a candidate that rescues one while pushing another past
+  the threshold is a trade, not an improvement.
+
+What does separate the populations is the *size* of the win. Genuine
+rescues improve by 1e5 to 1e10; rigid roundoff by 11x to 16x.
 
 Analytical reference: a cantilever whose beam mass is negligible next to
 a tip lump behaves as a spring-mass oscillator on the static tip
@@ -841,7 +852,8 @@ class TestARetryThatTradesModesIsRefused:
 
     def test_an_acceptable_mode_cannot_be_degraded_as_collateral(self):
         """The guarantee, checked over **every** pair rather than only
-        the tenfold ones.
+        the tenfold ones (an earlier version of this test swept only
+        those, which is how it certified a bound the rule did not hold).
 
         An earlier version of this test swept only ``alt > 10 * sym``,
         which is why it certified a bound the rule did not actually hold:
@@ -849,7 +861,7 @@ class TestARetryThatTradesModesIsRefused:
         the edge of tolerance, and nothing looked at it.
 
         The claim is narrow and about the acceptable side only. A mode
-        that was acceptable can end up above a tenth of the threshold
+        that was acceptable can end up above the regression floor
         solely by having improved, never as collateral of someone else's
         rescue.
         """

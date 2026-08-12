@@ -22,7 +22,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `solve_modes` now checks the backward error `||K x - λ M x|| / ||K x||`
   of a **dense** symmetric solve and, when it is large, redoes it through
   the general dense path, which factorises neither matrix. The retried
-  result is taken only when it is better by an order of magnitude, and a
+  result is taken only when it resolves a mode the symmetric solve had
+  failed, by a margin that separates a rescue from roundoff, and a
   `RuntimeWarning` names the swap. `SolverDiagnostics` gains
   `residual_fallback` recording it.
 
