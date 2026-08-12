@@ -514,6 +514,18 @@ class TestAcceptedSkewDoesNotTriggerTheRetry:
         # The symmetrised problem's spectrum, not the skewed one.
         assert np.allclose(np.sort(eigvals), np.sort(d), rtol=1.0e-6)
 
+    def test_the_diagnostics_report_the_solved_problem_too(self):
+        """Telemetry meant to be auditable must not charge a correct
+        solve for the skew it was told to discard."""
+        gk, gm, _d = self._wide_range_with_accepted_skew()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _v, _x, diag = solve_modes(gk, gm, n_modes=3,
+                                       return_diagnostics=True)
+        assert diag.residual_fallback is False
+        assert diag.max_residual < 1.0e-8
+        assert max(diag.residuals) < 1.0e-8
+
     def test_measuring_against_the_unsymmetrised_pair_would_have_tripped(self):
         """The mechanism: the same exact modes look broken when judged
         against matrices they were never solved on."""

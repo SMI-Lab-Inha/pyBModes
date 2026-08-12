@@ -159,7 +159,16 @@ class SolverDiagnostics:
         when no modes were returned). A healthy modal solve sits near
         machine precision; a large value flags an ill-conditioned or
         defective eigenproblem.
-    residuals : the per-mode relative residuals, one per returned mode.
+
+        Measured against the matrices the returned modes **actually
+        solve**: the symmetrised pair on the symmetric paths, which
+        symmetrise internally, and the raw pair on the general one.
+        Measuring a symmetric solve against the raw matrices would charge
+        it for the skew it was told to discard — on a model with a wide
+        dynamic range that reads as a large backward error for a solve
+        that is exact, which is the opposite of what this field is for.
+    residuals : the per-mode relative residuals, one per returned mode,
+        on the same basis as ``max_residual``.
     matrix_cond : 2-norm condition number of the (symmetrised) mass
         matrix, or ``None`` when not computed (sparse path, or a system
         larger than the dense-conditioning size limit).
@@ -293,6 +302,13 @@ def solve_modes(
     # catches it (healthy solves sit at ~1e-4 or below, degraded ones
     # above 1), and the general path, which factorises neither matrix,
     # stays exact there.
+    # The matrices the returned modes actually solve. Both symmetric
+    # paths symmetrise internally, so for them the diagnostics — and the
+    # retry decision below — have to be measured against that pair, not
+    # against the raw one. Reporting the raw backward error would flag a
+    # correct solve as defective in telemetry meant to be auditable.
+    res_k, res_m = (0.5 * (gk + gk.T), 0.5 * (gm + gm.T)) if sym else (gk, gm)
+
     residual_fallback = False
     if sym:
         # Measure — and retry — against the matrices the symmetric paths
@@ -304,8 +320,7 @@ def solve_modes(
         # above the threshold, and ``eig`` on those same unsymmetrised
         # matrices would "win decisively" purely by answering a different
         # question — replacing a correct spectrum with the skew's.
-        gk_s = 0.5 * (gk + gk.T)
-        gm_s = 0.5 * (gm + gm.T)
+        gk_s, gm_s = res_k, res_m
         sym_r = _modal_residuals(gk_s, gm_s, eigvals, eigvecs)
         if sym_r.size and float(sym_r.max()) > _SOLVER_OPTIONS.residual_retry_threshold:
             # ``preserve_full_spectrum`` so the two candidates describe the
@@ -374,7 +389,7 @@ def solve_modes(
         return eigvals, eigvecs
 
     diagnostics = _build_diagnostics(
-        gk, gm, eigvals, eigvecs, path=path, symmetric=sym,
+        res_k, res_m, eigvals, eigvecs, path=path, symmetric=sym,
         n_requested=n_modes, sparse_fallback=sparse_fallback,
         fallback_reason=fallback_reason,
         residual_fallback=residual_fallback,
