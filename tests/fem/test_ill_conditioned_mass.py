@@ -649,6 +649,87 @@ class TestTheRetryVerifiesItsOrderingRatherThanAssumingIt:
         assert vals.size == 2
 
 
+class TestTheRetryIsScopedToTheDensePath:
+    """Only the dense symmetric path is retried, and that is about which
+    matrix each routine factorises.
+
+    ``eigh`` reduces through a Cholesky factor of the **mass** matrix,
+    which is the failure this guard exists for. ``eigsh(sigma=0,
+    mode='normal')`` factorises ``K`` instead and is unaffected — the
+    mesh sweep that motivated the work returns correct frequencies on
+    exactly the meshes large enough to take the sparse path.
+
+    It also removes a spectrum mismatch by construction: ``which="LM"``
+    selects the modes nearest zero *in magnitude* while the retry selects
+    the algebraically smallest, and with negative eigenvalues present
+    those are different sets that must never be compared by index.
+    """
+
+    def test_the_sparse_path_is_left_alone(self, monkeypatch):
+        import pybmodes.fem.solver as solvermod
+
+        # Force the sparse path on a small problem, then make the
+        # residual look terrible. The retry must still not run.
+        gk, gm = _cantilever_with_tip_lump(13, LIGHT)
+        monkeypatch.setattr(solvermod, "_SPARSE_NDOF_THRESHOLD", 1)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _v, _x, diag = solve_modes(
+                gk, gm, n_modes=4, return_diagnostics=True,
+            )
+        assert diag.path == "sparse_shift_invert"
+        assert diag.residual_fallback is False
+
+    def test_the_sparse_path_gets_the_ill_conditioned_case_right(self):
+        """Why leaving it alone is safe rather than a gap: it factorises
+        K, so a near-singular M does not degrade it."""
+        gk, gm = _cantilever_with_tip_lump(101, LIGHT)
+        eigvals, _v, diag = solve_modes(
+            gk, gm, n_modes=4, return_diagnostics=True,
+        )
+        assert diag.path == "sparse_shift_invert"
+        f = float(eigvals_to_hz(eigvals, ROMG)[0])
+        assert f == pytest.approx(_analytic(), rel=5.0e-3)
+
+
+class TestARetryFailureIsNotAHardFailure:
+    """A pencil defective enough to break the symmetric reduction can
+    also break ``eig``. Turning that into an exception would make the
+    guard destroy usable results on exactly the inputs it exists for."""
+
+    def test_a_raising_retry_keeps_the_symmetric_result(self, monkeypatch):
+        import pybmodes.fem.solver as solvermod
+
+        def boom(gk, gm, n_modes):
+            raise np.linalg.LinAlgError("did not converge")
+
+        monkeypatch.setattr(solvermod, "_general_spectrum_for_retry", boom)
+        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            eigvals, _v, diag = solve_modes(
+                gk, gm, n_modes=4, return_diagnostics=True,
+            )
+        assert diag.residual_fallback is False
+        assert diag.path == "dense_symmetric"
+        assert eigvals.size == 4
+
+    def test_a_value_error_is_handled_the_same_way(self, monkeypatch):
+        import pybmodes.fem.solver as solvermod
+
+        def boom(gk, gm, n_modes):
+            raise ValueError("array must not contain infs or NaNs")
+
+        monkeypatch.setattr(solvermod, "_general_spectrum_for_retry", boom)
+        gk, gm = _cantilever_with_tip_lump(27, LIGHT)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _v, _x, diag = solve_modes(
+                gk, gm, n_modes=4, return_diagnostics=True,
+            )
+        assert diag.residual_fallback is False
+
+
 class TestDiagnosticsContract:
     def test_residual_fallback_defaults_to_false(self):
         gk, gm = _cantilever_with_tip_lump(13, REALISTIC)

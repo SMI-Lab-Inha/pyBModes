@@ -36,12 +36,14 @@ Three dispatch paths in priority order:
    the retry path when a symmetric solve comes back with a large
    backward error — see below.
 
-Both symmetric paths reduce ``K x = λ M x`` through a Cholesky factor
-of the mass matrix, and that reduction degrades once ``M`` is nearly
-singular, which a very light beam carrying a very heavy lump produces.
-The failure mode is silent: LAPACK returns confidently wrong low modes
-rather than raising. :func:`solve_modes` therefore checks the backward
-error of every symmetric solve and, when it exceeds
+The **dense** symmetric path reduces ``K x = λ M x`` through a Cholesky
+factor of the mass matrix, and that reduction degrades once ``M`` is
+nearly singular, which a very light beam carrying a very heavy lump
+produces. The failure mode is silent: LAPACK returns confidently wrong
+low modes rather than raising. (The sparse path factorises ``K``
+instead, so it is unaffected and is not retried.)
+:func:`solve_modes` therefore checks the backward error of a dense
+symmetric solve and, when it exceeds
 :attr:`~pybmodes.options.SolverOptions.residual_retry_threshold`, tries
 the general path as well — taking its result only if it is better by
 :attr:`~pybmodes.options.SolverOptions.residual_retry_improvement`, and
@@ -325,7 +327,23 @@ def solve_modes(
     res_k, res_m = (0.5 * (gk + gk.T), 0.5 * (gm + gm.T)) if sym else (gk, gm)
 
     residual_fallback = False
-    if sym:
+    # Only the *dense* symmetric path is retried, and that is a statement
+    # about which matrix each routine factorises rather than a
+    # convenience. ``eigh`` reduces through a Cholesky factor of the mass
+    # matrix, which is the one this guard exists for. ``eigsh(sigma=0,
+    # mode='normal')`` factorises ``K`` instead, so a near-singular ``M``
+    # does not degrade it — the mesh sweep that motivated this work
+    # returns correct frequencies on exactly the meshes large enough to
+    # take the sparse path.
+    #
+    # Excluding it also removes a mismatch that would otherwise need
+    # separate handling: ``which="LM"`` on ``OP = K^-1 M`` selects the
+    # modes nearest zero *in magnitude*, while the retry selects the
+    # algebraically smallest. With negative eigenvalues present — a
+    # post-buckling ``run(gravity=...)`` column — those are different
+    # sets, and a per-index comparison between them would be pairing
+    # unrelated modes.
+    if sym and path == "dense_symmetric":
         # Measure — and retry — against the matrices the symmetric paths
         # actually solved. Both symmetrise internally, and the accepted
         # skew is only guaranteed small relative to ``max|K|``: in a model
@@ -338,16 +356,26 @@ def solve_modes(
         gk_s, gm_s = res_k, res_m
         sym_r = _modal_residuals(gk_s, gm_s, eigvals, eigvecs)
         if sym_r.size and float(sym_r.max()) > _SOLVER_OPTIONS.residual_retry_threshold:
-            # ``preserve_full_spectrum`` so the two candidates describe the
-            # same spectrum and equal indices mean the same mode. ``eigh``
-            # filters nothing, so any sign filter here would return a
-            # different set — same length, backfilled from higher up — and
-            # the per-index comparison would then be reading two different
-            # spectra against each other.
-            alt_vals, alt_vecs, ordering_sound = _general_spectrum_for_retry(
-                gk_s, gm_s, n_modes,
-            )
-            _normalize_columns_l2(alt_vecs)
+            try:
+                alt_vals, alt_vecs, ordering_sound = _general_spectrum_for_retry(
+                    gk_s, gm_s, n_modes,
+                )
+            except (np.linalg.LinAlgError, ValueError) as exc:
+                # The alternative is a best-effort second opinion, not a
+                # requirement. A pencil defective enough to break the
+                # symmetric reduction can also break ``eig``, and turning
+                # that into a hard failure would make this guard destroy
+                # usable results on exactly the inputs it was added to
+                # help. Decline and keep what we have.
+                _log.warning(
+                    "solve_modes: residual retry failed (%r); keeping the "
+                    "symmetric result", exc,
+                )
+                alt_vals = np.empty(0)
+                alt_vecs = np.empty((eigvecs.shape[0], 0))
+                ordering_sound = False
+            if alt_vecs.size:
+                _normalize_columns_l2(alt_vecs)
             alt_r = _modal_residuals(gk_s, gm_s, alt_vals, alt_vecs)
             improved = (
                 _decisively_improved_modes(
