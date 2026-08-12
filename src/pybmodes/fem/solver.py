@@ -36,72 +36,84 @@ Three dispatch paths in priority order:
    the retry path when a symmetric solve comes back with a large
    backward error — see below.
 
-The **dense** symmetric path reduces ``K x = λ M x`` through a Cholesky
-factor of the mass matrix, and that reduction degrades once ``M`` is
-nearly singular, which a very light beam carrying a very heavy lump
-produces. The failure mode is silent: LAPACK returns confidently wrong
-low modes rather than raising. (The sparse path factorises ``K``
-instead, so it is unaffected and is not retried.)
-:func:`solve_modes` therefore checks the backward error of a dense
-symmetric solve and, when it exceeds
-:attr:`~pybmodes.options.SolverOptions.residual_retry_threshold`, tries
-the general path as well — taking its result only if it is better by
-:attr:`~pybmodes.options.SolverOptions.residual_retry_improvement`, and
-warning when it does.
+The residual retry
+------------------
 
-That second condition is the load-bearing one, and it is what lets the
-check be simple. A real deck can sit above the threshold without being
-broken (the bundled NREL 5MW land tower reaches ~2e-2, its adapter
-leaving ``M`` at cond ~4e10), and there the general path is only
-marginally better while *splitting* the degenerate fore-aft / side-side
-pair the symmetric solver resolves exactly — which the FA / SS
-classifier downstream depends on. A true breakdown is not marginal: it
-improves by nine orders of magnitude.
+``scipy.linalg.eigh`` reduces ``K x = λ M x`` through a Cholesky factor
+of the **mass** matrix, and that reduction degrades once ``M`` is nearly
+singular — a very light beam carrying a very heavy lump. The failure is
+silent: LAPACK returns confidently wrong low modes rather than raising.
+On the case in ``tests/fem/test_ill_conditioned_mass.py`` it reported
+0.103 Hz against a true 0.0436 Hz.
 
-The comparison is made **per mode** rather than on the two maxima, which
-is what keeps rigid-body modes from distorting it. Their backward error
-is a ratio of two near-zero quantities and reads ~1 in both candidates
-however exact each is; on a maximum that puts a floor under the
-alternative and hides a genuinely corrupted elastic mode alongside them,
-while per mode they simply register as ~1 against ~1, i.e. no
-improvement. Identifying such modes and excluding them was tried twice
-and abandoned — neither their eigenvalue nor their strain separates them
-reliably from a genuinely soft mode.
+:func:`solve_modes` therefore measures the backward error of a dense
+symmetric solve and, above
+:attr:`~pybmodes.options.SolverOptions.residual_retry_threshold`, solves
+again through the general path and compares. Every other rule below
+exists because some simpler version of that comparison was wrong.
 
-The retry additionally runs with ``preserve_full_spectrum=True``, which
-drops the sign filter the general path normally applies. ``eigh``
-filters nothing, so keeping it would return a *different set* of modes —
-the same length, since the gap is backfilled from higher up — and the
-per-index comparison would be reading two different spectra against each
-other, able to accept a result that had quietly dropped a mode and
-shifted every one above it. Both omissions are reachable: a free-free
-model's zero-frequency modes, and the negative eigenvalues an indefinite
-``K`` produces once ``run(gravity=...)`` loads a column past its
-buckling weight.
+**Only the dense path.** ``eigsh(sigma=0, mode='normal')`` factorises
+``K``, not ``M``, so the sparse path does not have this failure and is
+never retried. That also avoids comparing two different mode sets: its
+``which="LM"`` window selects the modes nearest zero in magnitude while
+the retry selects the algebraically smallest.
 
-Both the measurement and the retry use the **symmetrised** matrices, the
-ones the symmetric paths actually solve. The skew they discard is only
-guaranteed small relative to ``max|K|``, which in a model with a wide
-dynamic range can still be large relative to a soft mode's own
-eigenvalue; judging an exact symmetric solve against the unsymmetrised
-matrices would then read as a failure, and ``eig`` on those same
-matrices would "win decisively" purely by answering a different
+**Per mode, not on the maxima.** A rigid-body mode's residual divides one
+roundoff quantity by another. Taking maxima lets that noise floor the
+candidate's worst value and hide a genuinely corrupted elastic mode
+beside it.
+
+**Judged by the size of the win.** No absolute bar separates a rescue
+from rigid noise, because the noise value is arbitrary — 0.076, 0.79 and
+12.4 have all been measured on healthy models, and the first is *below*
+the failure threshold. Identifying such modes was tried three times and
+abandoned: not by eigenvalue scale, which a rigid-only subset makes its
+own reference; not by strain, which a genuinely soft mode also has
+little of; and not by which side of the threshold the value falls on.
+What does separate them is the ratio. Rescues improve by 1e5 to 1e10,
+roundoff by 11x to 16x, so acceptance needs
+:attr:`~pybmodes.options.SolverOptions.residual_retry_improvement` *and*
+a candidate that reaches
+:attr:`~pybmodes.options.SolverOptions.residual_retry_resolved`.
+
+**Non-regressive.** Accepting replaces the whole spectrum, so a candidate
+that rescues one mode while pushing another past the threshold is a
+trade, not an improvement.
+
+**The same matrices throughout.** Both symmetric paths symmetrise
+internally, so the measurement and the retry use the symmetrised pair.
+The tolerated skew is small only relative to ``max|K|``, which in a
+wide-dynamic-range model can still swamp a soft mode's own eigenvalue;
+judging an exact solve against the raw matrices reads as a failure, and
+``eig`` on those same matrices then "wins" by answering a different
 question.
 
-**What this guard does not promise.** It rescues the case it was built
-for — a near-singular mass matrix, with no rigid-body modes — reliably
-and identically on every platform. It is *safe* everywhere else but not
-always *effective*: when rigid-body modes and a near-singular mass
-matrix coincide, QZ may represent the theoretically real zero modes as
-small complex-conjugate pairs that cannot be coerced back to real, and
-where those land in the spectrum differs between LAPACK builds. When
-they land inside the requested window the alternative's ordering cannot
-be verified, so the retry declines and the symmetric result stands.
-Declining is the deliberate choice: a guard added to stop a silent wrong
-answer must never introduce one, and backfilling a dropped zero mode
-with an elastic mode would do exactly that. The result in that situation
-is no worse than without the guard, and ``max_residual`` still reports
-the problem.
+**The same spectrum throughout.** The retry keeps every real eigenvalue,
+zeros and negatives included, and verifies that nothing was discarded
+from inside the returned window. ``eigh`` filters nothing, so any filter
+here would return a different set of the same length, backfilled from
+higher up, and equal indices would stop meaning equal modes. Both
+omissions are reachable: a free-free model's zero modes, and the negative
+eigenvalues an indefinite ``K`` produces once ``run(gravity=...)`` loads
+a column past its buckling weight.
+
+**It can always decline.** If the alternative raises on the same
+defective pencil, or the system is larger than
+:attr:`~pybmodes.options.SolverOptions.residual_retry_max_ndof`, or its
+ordering cannot be verified, the symmetric result stands.
+
+What this does not promise
+--------------------------
+
+The rescue is reliable and platform-independent for the case it was built
+for: a near-singular mass matrix with no rigid-body modes. Elsewhere it
+is *safe* but not always *effective*. Where rigid-body modes and a
+near-singular mass coincide, QZ may return the theoretically real zero
+modes as complex-conjugate pairs, and where those land differs between
+LAPACK builds; inside the requested window the ordering cannot be
+verified and the retry declines. Declining is deliberate — a guard added
+to stop a silent wrong answer must not be able to introduce one — and
+``max_residual`` still reports the problem.
 
 Note on the user-spec mode choice: ``eigsh(..., sigma=0,
 mode='buckling')`` reduces to ``OP = K^-1 K = I`` for ``sigma=0``,
@@ -492,10 +504,6 @@ def _build_diagnostics(
     )
 
 
-# A mode whose eigenvalue is below this fraction of the largest returned
-# one is a rigid-body mode: a free-free floating platform has up to six,
-# and an unrestrained DOF (a symmetric column's yaw) gives an exactly
-# zero one.
 # Above this the mass matrix is ill-conditioned enough for the Cholesky
 # reduction to be the credible culprit; below it, something else in the
 # pencil is.
@@ -593,18 +601,19 @@ def _compare_candidate_modes(
     the backward error is the honest outcome.
 
     Together the two verdicts give the guarantee the caller relies on: a
-    mode that was acceptable can only end up above a tenth of the
-    threshold by having *improved*, never as collateral.
+    mode that was acceptable can only end up above the regression floor
+    by having *improved*, never as collateral.
 
     The comparison has to be **per mode**, not on the two maxima. A
     rigid-body mode's backward error is a ratio of two near-zero
     quantities and reads ~1 in *both* candidates however exact each is,
     so it sets a floor under the alternative's maximum: with one present,
-    ``max(alt_r)`` stays near 1 and no amount of improvement elsewhere
-    can drive it below a tenth of ``max(sym_r)`` unless the symmetric
-    solve is worse than ~10. A free-free model with a genuinely corrupted
-    elastic mode at a backward error of ~0.8 would sail through, which is
-    exactly the breakdown this guard exists to catch.
+    ``max(alt_r)`` stays near 1, and no improvement elsewhere can drive
+    it below the required fraction of ``max(sym_r)`` unless the symmetric
+    solve is worse still by that same fraction inverted. A free-free
+    model with a genuinely corrupted elastic mode at a backward error of
+    ~0.8 would sail through, which is exactly the breakdown this guard
+    exists to catch.
 
     Comparing mode by mode removes the floor: the rigid modes contribute
     ~1 against ~1 and register as no improvement, while a corrupted

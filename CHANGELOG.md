@@ -27,8 +27,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   error of 1e-3 or better. Both conditions are needed because a
   rigid-body mode's residual divides one roundoff quantity by another,
   so its value is arbitrary (0.076, 0.79 and 12.4 have all been measured
-  on healthy models) while its improvement ratio stays near 10×, an
-  order of magnitude short of any real rescue. A `RuntimeWarning` names
+  on healthy models) while its improvement ratio stays near 10x, four
+  orders short of the 1e5 to 1e10 a real rescue achieves. A `RuntimeWarning` names
   the swap, and attributes it to the mass matrix only when the mass
   conditioning supports that — a wide stiffness range trips the same
   guard with a perfectly conditioned mass. `SolverDiagnostics` gains
@@ -56,8 +56,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one mode while pushing a previously acceptable one above the failure
   threshold is refused — it would hand back a new bad mode in place of an
   old one. The guarantee is one-sided and precise: a mode that was
-  acceptable can end up above a tenth of the failure threshold only by
-  having improved, never as collateral of another mode's rescue. A mode
+  acceptable can end up above the regression floor only by having
+  improved, never as collateral of another mode's rescue. A mode
   already failing carries no verdict either way — above the threshold
   neither candidate is trustworthy, and a rigid-body mode, whose residual
   divides one roundoff quantity by another and has been measured at 12.4
@@ -92,9 +92,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   symmetric result and its diagnostics are kept rather than the whole
   solve failing.
 
-- `SolverOptions` gains `residual_retry_threshold`,
-  `residual_retry_improvement` and `residual_retry_max_ndof` for the
-  conditions above.
+- `SolverOptions` gains five fields for the conditions above, each
+  governing one of them: `residual_retry_threshold` (what counts as a
+  failing mode), `residual_retry_improvement` (how much better the
+  candidate must be for the win to be a rescue rather than roundoff),
+  `residual_retry_resolved` (the backward error it must actually reach),
+  `residual_regression_floor` (where a worsened mode has to land before
+  the worsening counts) and `residual_retry_max_ndof` (the size above
+  which the retry is not attempted at all).
 
 ## [1.18.0] — 2026-08-12
 

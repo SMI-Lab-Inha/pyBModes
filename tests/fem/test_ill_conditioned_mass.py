@@ -1,13 +1,18 @@
 """The symmetric eigensolvers degrade silently on a near-singular mass
 matrix, and the solver has to notice.
 
-Both ``scipy.linalg.eigh`` and ``scipy.sparse.linalg.eigsh`` reduce
-``K x = lambda M x`` through a Cholesky factor of the mass matrix. When
-that matrix is nearly singular — a very light beam carrying a very heavy
-lump — the reduction loses accuracy, and LAPACK returns confidently
-wrong low modes rather than raising. On the case pinned below the dense
-symmetric path reported 0.103 Hz against a true 0.0436 Hz, a factor of
-2.4, with no error and no warning.
+``scipy.linalg.eigh`` reduces ``K x = lambda M x`` through a Cholesky
+factor of the **mass** matrix. When that matrix is nearly singular — a
+very light beam carrying a very heavy lump — the reduction loses
+accuracy, and LAPACK returns confidently wrong low modes rather than
+raising. On the case pinned below the dense symmetric path reported
+0.103 Hz against a true 0.0436 Hz, a factor of 2.4, with no error and no
+warning.
+
+The sparse path is exempt and must stay exempt: ``eigsh(sigma=0,
+mode='normal')`` factorises ``K`` instead, so a near-singular ``M`` does
+not degrade it, and its ``which="LM"`` window selects a different set of
+modes that must never be compared against the retry's by index.
 
 The guard is the backward error ``||K x - lambda M x|| / ||K x||``, and
 almost every test here exists because some reading of it turned out to
