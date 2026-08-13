@@ -673,8 +673,14 @@ def _compare_candidate_modes(
 # would have taken the more expensive route across a third of the range.
 # Columns per pass of the residual sweep. Every temporary in the sweep
 # is ``ngd x`` this, so the peak is bounded by it rather than by the
-# number of modes the caller asked for. Wide enough that the BLAS call
-# still amortises its own overhead.
+# number of modes the caller asked for.
+#
+# Only the peak depends on it — the result does not, since the residual
+# is per mode and blocking merely partitions the columns. Chosen at the
+# knee of the measured time curve: sweeping the full spectrum of a
+# 2000-DOF system took 1.4 s at 16 and 32 columns, where per-call BLAS
+# overhead dominates, then 0.76 s at 64 and 0.42 s at 128, against a
+# 0.38 s floor that 256 and above buy with two to twelve times the peak.
 _RESIDUAL_BLOCK = 128
 
 

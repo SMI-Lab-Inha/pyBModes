@@ -1302,6 +1302,28 @@ class TestTheGuardDoesNotTaxEverySolve:
             rtol=1.0e-12, atol=1.0e-15,
         )
 
+    @pytest.mark.parametrize("block", [1, 3, 16, 64, 1000])
+    def test_the_block_width_is_a_free_parameter(self, block, monkeypatch):
+        """It may be tuned for the peak-versus-overhead trade without
+        touching any answer. The residual is per mode, so blocking only
+        partitions independent columns — a block width that changed the
+        result would mean the columns were not independent after all."""
+        from pybmodes.fem import solver
+
+        n, k = 120, 37
+        gk, gm = self._pair(n)
+        rng = np.random.default_rng(15)
+        v = np.linalg.qr(rng.normal(size=(n, k)))[0]
+        w = np.linspace(1.0, 2.0, k)
+
+        monkeypatch.setattr(solver, "_RESIDUAL_BLOCK", 128)
+        reference = solver._modal_residuals(gk, gm, w, v, symmetrise=True)
+        monkeypatch.setattr(solver, "_RESIDUAL_BLOCK", block)
+        assert np.allclose(
+            solver._modal_residuals(gk, gm, w, v, symmetrise=True),
+            reference, rtol=1.0e-12, atol=1.0e-15,
+        )
+
     @pytest.mark.parametrize("k", [1, 7, 26, 27, 40])
     def test_both_routes_agree_numerically(self, k):
         """Whichever route is taken, the answer is ``sym(A) v``."""
