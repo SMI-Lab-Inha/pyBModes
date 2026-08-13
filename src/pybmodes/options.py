@@ -70,10 +70,74 @@ class SolverOptions:
         :func:`scipy.linalg.eig` instead of the symmetric
         :func:`scipy.linalg.eigh`. The OC3 Hywind cross-coupled
         ``hydro_K + mooring_K`` exercises this branch.
+    residual_retry_threshold : float, default 0.1
+        Largest per-mode relative residual
+        ``||K x - λ M x|| / ||K x||`` a symmetric solve may return before
+        the general dense path is tried as well. ``scipy.linalg.eigh``
+        reduces the generalised problem through a Cholesky factor of the
+        **mass** matrix, which loses accuracy once that matrix is nearly
+        singular — a very light beam carrying a very heavy lump — and
+        returns confidently wrong low modes rather than failing.
+
+        The band this sits in is narrower than it looks. Ordinary solves
+        land at or below ~1e-3; a real deck whose adapter leaves ``M``
+        genuinely ill-conditioned (the bundled NREL 5MW land tower, cond
+        ~4e10) reaches ~2e-2 and is *not* meant to trigger; the degraded
+        regime starts around 0.7. The default splits the last two gaps
+        with roughly 5x either side.
+    residual_retry_resolved : float, default 1e-3
+        Backward error the candidate must reach on a mode before that
+        mode can justify a swap. Guards the case the ratio alone cannot:
+        a wildly broken symmetric solve at 1e6 against a candidate at
+        100 clears any ratio while both remain garbage.
+    residual_regression_floor : float, default 1e-2
+        Where a worsened mode has to land before the worsening counts.
+        Below this the change cannot matter, which is what stops harmless
+        churn — 5.7e-6 to 3.5e-5 — from blocking every rescue. Kept
+        separate from ``residual_retry_improvement`` on purpose: they
+        answer different questions, and deriving one from the other
+        coupled two unrelated decisions.
+    residual_retry_max_ndof : int, default 2000
+        Largest reduced system the retry will attempt. The retry is a
+        dense ``eig``, whose cost grows as ``ngd^3`` with a much larger
+        constant than the ``eigh`` it is checking. Normally that is
+        bounded by ``sparse_ndof_threshold``, since anything bigger takes
+        the sparse path and is not retried — but a sparse solve that
+        *fails to converge* falls back to dense at any size, and there an
+        unbounded retry could spend minutes on a model whose result was
+        already available. A guard against a silent wrong answer should
+        not be able to turn one into a silent hang, so above this size it
+        declines and leaves the backward error to the diagnostics.
+    residual_retry_improvement : float, default 1e-3
+        How much better the general path's backward error must be on a
+        mode before that mode can justify taking its result. The
+        load-bearing guard, and the one that separates a rescue from
+        noise.
+
+        Two populations were measured while building this. Genuine
+        rescues improve by 1e5 to 1e10: the worst observed went from
+        3.98e1 to 3.17e-4. Rigid-body roundoff, which divides one
+        near-zero quantity by another and so produces an arbitrary
+        number, improves by 11x to 16x: 0.848 to 0.0762 on a healthy
+        model, which no absolute threshold excludes because 0.0762 sits
+        below the failure line. Four orders separate the two, and the
+        default sits in the middle with roughly 60x margin on the noise
+        side and 100x on the rescue side.
+
+        A marginal win is refused for a second reason as well: on the
+        bundled NREL 5MW land deck the general path is 1.4x better while
+        *breaking* a physically real degenerate fore-aft / side-side pair
+        the symmetric solver resolves exactly, which the downstream FA /
+        SS classifier depends on.
     """
 
     sparse_ndof_threshold: int = 500
     symmetry_rtol: float = 1.0e-12
+    residual_retry_threshold: float = 0.1
+    residual_retry_improvement: float = 1.0e-3
+    residual_retry_resolved: float = 1.0e-3
+    residual_regression_floor: float = 1.0e-2
+    residual_retry_max_ndof: int = 2000
 
 
 @dataclass(frozen=True)

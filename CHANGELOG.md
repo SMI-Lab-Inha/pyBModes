@@ -8,7 +8,100 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+### Fixed
+
+- **The dense symmetric eigensolver could return confidently wrong low
+  modes on a near-singular mass matrix, silently.** `scipy.linalg.eigh`
+  reduces `K x = λ M x` through a Cholesky factor of the **mass** matrix,
+  and that reduction loses accuracy when a very light beam carries a very
+  heavy lump. LAPACK does not raise there — it returns wrong frequencies.
+  On a 100 m cantilever with a 4000:1 lump-to-beam mass ratio the
+  reported fundamental was 0.103 Hz against a true 0.0436 Hz, a factor of
+  2.4, and the answer wandered non-monotonically with mesh density.
+
+  `solve_modes` now checks the backward error `||K x - λ M x|| / ||K x||`
+  of a **dense** symmetric solve and, when it is large, redoes it through
+  the general dense path, which factorises neither matrix. The retried
+  result is taken only when it **resolves** a mode the symmetric solve
+  had failed — improving it by more than 1000× and reaching a backward
+  error of 1e-3 or better. Both conditions are needed because a
+  rigid-body mode's residual divides one roundoff quantity by another,
+  so its value is arbitrary (0.076, 0.79 and 12.4 have all been measured
+  on healthy models) while its improvement ratio stays near 10x, four
+  orders short of the 1e5 to 1e10 a real rescue achieves. A `RuntimeWarning` names
+  the swap, and attributes it to the mass matrix only when the mass
+  conditioning supports that — a wide stiffness range trips the same
+  guard with a perfectly conditioned mass. `SolverDiagnostics` gains
+  `residual_fallback` recording it.
+
+  The **sparse** path is deliberately not retried and never sets
+  `residual_fallback`. `eigsh(sigma=0, mode='normal')` factorises `K`
+  rather than the mass matrix, so a near-singular `M` does not degrade
+  it — on the mesh sweep that motivated this work it returned correct
+  frequencies on exactly the meshes large enough to select it. Retrying
+  it would also mean comparing two different mode sets, since
+  `which="LM"` selects the modes nearest zero in magnitude while the
+  retry selects the algebraically smallest.
+
+  **No existing result changes.** The decisive-improvement condition is
+  what guarantees that: a real deck can carry a large backward error
+  without being broken, and on the bundled NREL 5MW land tower (whose
+  adapter leaves the mass matrix at cond ~4e10) the general path is only
+  1.4× better while *splitting* a degenerate fore-aft / side-side pair
+  the symmetric solver resolves exactly.
+
+  Acceptance requires the candidate to be **non-regressive** as well as
+  decisively better somewhere. Taking the retry replaces the whole
+  spectrum, not the modes that prompted it, so a candidate that rescues
+  one mode while pushing a previously acceptable one above the failure
+  threshold is refused — it would hand back a new bad mode in place of an
+  old one. The guarantee is one-sided and precise: a mode that was
+  acceptable can end up above the regression floor only by not having got
+  worse, never as collateral of another mode's rescue. Below that floor
+  it is free to move either way, which is deliberate — a residual already
+  that small is not a claim about accuracy worth defending. A mode
+  already failing carries no verdict either way — above the threshold
+  neither candidate is trustworthy, and a rigid-body mode, whose residual
+  divides one roundoff quantity by another and has been measured at 12.4
+  against 0.79 on a healthy model, lives entirely in that region.
+  `max_residual` still reports it.
+
+  The comparison is made **per mode** rather than on the two maxima, so
+  that rigid-body modes cannot distort it. Their backward error is a
+  ratio of two near-zero quantities and reads ~1 in both candidates
+  however exact each is; on a maximum that floors the alternative and
+  hides a genuinely corrupted elastic mode sitting alongside them, while
+  per mode it simply registers as no improvement. The retry preserves
+  zero and negative eigenvalues and verifies that nothing was dropped
+  from inside the returned window, so it can never backfill a missing
+  mode with a higher one and shift the spectrum.
+
+  **Scope.** The rescue is reliable and platform-independent for the case
+  it was built for, a near-singular mass matrix with no rigid-body modes.
+  Where rigid-body modes and a near-singular mass matrix coincide it is
+  safe but not always effective: QZ may return the theoretically real
+  zero modes as complex-conjugate pairs, and where those land differs
+  between LAPACK builds. When they fall inside the requested window the
+  alternative's ordering cannot be verified and the retry declines,
+  leaving the result no worse than before with `max_residual` still
+  reporting the problem. Declining is deliberate — a guard added to stop
+  a silent wrong answer must not be able to introduce one.
+
+  The retry is also bounded in size, since a sparse solve that fails to
+  converge falls back to dense at any size and an unbounded `eig` there
+  could take minutes on a result already in hand. And it can decline: if
+  the alternative solver raises on the same defective pencil, the
+  symmetric result and its diagnostics are kept rather than the whole
+  solve failing.
+
+- `SolverOptions` gains five fields for the conditions above, each
+  governing one of them: `residual_retry_threshold` (what counts as a
+  failing mode), `residual_retry_improvement` (how much better the
+  candidate must be for the win to be a rescue rather than roundoff),
+  `residual_retry_resolved` (the backward error it must actually reach),
+  `residual_regression_floor` (where a worsened mode has to land before
+  the worsening counts) and `residual_retry_max_ndof` (the size above
+  which the retry is not attempted at all).
 
 ## [1.18.0] — 2026-08-12
 
