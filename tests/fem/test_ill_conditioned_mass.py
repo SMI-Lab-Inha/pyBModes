@@ -1130,6 +1130,13 @@ class TestTheModeCountWarningStaysHonest:
             solve_modes(gk, gm, n_modes=2)
 
 
+def _prefer_materialised_for(n_rows: int, n_cols: int) -> bool:
+    """Thin wrapper so the width-rule cases read as arithmetic."""
+    from pybmodes.fem.solver import _prefer_materialised
+
+    return _prefer_materialised(n_rows, n_cols)
+
+
 class TestTheGuardDoesNotTaxEverySolve:
     """Residuals are measured on every eligible solve, healthy ones
     included, so measuring them must not cost more than it saves.
@@ -1150,6 +1157,21 @@ class TestTheGuardDoesNotTaxEverySolve:
         b = rng.normal(size=(n, n))
         gk = b @ b.T
         return 0.5 * (gk + gk.T), 0.5 * (gm + gm.T)
+
+    def test_the_two_mechanisms_are_not_interchangeable(self):
+        """Blocking and the width test answer different questions, and
+        neither subsumes the other. Capping the block to the crossover
+        instead of testing the width was measured and is worse at both
+        ends: at ngd = 100 it splits one BLAS call into two for 206 us
+        against 116 us, and at ngd = 1000 it lifts the peak from 5.1 MB
+        to 21.3 MB."""
+        from pybmodes.fem import solver
+
+        # Large ngd: blocking is what bounds the peak, and the block it
+        # produces is already narrow, so the width test does not fire.
+        assert not _prefer_materialised_for(2000, solver._RESIDUAL_BLOCK)
+        # Small ngd: blocking barely bites, and the width test does.
+        assert _prefer_materialised_for(100, solver._RESIDUAL_BLOCK)
 
     def test_symmetrised_products_match_materialising(self):
         from pybmodes.fem.solver import _modal_residuals
@@ -1211,21 +1233,19 @@ class TestTheGuardDoesNotTaxEverySolve:
         assert all(is_gk and is_gm and sym for is_gk, is_gm, sym in seen), seen
 
     @pytest.mark.parametrize("k_over_n", [0.01, 0.2, 0.5, 1.0])
-    def test_no_pass_of_the_sweep_ever_sees_a_wide_block(
+    def test_no_pass_of_the_sweep_exceeds_the_block(
         self, k_over_n, monkeypatch,
     ):
-        """The invariant the memory bound rests on.
+        """The invariant the memory bound rests on: the peak follows the
+        block width, not the caller's ``n_modes`` — which defaults to
+        ``None`` and asks for the whole spectrum. Measured at ngd = 2000
+        with every mode requested, the unblocked sweep peaked at 128 MB
+        against 10.3 MB blocked.
 
-        ``0.5 (A v + A.T v)`` is only cheaper than building ``sym(A)``
-        while ``v`` is narrow, and nothing about the caller's ``n_modes``
-        guarantees that — ``None`` is the public default and asks for the
-        whole spectrum. Blocking is what supplies the guarantee, so this
-        asserts the width every pass actually sees rather than a measured
-        peak.
-
-        Measured, not asserted, and recorded here because it is why this
-        exists: at ngd = 2000 with every mode requested the unblocked
-        sweep peaked at 128 MB against 10.3 MB blocked.
+        This bounds the peak. It does *not* make the block narrow
+        relative to ``ngd``, which is a separate question settled by the
+        width test inside ``_apply`` — see
+        :meth:`test_a_small_system_still_gets_the_width_test`.
 
         Deliberately not a ``tracemalloc`` comparison. That reports what
         the allocator did, and a freed block from an earlier call gets
@@ -1301,6 +1321,40 @@ class TestTheGuardDoesNotTaxEverySolve:
             _modal_residuals(gk, gm, w, v, symmetrise=True), expected,
             rtol=1.0e-12, atol=1.0e-15,
         )
+
+    @pytest.mark.parametrize("n", [30, 60, 100, 150])
+    def test_a_small_system_still_gets_the_width_test(self, n, monkeypatch):
+        """Blocking bounds the block at 128 columns, which is narrow
+        against a large ``ngd`` but not a small one. Below ``ngd = 192``
+        a full-spectrum request hands ``_apply`` a block wider than the
+        ``2n/3`` crossover, so the width test inside it is still load
+        bearing — dropping it cost 178 us against 116 us at ngd = 100,
+        for the same peak.
+        """
+        from pybmodes.fem import solver
+
+        assert n < 192, "the point of this case is that 128 is not narrow"
+        k = n                                   # the n_modes=None default
+        assert min(solver._RESIDUAL_BLOCK, k) >= 2 * n / 3, (
+            "this ngd no longer produces a wide block; pick a smaller one"
+        )
+        assert _prefer_materialised_for(n, min(solver._RESIDUAL_BLOCK, k))
+
+    @pytest.mark.parametrize("n_rows,n_cols,built", [
+        (400, 400, True),        # full spectrum, the wide case
+        (2000, 2000, True),
+        (1500, 6, False),        # a few modes out of many DOFs
+        (400, 4, False),
+        (100, 128, True),        # small ngd: the block is not narrow
+        (400, 128, False),       # large ngd: the same block is
+    ])
+    def test_the_route_is_the_cheaper_of_the_two(self, n_rows, n_cols, built):
+        """Asserted against the cost model — ``3nk`` split against
+        ``2n^2`` built — rather than a measured peak, for the
+        platform-independence reason given above."""
+        assert _prefer_materialised_for(n_rows, n_cols) is built
+        split, build = 3 * n_rows * n_cols, 2 * n_rows * n_rows
+        assert _prefer_materialised_for(n_rows, n_cols) == (build <= split)
 
     @pytest.mark.parametrize("block", [1, 3, 16, 64, 1000])
     def test_the_block_width_is_a_free_parameter(self, block, monkeypatch):

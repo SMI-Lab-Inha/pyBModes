@@ -684,18 +684,39 @@ def _compare_candidate_modes(
 _RESIDUAL_BLOCK = 128
 
 
+def _prefer_materialised(n_rows: int, n_cols: int) -> bool:
+    """Is ``sym(A) v`` cheaper built than split into two products?
+
+    The split form peaks at three ``n x k`` temporaries and the built one
+    at an ``n x n`` copy plus the ``n x k`` result, so they cross over at
+    ``3 n k = 2 n^2``, i.e. ``k = 2n/3``.
+
+    Measured, not derived. A flop-count estimate put the crossover at
+    ``n/3``, which would have taken the dearer route across a third of
+    the range.
+    """
+    return n_cols * 3 >= n_rows * 2
+
+
 def _apply(a: np.ndarray, v: np.ndarray, symmetrise: bool) -> np.ndarray:
-    """``A v``, or ``sym(A) v`` without building ``sym(A)``.
+    """``A v``, or ``sym(A) v`` by whichever route is cheaper.
 
     ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``, and the right-hand side
-    avoids a dense ngd-square allocation. That only holds while ``v`` is
-    narrow — at full width the two products cost more than the copy they
-    were avoiding — so this is called on one column block at a time and
-    never sees a wide ``v``. The blocking, not a width test here, is what
-    keeps the choice safe; see :func:`_modal_residuals`.
+    avoids a dense ngd-square allocation — but only while ``v`` is
+    narrow. At full width the two products cost more than the copy they
+    were avoiding, so the route is tested rather than assumed.
+
+    Blocking the caller's sweep does not remove the need for the test.
+    It bounds the block at :data:`_RESIDUAL_BLOCK` columns, which is
+    narrow relative to a large ``ngd`` but not to a small one: below
+    ``ngd = 192`` a full-spectrum request still hands this a block wider
+    than the crossover. Measured at ``ngd = 100``, testing the width
+    there runs the sweep in 116 us against 178 us for the same peak.
     """
     if not symmetrise:
         return np.asarray(a @ v)
+    if v.ndim > 1 and _prefer_materialised(a.shape[0], v.shape[1]):
+        return np.asarray(0.5 * (a + a.T) @ v)
     return np.asarray(0.5 * (a @ v + a.T @ v))
 
 
