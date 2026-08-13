@@ -1134,12 +1134,13 @@ class TestTheGuardDoesNotTaxEverySolve:
     """Residuals are measured on every eligible solve, healthy ones
     included, so measuring them must not cost more than it saves.
 
-    ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``, and the two differ only in
-    what they allocate. For a thin block the second form avoids a dense
-    ngd-square pair: at ngd = 1500 with six modes that is 0.3 MB against
-    54 MB, and it falls on the large sparse solves the copy would hurt
-    most. For a wide one the comparison inverts, so the route is chosen
-    rather than assumed.
+    Two things keep it cheap. ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``
+    and only the second form avoids a dense ngd-square pair, which
+    matters most on the large sparse solves the copy would hurt. And the
+    sweep runs in column blocks, so its peak is set by the block width
+    rather than by how many modes the caller asked for — without that,
+    the identity above inverts at full width and ``n_modes=None`` is the
+    public default.
     """
 
     def _pair(self, n):
@@ -1209,55 +1210,101 @@ class TestTheGuardDoesNotTaxEverySolve:
         # symmetrised basis, rather than being handed a built pair.
         assert all(is_gk and is_gm and sym for is_gk, is_gm, sym in seen), seen
 
-    @pytest.mark.parametrize("k_over_n", [0.01, 0.2, 0.5, 0.67, 0.9, 1.0])
-    def test_whichever_route_is_taken_is_the_cheaper_one(self, k_over_n):
-        """The products are only thin while the block is. ``n_modes=None``
-        is the public default and returns the whole spectrum, at which
-        point two full matmuls cost more than the single copy they were
-        avoiding, so the route is chosen by width.
+    @pytest.mark.parametrize("k_over_n", [0.01, 0.2, 0.5, 1.0])
+    def test_no_pass_of_the_sweep_ever_sees_a_wide_block(
+        self, k_over_n, monkeypatch,
+    ):
+        """The invariant the memory bound rests on.
 
-        Asserted against the cost model rather than against a measured
-        peak. ``tracemalloc`` reports what the *allocator* did, and a
-        freed block from an earlier call can be reused by a later one, so
-        the same three routes time-share buffers differently depending on
-        the order they are measured in and on the platform. An earlier
-        version of this test compared three live measurements and failed
-        on Linux while passing on Windows, having measured reuse rather
-        than cost.
+        ``0.5 (A v + A.T v)`` is only cheaper than building ``sym(A)``
+        while ``v`` is narrow, and nothing about the caller's ``n_modes``
+        guarantees that — ``None`` is the public default and asks for the
+        whole spectrum. Blocking is what supplies the guarantee, so this
+        asserts the width every pass actually sees rather than a measured
+        peak.
 
-        The cost model asserted against — ``3nk`` split, ``2n^2`` built —
-        and where it came from are on :func:`_prefer_materialised`.
+        Measured, not asserted, and recorded here because it is why this
+        exists: at ngd = 2000 with every mode requested the unblocked
+        sweep peaked at 128 MB against 10.3 MB blocked.
+
+        Deliberately not a ``tracemalloc`` comparison. That reports what
+        the allocator did, and a freed block from an earlier call gets
+        reused by a later one, so competing forms time-share buffers
+        differently by measurement order and by platform. An earlier
+        version of this test compared three live peaks and failed on
+        Linux while passing on Windows, having measured reuse.
         """
-        from pybmodes.fem.solver import _prefer_materialised
+        from pybmodes.fem import solver
 
-        n = 400
-        k = max(1, round(k_over_n * n))
-        split, built = 3 * n * k, 2 * n * n
-        assert _prefer_materialised(n, k) == (built <= split), (
-            f"k/n={k_over_n}: chose the "
-            f"{'built' if _prefer_materialised(n, k) else 'split'} form "
-            f"when split costs {split} and built costs {built}"
+        widths = []
+        real = solver._apply
+        monkeypatch.setattr(
+            solver, "_apply",
+            lambda a, v, s: (widths.append(v.shape[1]), real(a, v, s))[1],
         )
 
-    def test_a_full_width_block_is_not_treated_as_thin(self):
-        """The case that prompted the rule: ``n_modes=None`` returns the
-        whole spectrum, so ``v`` is square and the products are two full
-        matrix multiplies."""
-        from pybmodes.fem.solver import _prefer_materialised
+        n = 200
+        gk, gm = self._pair(n)
+        k = max(1, round(k_over_n * n))
+        rng = np.random.default_rng(12)
+        v = np.linalg.qr(rng.normal(size=(n, k)))[0]
+        solver._modal_residuals(
+            gk, gm, np.linspace(1.0, 2.0, k), v, symmetrise=True,
+        )
 
-        assert _prefer_materialised(400, 400)
-        assert _prefer_materialised(2000, 2000)
+        assert widths, "the sweep did not run"
+        assert max(widths) <= solver._RESIDUAL_BLOCK, (
+            f"k={k}: a pass saw {max(widths)} columns, above the "
+            f"{solver._RESIDUAL_BLOCK}-column block"
+        )
+        assert sum(widths) == 2 * k, "every mode is measured exactly once"
 
-    def test_a_few_modes_out_of_many_dofs_stays_thin(self):
-        from pybmodes.fem.solver import _prefer_materialised
+    def test_a_thin_request_still_runs_in_one_pass(self, monkeypatch):
+        """Blocking must not tax the common case — a handful of modes out
+        of a few thousand DOFs is one pass per matrix, exactly the two
+        products the unblocked form did."""
+        from pybmodes.fem import solver
 
-        assert not _prefer_materialised(1500, 6)
-        assert not _prefer_materialised(400, 4)
+        calls = []
+        real = solver._apply
+        monkeypatch.setattr(
+            solver, "_apply",
+            lambda a, v, s: (calls.append(v.shape[1]), real(a, v, s))[1],
+        )
+
+        gk, gm = self._pair(400)
+        rng = np.random.default_rng(14)
+        v = np.linalg.qr(rng.normal(size=(400, 6)))[0]
+        solver._modal_residuals(
+            gk, gm, np.linspace(1.0, 2.0, 6), v, symmetrise=True,
+        )
+        assert calls == [6, 6], f"expected one pass per matrix, got {calls}"
+
+    @pytest.mark.parametrize("k", [1, 7, 128, 129, 260])
+    def test_blocking_does_not_change_the_answer(self, k):
+        """Straddles the block boundary: one pass, one plus a remainder,
+        and several."""
+        from pybmodes.fem.solver import _apply, _modal_residuals
+
+        n = 300
+        gk, gm = self._pair(n)
+        rng = np.random.default_rng(13)
+        v = np.linalg.qr(rng.normal(size=(n, k)))[0]
+        w = np.linspace(1.0, 2.0, k)
+
+        kx, mx = _apply(gk, v, True), _apply(gm, v, True)
+        den = np.linalg.norm(kx, axis=0)
+        expected = np.linalg.norm(
+            kx - mx * w[np.newaxis, :], axis=0,
+        ) / np.where(den > 0.0, den, 1.0)
+        assert np.allclose(
+            _modal_residuals(gk, gm, w, v, symmetrise=True), expected,
+            rtol=1.0e-12, atol=1.0e-15,
+        )
 
     @pytest.mark.parametrize("k", [1, 7, 26, 27, 40])
     def test_both_routes_agree_numerically(self, k):
-        """Whichever route is taken, the answer is ``sym(A) v``. ``k``
-        spans both sides of the crossover at ``2n/3 = 26.7``."""
+        """Whichever route is taken, the answer is ``sym(A) v``."""
         from pybmodes.fem.solver import _apply
 
         n = 40

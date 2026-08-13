@@ -671,40 +671,25 @@ def _compare_candidate_modes(
 # temporaries, so they cross over at ``k = 2 n / 3`` — measured, not
 # derived: a first estimate of ``n / 3`` was wrong by a factor of two and
 # would have taken the more expensive route across a third of the range.
-def _prefer_materialised(n_rows: int, n_cols: int) -> bool:
-    """Is ``sym(A) v`` cheaper built than split into two products?
-
-    The split form peaks at three ``n x k`` temporaries and the built one
-    at an ``n x n`` copy plus the ``n x k`` result, so they cross over at
-    ``3 n k = 2 n^2``, i.e. ``k = 2n/3``.
-
-    Measured, not derived. A flop-count estimate put the crossover at
-    ``n/3``, which would have taken the dearer route across a third of
-    the range — precisely the middling widths this sees in practice.
-    """
-    return n_cols * 3 >= n_rows * 2
+# Columns per pass of the residual sweep. Every temporary in the sweep
+# is ``ngd x`` this, so the peak is bounded by it rather than by the
+# number of modes the caller asked for. Wide enough that the BLAS call
+# still amortises its own overhead.
+_RESIDUAL_BLOCK = 128
 
 
 def _apply(a: np.ndarray, v: np.ndarray, symmetrise: bool) -> np.ndarray:
-    """``A v``, or ``sym(A) v`` by whichever route is cheaper.
+    """``A v``, or ``sym(A) v`` without building ``sym(A)``.
 
-    ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``. The right-hand side avoids
-    a dense ngd-square allocation, which is what a modal solve usually
-    wants: residuals are measured on every eligible solve, healthy ones
-    included, and a handful of modes out of a few thousand DOFs makes
-    those products very thin.
-
-    It is not free, though, and the assumption fails at the other end.
-    ``n_modes=None`` is the public default and returns the whole
-    spectrum, making ``v`` square — the "products" are then two full
-    matrix multiplies whose temporaries exceed the single copy they were
-    avoiding. So the route is chosen by the block width rather than
-    assumed.
+    ``0.5 (A + A.T) v == 0.5 (A v + A.T v)``, and the right-hand side
+    avoids a dense ngd-square allocation. That only holds while ``v`` is
+    narrow — at full width the two products cost more than the copy they
+    were avoiding — so this is called on one column block at a time and
+    never sees a wide ``v``. The blocking, not a width test here, is what
+    keeps the choice safe; see :func:`_modal_residuals`.
     """
     if not symmetrise:
         return np.asarray(a @ v)
-    if v.ndim > 1 and _prefer_materialised(a.shape[0], v.shape[1]):
-        return np.asarray(0.5 * (a + a.T) @ v)
     return np.asarray(0.5 * (a @ v + a.T @ v))
 
 
@@ -715,19 +700,35 @@ def _modal_residuals(
     """Per-mode relative backward error ``||K x - λ M x|| / ||K x||``.
 
     The honest health metric for a generalised modal solve, and cheap
-    enough to compute on every path — a matrix against a block of
-    eigenvectors, usually a thin one.
+    enough to compute on every path.
 
     ``symmetrise`` measures against ``sym(A)`` instead, which is what a
-    symmetric path actually solved — see :func:`_apply` for why that is
-    done through the products rather than by building the pair.
+    symmetric path actually solved.
+
+    **Swept in column blocks.** The residual is per mode, so no step
+    needs every mode present at once, and holding them all would tie the
+    peak to a number the caller chooses: ``n_modes=None`` is the public
+    default and returns the whole spectrum, which at the retry size cap
+    would put four ngd-square arrays live at once — over 100 MB — purely
+    to measure. Blocking bounds every temporary at ``ngd`` by
+    :data:`_RESIDUAL_BLOCK` instead, and leaves the common thin case
+    (a handful of modes out of a few thousand DOFs) in a single pass,
+    computed exactly as before.
     """
     if eigvecs.size == 0:
         return np.empty(0, dtype=float)
-    kx = _apply(gk, eigvecs, symmetrise)              # (ngd, k)
-    mx = _apply(gm, eigvecs, symmetrise)
-    num = np.linalg.norm(kx - mx * eigvals[np.newaxis, :], axis=0)
-    den = np.linalg.norm(kx, axis=0)
+    n_modes_out = eigvecs.shape[1]
+    num = np.empty(n_modes_out, dtype=float)
+    den = np.empty(n_modes_out, dtype=float)
+    for lo in range(0, n_modes_out, _RESIDUAL_BLOCK):
+        hi = min(lo + _RESIDUAL_BLOCK, n_modes_out)
+        block = eigvecs[:, lo:hi]
+        kx = _apply(gk, block, symmetrise)             # (ngd, <= block)
+        mx = _apply(gm, block, symmetrise)
+        den[lo:hi] = np.linalg.norm(kx, axis=0)
+        num[lo:hi] = np.linalg.norm(
+            kx - mx * eigvals[np.newaxis, lo:hi], axis=0,
+        )
     return np.asarray(num / np.where(den > 0.0, den, 1.0), dtype=float)
 
 
