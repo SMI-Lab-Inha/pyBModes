@@ -78,6 +78,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   its ballast in HydroDyn filled members rather than `PtfmMass`, which
   the platform model does not include, so its roll / pitch restoring is
   negative and the modes labelled roll / pitch there are tower bending.
+- **WindIO discovery ignored every yaml under a path containing
+  "OpenFAST".** The exclusion meant for the `OpenFAST/` deck directory of
+  an RWT layout matched the absolute path, so a checkout living under
+  e.g. `~/OpenFAST-GUI/` found no ontology at all. Only the part of the
+  path below the search root is examined now.
 
 ## [1.18.0] — 2026-08-13
 
