@@ -27,6 +27,8 @@ inline or taken from the published closed forms above.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -277,13 +279,14 @@ class TestPointMassOnTower:
         a = 60.0
         m_lump = 5.0e5
         # A beam mass this far below the lump makes the generalised mass
-        # matrix nearly singular, which the symmetric eigensolvers handle
-        # badly. The solver detects that from the backward error and
-        # redoes the solve on the general path, so a coarse mesh is fine
-        # here — see tests/fem/test_ill_conditioned_mass.py.
+        # matrix nearly singular. The dense solver factorises the
+        # stiffness side instead of the mass, so this solves directly —
+        # no residual retry, no warning — and a coarse mesh is fine here;
+        # see tests/fem/test_dense_inverted_solver.py.
         tower = _synthetic_tower(tmp_path, mass_den=1.0e-2, n_elements=25)
         tower.add_point_mass(a, m_lump)
-        with pytest.warns(RuntimeWarning, match="backward error"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
             f = tower.run(6, check_model=False).frequencies[0]
         f_ref = np.sqrt(3.0 * EI_PHYS / (m_lump * a**3)) / (2.0 * np.pi)
         assert f == pytest.approx(f_ref, rel=5.0e-3)

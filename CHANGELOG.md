@@ -8,7 +8,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+### Fixed
+
+- **Dense symmetric solves depended on how many modes were requested.**
+  The dense path reduced `K x = λ M x` through a Cholesky factor of the
+  mass matrix, and a backward-stable symmetric eigensolver gets each
+  eigenvalue of the reduced matrix only to an *absolute* accuracy of
+  about `eps · λ_max`. The ElastoDyn adapters floor rotary inertia at
+  1e-6, which puts `λ_max / λ_min` near 1e15, so the lowest modes carried
+  errors of several percent that moved with the `subset_by_index`
+  window. On the bundled NREL 5MW blade at 12.1 rpm the first flap mode
+  read **0.7154 / 0.7096 / 0.7661 / 0.7282 Hz** for `n_modes` = 4 / 6 /
+  10 / 20, and first edge 1.1221 / 1.1184 / 1.0884 / 1.1303 Hz; the tower
+  fore-aft / side-side pair moved and swapped. Every model below the
+  500-DOF sparse threshold took this path — every ElastoDyn blade and
+  tower.
+
+  The dense path now solves the inverted pencil `M x = μ (K + s M) x`,
+  `μ = 1 / (λ + s)`, which puts the wanted modes at the top of the
+  spectrum where the same absolute accuracy is a relative one — the
+  shift-invert transformation the sparse path already used. The shift is
+  zero when `K` is positive definite and is otherwise grown from an
+  estimate of the lowest eigenvalues until `K + s M` factorises, so
+  rigid-body modes and the negative eigenvalues of a column loaded past
+  buckling are still returned. A request reaching into the upper half of
+  the spectrum takes those modes from the mass-reduced form, which is the
+  accurate one there. Results are now independent of `n_modes` and agree
+  with the sparse path to roundoff: blade flap1 / edge1 / flap2 =
+  **0.72865 / 1.09754 / 2.00842 Hz** at every window, tower 1st pair
+  0.33483 / 0.33561 Hz, backward error ~1e-10 (was ~5e-2). Frequencies of
+  every dense-path model change by up to the old error — on the NREL 5MW
+  blade up to ~5 % on the lowest flap / edge modes, on the tower ~0.3 %.
+
+  The mass-reduced form is kept as the fallback for a pencil no shift
+  makes definite, and the residual retry of 1.18.0 still stands behind
+  it; the near-singular-mass case it was built for now solves directly
+  on the dense path without a retry or a warning.
+  `tests/test_campbell.py::test_first_flap_lifts_endpoint_to_endpoint`,
+  which sat at 2.95 % against its 3 % gate on some BLAS builds, now
+  measures 7.6 %.
 
 ## [1.18.0] — 2026-08-13
 

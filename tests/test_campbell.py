@@ -152,12 +152,16 @@ class TestCentrifugalStiffening:
     def test_first_flap_lifts_endpoint_to_endpoint(
         self, spec_sweep: CampbellResult
     ) -> None:
-        """Compare parked vs rated only — the per-step noise floor on the
-        ill-conditioned ElastoDyn-blade FEM is ~5 % on the lowest mode,
-        so a 3-rpm-point monotonicity test is unreliable. The Wright
-        (1982) Southwell estimate ``ω² = ω₀² + K·Ω²`` with K ≈ 1.12 (NREL
-        5MW) predicts a ~4–5 % frequency lift over 0..12.1 rpm; gate at
-        3 % to clear the noise floor.
+        """Compare parked vs rated. The Wright (1982) Southwell estimate
+        ``ω² = ω₀² + K·Ω²`` with K ≈ 1.12 (NREL 5MW) predicts a lift of
+        several percent over 0..12.1 rpm; gate at 3 %.
+
+        The gate used to be marginal (2.95 % measured on one BLAS
+        build): the mass-reduced dense solve returned the ElastoDyn
+        blade's first flap mode with an error of several percent that
+        moved with the requested mode count. The inverted dense solve
+        resolves it to roundoff (0.677 to 0.729 Hz, +7.6 %); see
+        ``tests/fem/test_dense_inverted_solver.py``.
         """
         slot = _first_label_index(spec_sweep, "flap")
         f0 = spec_sweep.frequencies[0, slot]

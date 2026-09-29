@@ -1,13 +1,21 @@
-"""The symmetric eigensolvers degrade silently on a near-singular mass
-matrix, and the solver has to notice.
+"""The mass-reduced symmetric eigensolve degrades silently on a
+near-singular mass matrix, and the solver has to notice.
 
-``scipy.linalg.eigh`` reduces ``K x = lambda M x`` through a Cholesky
-factor of the **mass** matrix. When that matrix is nearly singular — a
-very light beam carrying a very heavy lump — the reduction loses
-accuracy, and LAPACK returns confidently wrong low modes rather than
-raising. On the case pinned below the dense symmetric path reported
-0.103 Hz against a true 0.0436 Hz, a factor of 2.4, with no error and no
-warning.
+``scipy.linalg.eigh(K, M)`` reduces ``K x = lambda M x`` through a
+Cholesky factor of the **mass** matrix. When that matrix is nearly
+singular — a very light beam carrying a very heavy lump — the reduction
+loses accuracy, and LAPACK returns confidently wrong low modes rather
+than raising. On the case pinned below that route reported 0.103 Hz
+against a true 0.0436 Hz, a factor of 2.4, with no error and no warning.
+
+The dense symmetric path no longer takes that route first: it solves the
+inverted pencil, which factorises ``K`` and gets this case right on its
+own (``tests/fem/test_dense_inverted_solver.py``). The mass-reduced form
+survives as the fallback for a pencil no shift makes definite, and the
+residual retry pinned here still stands behind it. Every test in this
+module therefore runs with the inverted route switched off (the
+``_mass_reduced_route`` fixture below), so each one keeps exercising the
+guard it was written for.
 
 The sparse path is exempt and must stay exempt: ``eigsh(sigma=0,
 mode='normal')`` factorises ``K`` instead, so a near-singular ``M`` does
@@ -19,11 +27,12 @@ almost every test here exists because some reading of it turned out to
 be wrong. Three things it does *not* establish, each learned the hard
 way and each pinned below:
 
-- **A large error is not evidence of a breakdown.** The bundled NREL 5MW
-  land deck sits at ~2e-2 because its adapter leaves ``M`` at cond ~4e10;
-  swapping there churns a validated frequency by 0.84 % and splits a
-  degenerate fore-aft / side-side pair the symmetric solver resolves
-  exactly, which the FA / SS classifier depends on.
+- **A large error is not by itself a case for the general path.** On
+  the mass-reduced route the bundled NREL 5MW land deck sits at ~1e-2,
+  because its adapter leaves ``M`` at cond ~4e10 and its pencil spans
+  some fifteen decades; the general path shares that range and is no
+  reliable cure, so a swap there is churn rather than a rescue. The
+  inverted route removes the error at the source (backward error ~1e-10).
 - **A small error is not evidence of a rescue.** A rigid-body mode's
   residual divides one roundoff quantity by another, so its value is
   arbitrary: 12.4, 0.79 and 0.076 have all been measured on healthy
@@ -62,6 +71,18 @@ M_TIP = 4.0e5
 # 1e12 and is what breaks the Cholesky reduction.
 LIGHT = 1.0e-2
 REALISTIC = 1.0e3
+
+
+@pytest.fixture(autouse=True)
+def _mass_reduced_route(monkeypatch):
+    """Route every dense symmetric solve through the mass-reduced form,
+    the only route the residual retry now stands behind."""
+    import pybmodes.fem.solver as solvermod
+
+    def _no_definite_shift(*_args, **_kwargs):
+        raise np.linalg.LinAlgError("inverted route disabled for this module")
+
+    monkeypatch.setattr(solvermod, "_solve_dense_inverted", _no_definite_shift)
 
 
 def _analytic() -> float:
@@ -178,8 +199,7 @@ class TestMarginalImprovementIsRefused:
 
     A synthetic pair where the symmetric solve is above the threshold but
     the general path cannot do materially better must keep the symmetric
-    result — the behaviour that protects the bundled land deck's
-    degenerate fore-aft / side-side pair.
+    result.
     """
 
     def test_marginal_gain_keeps_the_symmetric_result(self, monkeypatch):
