@@ -40,6 +40,7 @@ from pybmodes.io.construction import ConstructionInputs, TubeSegment
 from pybmodes.io.sec_props import SectionProperties
 from pybmodes.models._pipeline import run_fem
 from pybmodes.models._platform import (
+    _gravitational_restoring,
     _platform_inertia_matrix,
     _scan_platform_fields,
 )
@@ -902,6 +903,15 @@ class Tower:
           to the WAMIT ``.1`` and ``.hst`` files). Optional — if
           ``hydrodyn_dat_path`` is omitted, both default to zero, so
           the resulting model couples only mooring + platform inertia.
+        - **Gravitational restoring** of the platform, tower and RNA,
+          ``−m g z`` in roll and pitch about the reference point, added
+          to ``hydro_K`` alongside ``C_hst``. The ``.hst`` excludes the
+          body weight, which OpenFAST applies through ElastoDyn's
+          gravity; without it a ballast-stabilised spar has negative
+          roll / pitch stiffness. Added only when a HydroDyn deck is
+          given, since weight without the buoyancy that balances it does
+          not describe a floating body. See
+          :func:`pybmodes.models._platform._gravitational_restoring`.
         - **Platform inertia** from the ``PtfmMass`` / ``PtfmRIner`` /
           ``PtfmPIner`` / ``PtfmYIner`` / ``PtfmCM*`` / ``PtfmRefzt``
           scalars in the ElastoDyn main file. The 6 × 6 ``i_matrix`` is
@@ -1058,6 +1068,18 @@ class Tower:
         bmi.hub_conn = 2
         bmi.tow_support = 1
         bmi.support = platform_support
+
+        # The WAMIT ``.hst`` excludes the body weight, which OpenFAST
+        # supplies through ElastoDyn's gravity loading of the platform,
+        # tower and RNA. Without it a ballast-stabilised spar reads as
+        # unstable in roll and pitch (OC3 Hywind: C44 = C55 = −5.0e9
+        # N·m/rad from the .hst alone), and those two rigid-body modes
+        # were lost. Only paired with hydrostatics: weight without the
+        # buoyancy that balances it is not a floating body.
+        if hydrodyn_dat_path is not None:
+            platform_support.hydro_K = C_hst + _gravitational_restoring(
+                bmi, sp,
+            )
 
         obj = cls.__new__(cls)
         obj._bmi = bmi
@@ -1434,6 +1456,13 @@ class Tower:
         bmi.hub_conn = 2
         bmi.tow_support = 1
         bmi.support = platform_support
+        # Both hydrostatic tiers — the WAMIT ``.hst`` and the member
+        # waterplane integration — are buoyancy-only; add the weight of
+        # platform, tower and RNA exactly as from_elastodyn_with_mooring
+        # does, so the deck-backed tier stays equivalent to it.
+        platform_support.hydro_K = C_hst + _gravitational_restoring(
+            bmi, sp, g=g,
+        )
 
         obj = cls.__new__(cls)
         obj._bmi = bmi

@@ -47,6 +47,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `tests/test_campbell.py::test_first_flap_lifts_endpoint_to_endpoint`,
   which sat at 2.95 % against its 3 % gate on some BLAS builds, now
   measures 7.6 %.
+- **Floating models built from OpenFAST decks lost their roll and pitch
+  modes.** `Tower.from_elastodyn_with_mooring` took the restoring from
+  the WAMIT `.hst`, which holds only the hydrostatic part
+  `ρ g I_wp + ρ g V z_B`. OpenFAST adds the body weight through
+  ElastoDyn's gravity; the model did not, so a ballast-stabilised spar
+  read as unstable — OC3 Hywind `C44 = C55 = −5.0e9 N·m/rad` — and the
+  general eigensolver silently dropped the two negative-eigenvalue modes,
+  returning four of the six rigid-body modes. The constructor now adds the
+  weight restoring `−g Σ mᵢ (zᵢ − z_ref)` of the platform, the tower and
+  the RNA to `hydro_K` (+6.17e9 N·m/rad on OC3: +6.58e9 of ballast,
+  −0.41e9 of tower and RNA). It is added only when a HydroDyn deck is
+  given, since weight without the buoyancy that balances it does not
+  describe a floating body. `Tower.from_windio_floating` adds the same
+  term in both of its tiers, so the deck-backed tier stays equivalent to
+  `from_elastodyn_with_mooring`. OC3 Hywind from the r-test decks now
+  gives surge / sway / heave / roll / pitch / yaw = 0.00806 / 0.00806 /
+  0.03241 / **0.03383 / 0.03383** / 0.04121 Hz against Jonkman (2010)
+  0.0080 / 0.0080 / 0.0324 / 0.0342 / 0.0343 Hz (roll and pitch were
+  absent before). Yaw is the catenary-only value; the published 0.1210 Hz
+  includes an additional 9.834e7 N·m/rad crowfoot spring the r-test
+  MoorDyn deck does not carry. The coupled first tower pair moves from
+  0.4887 / 0.4903 to 0.4922 / 0.4938 Hz.
+- **A negative-stiffness rigid-body mode is no longer dropped silently.**
+  `Tower.run` on a free-free floating model now warns (`UserWarning`)
+  when `hydro_K + mooring_K` has a negative direction, naming the
+  dominant DOFs: the platform is statically unstable there and the
+  general solver leaves those modes out of the result. The bundled
+  `08_nrel5mw_oc4semi` sample triggers it — the OC4 DeepCwind deck keeps
+  its ballast in HydroDyn filled members rather than `PtfmMass`, which
+  the platform model does not include, so its roll / pitch restoring is
+  negative and the modes labelled roll / pitch there are tower bending.
 
 ## [1.18.0] — 2026-08-13
 

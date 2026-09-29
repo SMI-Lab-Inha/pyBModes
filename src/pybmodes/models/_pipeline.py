@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -191,6 +192,75 @@ def _gravity_axial_force(
     return axf_g, grav_w
 
 
+_RIGID_DOF_NAMES = ("surge", "sway", "heave", "roll", "pitch", "yaw")
+# Relative size below which a negative restoring eigenvalue is noise
+# rather than an unstable direction. Mooring stiffness is a finite
+# difference of the catenary solution, so a direction with no restoring
+# at all (the yaw of a single column with centreline fairleads) comes back
+# at a few parts per million of the stiffest one, either sign. A real
+# instability is of the order of the restoring itself.
+_NEGATIVE_RESTORING_RTOL = 1.0e-4
+
+
+def _warn_on_negative_platform_restoring(plat: PlatformSupport) -> None:
+    """Warn when the platform restoring has a negative-stiffness direction.
+
+    On a free-free floating model the rigid-body modes are resisted by
+    ``hydro_K + mooring_K`` alone — the flexible tower adds nothing to a
+    rigid motion — so a negative direction in that matrix is a
+    rigid-body mode with a negative eigenvalue. The general dense solver
+    filters such eigenvalues out, and before this check the mode simply
+    went missing from the result: OC3 Hywind built from its WAMIT
+    ``.hst`` without the body weight came back with four of its six
+    rigid-body modes and no indication why.
+
+    The sign test is on the matrix scaled by the platform's own inertia,
+    ``D^-1/2 K D^-1/2``, which keeps the count of negative eigenvalues
+    (Sylvester's law of inertia) while putting translations and rotations
+    on a common scale for the roundoff tolerance.
+    """
+    k = np.asarray(plat.hydro_K, dtype=float) + np.asarray(
+        plat.mooring_K, dtype=float,
+    )
+    if k.shape != (6, 6) or not np.all(np.isfinite(k)):
+        return
+    k = 0.5 * (k + k.T)
+    d = np.diag(
+        np.asarray(plat.i_matrix, dtype=float)
+        + np.asarray(plat.hydro_M, dtype=float)
+    ).copy()
+    # A DOF with no inertia of its own (a yaw inertia left at zero) takes
+    # the largest of its group, so its roundoff is not magnified.
+    for group in (slice(0, 3), slice(3, 6)):
+        part = d[group]
+        valid = np.isfinite(part) & (part > 0.0)
+        part[~valid] = float(part[valid].max()) if valid.any() else 1.0
+    scale = 1.0 / np.sqrt(d)
+    lam, vec = np.linalg.eigh(k * np.outer(scale, scale))
+    worst = float(np.max(np.abs(lam), initial=0.0))
+    negative = lam < -_NEGATIVE_RESTORING_RTOL * worst
+    if not negative.any():
+        return
+    names = sorted({
+        _RIGID_DOF_NAMES[int(np.argmax(np.abs(vec[:, i])))]
+        for i in np.flatnonzero(negative)
+    }, key=_RIGID_DOF_NAMES.index)
+    warnings.warn(
+        f"the platform restoring (hydro_K + mooring_K) has "
+        f"{int(negative.sum())} negative-stiffness direction(s), dominated "
+        f"by {', '.join(names)}: the platform is statically unstable "
+        f"there, and the corresponding rigid-body mode(s) have negative "
+        f"eigenvalues, which the general (non-symmetric) solver path "
+        f"leaves out of the returned modes. A WAMIT "
+        f".hst excludes the body weight (the -m g z_G term), and ballast "
+        f"carried outside PtfmMass — e.g. HydroDyn filled members — is not "
+        f"in the model either; check that the restoring includes every "
+        f"weight and buoyancy contribution.",
+        UserWarning,
+        stacklevel=4,  # past run_fem and Tower.run, to the caller
+    )
+
+
 def run_fem(
     bmi: BMIFile,
     n_modes: int = 20,
@@ -280,6 +350,8 @@ def run_fem(
     # hand-built BMIFile instances follow the same path.
     platform_nd = None
     if isinstance(bmi.support, PlatformSupport):
+        if bmi.hub_conn == 2:
+            _warn_on_negative_platform_restoring(bmi.support)
         platform_nd = nondim_platform(bmi.support, nd)
         # Embedded tension wires within the platform block
         plat_wires = bmi.support.wires

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Platform-scalar parsing + inertia-matrix assembly helpers.
+"""Platform-scalar parsing, inertia-matrix and weight-restoring helpers.
 
 Used by :meth:`pybmodes.models.Tower.from_elastodyn_with_mooring` and
 :meth:`pybmodes.models.Tower.from_windio_floating` (deck-fallback
@@ -35,6 +35,9 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import numpy as np
+
+    from pybmodes.io.bmi import BMIFile
+    from pybmodes.io.sec_props import SectionProperties
 
 
 def _scan_platform_fields(dat_path: pathlib.Path) -> dict[str, float]:
@@ -137,3 +140,83 @@ def _platform_inertia_matrix(ptfm: dict[str, float]) -> np.ndarray:
     i_mat[4, 4] = ptfm["PtfmPIner"]   # pitch inertia about CM (DOF 4)
     i_mat[5, 5] = ptfm["PtfmYIner"]   # yaw   inertia about CM
     return i_mat
+
+
+#: Standard gravity (m/s²), the OpenFAST ``Gravity`` default.
+STANDARD_GRAVITY = 9.80665
+
+
+def _gravitational_restoring(
+    bmi: BMIFile,
+    sp: SectionProperties,
+    *,
+    g: float = STANDARD_GRAVITY,
+) -> np.ndarray:
+    """Roll / pitch restoring from the weight of the whole floating system.
+
+    A WAMIT ``.hst`` holds only the hydrostatic part of the restoring,
+    ``ρ g I_wp + ρ g V z_B`` — the weight of the body is deliberately left
+    out, because OpenFAST adds it through ElastoDyn's gravity loading of
+    the platform, tower and rotor-nacelle assembly. A model assembled from
+    those decks has to add it back, or a ballast-stabilised spar reads as
+    hydrostatically unstable: on OC3 Hywind the ``.hst`` alone gives
+    ``C44 = C55 = −5.0e9 N·m/rad``.
+
+    For a rigid rotation ``θ`` about a horizontal axis through the
+    hydro/mooring reference point, a mass ``m`` whose centre sits at
+    height ``z`` above that point drops by ``z θ² / 2``, so its weight
+    contributes ``−m g z`` to both ``C44`` and ``C55`` — the ``−m g z_G``
+    half of the classical restoring ``ρ g V (z_B − z_G) + ρ g I_wp``
+    (Faltinsen 1990, *Sea Loads on Ships and Offshore Structures*, ch. 2),
+    and the half that Jonkman (2007) NREL/TP-500-41958 leaves to the
+    structural model rather than the hydrodynamic one. The sum runs over
+
+    - the platform: ``mass_pform`` at ``z = −cm_pform``;
+    - the flexible tower: ``mass_den`` (times the ``sec_mass`` scaling)
+      integrated from the base at ``z = −draft`` to the top at
+      ``z = radius``, plus any discrete point masses;
+    - the tower-top lump: ``tip_mass`` at ``z = radius + cm_axial``,
+
+    all measured from MSL (see :doc:`/conventions`) and taken relative to
+    the reference point at ``z = −ref_msl``. Mass above the reference
+    destabilises, mass below stabilises.
+
+    Only the rigid-body term is added. The tower's own geometric
+    (P-delta) softening under its weight is a separate effect that a
+    free-base model does not include (``Tower.run(gravity=...)`` refuses
+    it there). Horizontal CM offsets are not given a weight coupling
+    either: the conventions assume a platform trimmed with its centre of
+    gravity over its centre of buoyancy, where those terms cancel against
+    their buoyancy counterparts.
+
+    Returns a 6×6 matrix in OpenFAST DOF order with only ``[3, 3]`` and
+    ``[4, 4]`` set.
+    """
+    import numpy as np
+
+    from pybmodes.io.bmi import PlatformSupport
+
+    ps = bmi.support
+    if not isinstance(ps, PlatformSupport):
+        raise TypeError(
+            "weight restoring needs a PlatformSupport; got "
+            f"{type(ps).__name__}"
+        )
+    base_z = -float(ps.draft)
+    top_z = float(bmi.radius)
+    ref_z = -float(ps.ref_msl)
+
+    span = np.asarray(sp.span_loc, dtype=float)
+    mass_den = np.asarray(sp.mass_den, dtype=float) * float(bmi.scaling.sec_mass)
+    z = base_z + span * (top_z - base_z)
+    # First moment of each part about the reference point, in kg·m.
+    moment = float(ps.mass_pform) * (-float(ps.cm_pform) - ref_z)
+    moment += float(np.trapezoid(mass_den * (z - ref_z), z))
+    for pm in bmi.point_masses:
+        moment += float(pm.mass) * (base_z + float(pm.height) - ref_z)
+    tip = bmi.tip_mass
+    moment += float(tip.mass) * (top_z + float(tip.cm_axial) - ref_z)
+
+    c = np.zeros((6, 6))
+    c[3, 3] = c[4, 4] = -g * moment
+    return c
