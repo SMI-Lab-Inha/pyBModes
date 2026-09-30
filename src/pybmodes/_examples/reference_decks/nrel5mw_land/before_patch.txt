@@ -4,14 +4,14 @@ File: NRELOffshrBsline5MW_Onshore_ElastoDyn.dat
 
 Tower modes:
   TwFAM1Sh  file RMS= 0.0081  pyB RMS= 0.0000  ratio=  313    PASS
-  TwFAM2Sh  file RMS= 5.0783  pyB RMS= 0.0024  ratio= 2101    FAIL <-
-  TwSSM1Sh  file RMS= 0.0075  pyB RMS= 0.0000  ratio=  293    PASS
-  TwSSM2Sh  file RMS= 5.9009  pyB RMS= 0.0023  ratio= 2529    FAIL <-
+  TwFAM2Sh  file RMS= 5.0784  pyB RMS= 0.0024  ratio= 2101    FAIL <-
+  TwSSM1Sh  file RMS= 0.0075  pyB RMS= 0.0000  ratio=  292    PASS
+  TwSSM2Sh  file RMS= 5.9007  pyB RMS= 0.0023  ratio= 2529    FAIL <-
 
 Blade modes:
-  BldFl1Sh  file RMS= 0.0022  pyB RMS= 0.0008  ratio= 2.82    PASS
-  BldFl2Sh  file RMS= 0.0088  pyB RMS= 0.0035  ratio= 2.48    PASS
-  BldEdgSh  file RMS= 0.0006  pyB RMS= 0.0002  ratio= 3.17    PASS
+  BldFl1Sh  file RMS= 0.0018  pyB RMS= 0.0008  ratio= 2.25    PASS
+  BldFl2Sh  file RMS= 0.0087  pyB RMS= 0.0035  ratio= 2.46    PASS
+  BldEdgSh  file RMS= 0.0006  pyB RMS= 0.0002  ratio= 3.14    PASS
 
 Overall: FAIL (2 block(s))
 Recommendation: run `pybmodes patch NRELOffshrBsline5MW_Onshore_ElastoDyn.dat` to update coefficients from structural inputs.

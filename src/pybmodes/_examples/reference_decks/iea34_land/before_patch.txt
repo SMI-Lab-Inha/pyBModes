@@ -4,12 +4,12 @@ File: IEA-3.4-130-RWT_ElastoDyn.dat
 
 Tower modes:
   TwFAM1Sh  file RMS= 0.0098  pyB RMS= 0.0002  ratio= 56.9    PASS
-  TwFAM2Sh  file RMS= 0.7230  pyB RMS= 0.0042  ratio=  172    FAIL <-
-  TwSSM1Sh  file RMS= 0.0110  pyB RMS= 0.0002  ratio= 64.0    WARN
+  TwFAM2Sh  file RMS= 0.7231  pyB RMS= 0.0042  ratio=  172    FAIL <-
+  TwSSM1Sh  file RMS= 0.0110  pyB RMS= 0.0002  ratio= 64.1    WARN
   TwSSM2Sh  file RMS= 1.5494  pyB RMS= 0.0041  ratio=  380    FAIL <-
 
 Blade modes:
-  BldFl1Sh  file RMS= 0.0106  pyB RMS= 0.0014  ratio= 7.61    WARN
+  BldFl1Sh  file RMS= 0.0106  pyB RMS= 0.0014  ratio= 7.62    WARN
   BldFl2Sh  file RMS= 0.0051  pyB RMS= 0.0047  ratio= 1.09    PASS
   BldEdgSh  file RMS= 0.0065  pyB RMS= 0.0014  ratio= 4.62    PASS
 

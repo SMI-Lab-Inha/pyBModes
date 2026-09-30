@@ -3,15 +3,15 @@ pyBmodes coefficient validator
 File: NRELOffshrBsline5MW_OC3Monopile_ElastoDyn.dat
 
 Tower modes:
-  TwFAM1Sh  file RMS= 0.0037  pyB RMS= 0.0000  ratio=  140    PASS
-  TwFAM2Sh  file RMS= 5.7805  pyB RMS= 0.0032  ratio= 1813    FAIL <-
-  TwSSM1Sh  file RMS= 0.0045  pyB RMS= 0.0000  ratio=  173    PASS
-  TwSSM2Sh  file RMS= 7.3266  pyB RMS= 0.0033  ratio= 2220    FAIL <-
+  TwFAM1Sh  file RMS= 0.0037  pyB RMS= 0.0000  ratio=  139    PASS
+  TwFAM2Sh  file RMS= 5.7806  pyB RMS= 0.0032  ratio= 1813    FAIL <-
+  TwSSM1Sh  file RMS= 0.0046  pyB RMS= 0.0000  ratio=  173    PASS
+  TwSSM2Sh  file RMS= 7.3263  pyB RMS= 0.0033  ratio= 2220    FAIL <-
 
 Blade modes:
-  BldFl1Sh  file RMS= 0.0022  pyB RMS= 0.0008  ratio= 2.82    PASS
-  BldFl2Sh  file RMS= 0.0088  pyB RMS= 0.0035  ratio= 2.48    PASS
-  BldEdgSh  file RMS= 0.0006  pyB RMS= 0.0002  ratio= 3.17    PASS
+  BldFl1Sh  file RMS= 0.0018  pyB RMS= 0.0008  ratio= 2.25    PASS
+  BldFl2Sh  file RMS= 0.0087  pyB RMS= 0.0035  ratio= 2.46    PASS
+  BldEdgSh  file RMS= 0.0006  pyB RMS= 0.0002  ratio= 3.14    PASS
 
 Overall: FAIL (2 block(s))
 Recommendation: run `pybmodes patch NRELOffshrBsline5MW_OC3Monopile_ElastoDyn.dat` to update coefficients from structural inputs.

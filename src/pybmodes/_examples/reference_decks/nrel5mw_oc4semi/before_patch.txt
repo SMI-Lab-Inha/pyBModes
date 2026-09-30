@@ -4,13 +4,13 @@ File: NRELOffshrBsline5MW_OC4DeepCwindSemi_ElastoDyn.dat
 
 Tower modes:
   TwFAM1Sh  file RMS= 0.0034  pyB RMS= 0.0000  ratio=  106    PASS
-  TwFAM2Sh  file RMS= 8.2805  pyB RMS= 0.0024  ratio= 3488    FAIL <-
+  TwFAM2Sh  file RMS= 8.2803  pyB RMS= 0.0024  ratio= 3488    FAIL <-
   TwSSM1Sh  file RMS= 0.0048  pyB RMS= 0.0000  ratio=  152    PASS
-  TwSSM2Sh  file RMS= 9.0396  pyB RMS= 0.0027  ratio= 3404    FAIL <-
+  TwSSM2Sh  file RMS= 9.0399  pyB RMS= 0.0027  ratio= 3404    FAIL <-
 
 Blade modes:
-  BldFl1Sh  file RMS= 0.0033  pyB RMS= 0.0008  ratio= 3.94    PASS
-  BldFl2Sh  file RMS= 0.0093  pyB RMS= 0.0036  ratio= 2.59    PASS
+  BldFl1Sh  file RMS= 0.0036  pyB RMS= 0.0008  ratio= 4.38    PASS
+  BldFl2Sh  file RMS= 0.0093  pyB RMS= 0.0036  ratio= 2.60    PASS
   BldEdgSh  file RMS= 0.0004  pyB RMS= 0.0002  ratio= 2.29    PASS
 
 Overall: FAIL (2 block(s))

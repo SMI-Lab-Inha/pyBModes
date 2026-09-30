@@ -65,18 +65,18 @@ IEA 15 MW Offshore Reference Turbine
  9.795918367346939e-01  3.600890296396286e-01 -1.508125114401624e+00  2.157201084316552e+01  1.296677095760643e+07  6.715371720843673e+07
  1.000000000000000e+00  3.681818181818181e-01 -1.242387706272970e+00  5.767382468564499e+00  1.862011072702549e+05  1.663313892259768e+06
 ---------------------- BLADE MODE SHAPES ---------------------------------------
- 3.6284645E-02   BldFl1Sh(2) - Flap mode 1, coeff of x^2
- 1.9952256E+00      BldFl1Sh(3) -            , coeff of x^3
--1.8464626E+00     BldFl1Sh(4) -            , coeff of x^4
- 1.3576224E+00      BldFl1Sh(5) -            , coeff of x^5
--5.4267008E-01    BldFl1Sh(6) -            , coeff of x^6
--6.2821074E-01     BldFl2Sh(2) - Flap mode 2, coeff of x^2
- 1.5665770E+00     BldFl2Sh(3) -            , coeff of x^3
--1.0051220E+01     BldFl2Sh(4) -            , coeff of x^4
- 1.8224718E+01       BldFl2Sh(5) -            , coeff of x^5
--8.1118641E+00     BldFl2Sh(6) -            , coeff of x^6
- 1.3257587E-02   BldEdgSh(2) - Edge mode 1, coeff of x^2
- 4.4320794E+00      BldEdgSh(3) -            , coeff of x^3
--8.5989917E+00     BldEdgSh(4) -            , coeff of x^4
- 7.8524185E+00      BldEdgSh(5) -            , coeff of x^5
--2.6987638E+00    BldEdgSh(6) -            , coeff of x^6
+ 3.6347184E-02   BldFl1Sh(2) - Flap mode 1, coeff of x^2
+ 1.9948455E+00      BldFl1Sh(3) -            , coeff of x^3
+-1.8435014E+00     BldFl1Sh(4) -            , coeff of x^4
+ 1.3521572E+00      BldFl1Sh(5) -            , coeff of x^5
+-5.3984856E-01    BldFl1Sh(6) -            , coeff of x^6
+-6.2829768E-01     BldFl2Sh(2) - Flap mode 2, coeff of x^2
+ 1.5676002E+00     BldFl2Sh(3) -            , coeff of x^3
+-1.0052542E+01     BldFl2Sh(4) -            , coeff of x^4
+ 1.8224240E+01       BldFl2Sh(5) -            , coeff of x^5
+-8.1110004E+00     BldFl2Sh(6) -            , coeff of x^6
+ 1.3185756E-02   BldEdgSh(2) - Edge mode 1, coeff of x^2
+ 4.4325138E+00      BldEdgSh(3) -            , coeff of x^3
+-8.6002010E+00     BldEdgSh(4) -            , coeff of x^4
+ 7.8538623E+00      BldEdgSh(5) -            , coeff of x^5
+-2.6993608E+00    BldEdgSh(6) -            , coeff of x^6

@@ -28,24 +28,24 @@ IEA 15 MW offshore reference model on UMaine VolturnUS-S semi-submersible floati
  8.912274086706145e-01  2.596093483450980e+03  7.761060822822759e+11  7.761060822822759e+11
  1.000000000000000e+00  1.715031343116859e+03  3.489844253733395e+11  3.489844253733395e+11
 ---------------------- TOWER FORE-AFT MODE SHAPES ------------------------------
- 1.0247546E+00     TwFAM1Sh(2) - Mode 1, coefficient of x^2 term
- 6.6397526E-02    TwFAM1Sh(3) -       , coefficient of x^3 term
--4.1006252E-01    TwFAM1Sh(4) -       , coefficient of x^4 term
- 5.9353848E-01     TwFAM1Sh(5) -       , coefficient of x^5 term
--2.7462812E-01    TwFAM1Sh(6) -       , coefficient of x^6 term
--3.9832330E+01    TwFAM2Sh(2) - Mode 2, coefficient of x^2 term
- 2.8908772E+01     TwFAM2Sh(3) -       , coefficient of x^3 term
- 2.5414692E+01      TwFAM2Sh(4) -       , coefficient of x^4 term
--1.7734148E+01    TwFAM2Sh(5) -       , coefficient of x^5 term
- 4.2430139E+00      TwFAM2Sh(6) -       , coefficient of x^6 term
+ 1.0246584E+00     TwFAM1Sh(2) - Mode 1, coefficient of x^2 term
+ 6.6391437E-02    TwFAM1Sh(3) -       , coefficient of x^3 term
+-4.0995162E-01    TwFAM1Sh(4) -       , coefficient of x^4 term
+ 5.9349815E-01     TwFAM1Sh(5) -       , coefficient of x^5 term
+-2.7459640E-01    TwFAM1Sh(6) -       , coefficient of x^6 term
+-3.9834895E+01    TwFAM2Sh(2) - Mode 2, coefficient of x^2 term
+ 2.8909470E+01     TwFAM2Sh(3) -       , coefficient of x^3 term
+ 2.5419507E+01      TwFAM2Sh(4) -       , coefficient of x^4 term
+-1.7739413E+01    TwFAM2Sh(5) -       , coefficient of x^5 term
+ 4.2453312E+00      TwFAM2Sh(6) -       , coefficient of x^6 term
 ---------------------- TOWER SIDE-TO-SIDE MODE SHAPES --------------------------
- 1.0179042E+00     TwSSM1Sh(2) - Mode 1, coefficient of x^2 term
- 5.0726033E-02     TwSSM1Sh(3) -       , coefficient of x^3 term
--3.4839592E-01    TwSSM1Sh(4) -       , coefficient of x^4 term
- 5.1547157E-01     TwSSM1Sh(5) -       , coefficient of x^5 term
--2.3570592E-01   TwSSM1Sh(6) -       , coefficient of x^6 term
--7.1349753E+01     TwSSM2Sh(2) - Mode 2, coefficient of x^2 term
- 5.4695811E+00     TwSSM2Sh(3) -       , coefficient of x^3 term
- 1.6894549E+02     TwSSM2Sh(4) -       , coefficient of x^4 term
--1.9229798E+02    TwSSM2Sh(5) -       , coefficient of x^5 term
- 9.0232666E+01     TwSSM2Sh(6) -       , coefficient of x^6 term
+ 1.0180549E+00     TwSSM1Sh(2) - Mode 1, coefficient of x^2 term
+ 5.0738381E-02     TwSSM1Sh(3) -       , coefficient of x^3 term
+-3.4863372E-01    TwSSM1Sh(4) -       , coefficient of x^4 term
+ 5.1585423E-01     TwSSM1Sh(5) -       , coefficient of x^5 term
+-2.3601383E-01   TwSSM1Sh(6) -       , coefficient of x^6 term
+-7.1300399E+01     TwSSM2Sh(2) - Mode 2, coefficient of x^2 term
+ 5.4677225E+00     TwSSM2Sh(3) -       , coefficient of x^3 term
+ 1.6881944E+02     TwSSM2Sh(4) -       , coefficient of x^4 term
+-1.9215192E+02    TwSSM2Sh(5) -       , coefficient of x^5 term
+ 9.0165164E+01     TwSSM2Sh(6) -       , coefficient of x^6 term
