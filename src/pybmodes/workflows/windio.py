@@ -200,6 +200,22 @@ def _doc_is_floating(doc: dict | None) -> bool:
     return isinstance(comps, dict) and "floating_platform" in comps
 
 
+def _inside_openfast_tree(p: pathlib.Path, root: pathlib.Path) -> bool:
+    """Whether ``p`` sits in an OpenFAST deck tree *below* ``root``.
+
+    The RWT layout keeps OpenFAST inputs (whose yaml sidecars are not
+    ontologies) under an ``OpenFAST`` directory next to the ontology, so
+    those are skipped. Only the part of the path below the search root is
+    examined: a checkout that merely lives somewhere under a directory
+    whose name contains "OpenFAST" (``~/OpenFAST-GUI/...``) must not have
+    every yaml in it excluded, which is what matching on the absolute
+    path did.
+    """
+    return any(
+        "openfast" in part.lower() for part in p.relative_to(root).parts
+    )
+
+
 def discover_windio_inputs(
     path: str | pathlib.Path,
 ) -> WindioDiscovery:
@@ -229,7 +245,7 @@ def discover_windio_inputs(
     elif path.is_dir():
         cands = sorted(
             p for p in path.rglob("*.yaml")
-            if "OpenFAST" not in str(p) and "openfast" not in str(p)
+            if not _inside_openfast_tree(p, path)
             and _load_windio_doc(p) is not None
         )
         if not cands:

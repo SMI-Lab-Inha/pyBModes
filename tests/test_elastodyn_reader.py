@@ -410,12 +410,15 @@ def test_upscale25_tower_duplicate_pair_stations():
     assert np.all(f > 0.0), f"non-physical zero modes returned: {f}"
     assert np.all(np.diff(f) >= -1e-9)
 
-    # 25 MW on a 167 m flexible tower — 1st bending pair near 0.27 Hz.
-    # FA and SS stiffness are identical in the deck so the pair is
-    # numerically degenerate.
+    # 25 MW on a 167 m flexible tower, 1st bending pair near 0.27 Hz. FA
+    # and SS stiffness are identical in the deck, but the lumped RNA's
+    # pitch inertia is three times its roll inertia (plus an ixz product),
+    # which splits the pair by about 1 %. The dense and sparse solves
+    # agree on that split; the old dense path returned it degenerate only
+    # because its error on the lowest modes was larger than the split.
     assert 0.20 < f[0] < 0.35, f"1st FA/SS pair out of band: {f[0]:.4f} Hz"
-    assert abs(f[1] - f[0]) / f[0] < 1e-3, (
-        f"1st FA/SS pair should be degenerate: {f[0]:.4f}, {f[1]:.4f} Hz"
+    assert abs(f[1] - f[0]) / f[0] < 2e-2, (
+        f"1st FA/SS pair should stay close: {f[0]:.4f}, {f[1]:.4f} Hz"
     )
 
 

@@ -206,9 +206,18 @@ class PlatformSupport:
         Infinite-frequency hydrodynamic added mass ``A_inf``, 6×6, about
         the ``ref_msl`` reference, OpenFAST DOF order.
     hydro_K : np.ndarray
-        Hydrostatic restoring ``C_hst``, 6×6, about the ``ref_msl``
-        reference. May be (legitimately) negative-definite in
-        roll/pitch for an unstable spar stabilised by mooring.
+        Hydrostatic restoring, 6×6, about the ``ref_msl`` reference.
+        ``hydro_K + mooring_K`` must hold **all** the restoring the
+        rigid-body modes see, including the weight term ``−m g z_G`` in
+        roll / pitch: a WAMIT ``.hst`` excludes it (OpenFAST applies it
+        through ElastoDyn gravity), so the deck constructors
+        (:meth:`~pybmodes.models.Tower.from_elastodyn_with_mooring`,
+        :meth:`~pybmodes.models.Tower.from_windio_floating`) add the
+        weight of platform, tower and RNA here. A BModes ``.bmi`` deck
+        such as OC3 Hywind folds it into ``mooring_K`` instead. A
+        ballast-stabilised spar's ``.hst`` alone is negative in
+        roll / pitch; a negative total is reported by ``Tower.run`` as
+        a ``UserWarning``.
     mooring_K : np.ndarray
         Linearised mooring stiffness, 6×6, about the ``ref_msl``
         reference, OpenFAST DOF order.

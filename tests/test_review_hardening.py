@@ -106,6 +106,30 @@ def test_discover_skips_bad_sidecar_and_finds_valid_ontology(
     assert disc.yaml.name == "good.yaml"
 
 
+def test_discover_ignores_openfast_in_the_path_above_the_search_root(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Regression: the OpenFAST-deck exclusion matched the absolute path,
+    so a checkout living under a directory such as ``OpenFAST-GUI``
+    excluded every yaml in it and discovery found nothing. Only the part
+    of the path below the search root may be examined — an ``OpenFAST``
+    deck directory *inside* the tree is still skipped."""
+    pytest.importorskip("yaml")
+    from pybmodes.workflows.windio import discover_windio_inputs
+
+    root = tmp_path / "OpenFAST-GUI" / "turbine"
+    (root / "OpenFAST").mkdir(parents=True)
+    _write(root / "ontology.yaml", "name: ok\ncomponents:\n  tower: {}\n")
+    # An ontology-shaped yaml under the turbine's own OpenFAST tree sorts
+    # first by name, so it would win if the exclusion stopped working.
+    _write(
+        root / "OpenFAST" / "a_sidecar.yaml",
+        "name: deck\ncomponents:\n  tower: {}\n",
+    )
+    disc = discover_windio_inputs(root)
+    assert disc.yaml == root / "ontology.yaml"
+
+
 def test_load_windio_doc_propagates_missing_pyyaml(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

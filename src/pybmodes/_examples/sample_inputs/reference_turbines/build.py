@@ -89,6 +89,7 @@ SRC_DIR = REPO_ROOT / "src"
 if SRC_DIR.is_dir() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from pybmodes._numeric import trapezoid  # noqa: E402
 from pybmodes.io.bmi import PlatformSupport  # noqa: E402
 from pybmodes.io.elastodyn_reader import (  # noqa: E402
     read_elastodyn_blade,
@@ -172,7 +173,7 @@ def _blade_total_mass(blade) -> float:
     span = np.asarray(blade.bl_fract, dtype=float)
     rho = np.asarray(blade.b_mass_den, dtype=float)
     # bl_fract is normalized [0, 1]; multiply by blade length elsewhere.
-    return float(np.trapezoid(rho, span))
+    return trapezoid(rho, span)
 
 
 def _emit_section_properties_table(

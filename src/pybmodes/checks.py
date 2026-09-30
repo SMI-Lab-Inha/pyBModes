@@ -102,6 +102,7 @@ from typing import TYPE_CHECKING, Literal, Union
 
 import numpy as np
 
+from pybmodes._numeric import trapezoid
 from pybmodes.options import DEFAULT_CHECK_OPTIONS as _CHECK_OPTIONS
 
 if TYPE_CHECKING:
@@ -269,7 +270,7 @@ def _check_section_properties_finite(
 ) -> None:
     """Flag any non-finite (NaN / ±Inf) entry in the numeric section-
     property fields. ERROR-severity because every downstream
-    consumer (``np.trapezoid``, ``np.linalg.eigh``, the FE assembly)
+    consumer (the trapezoid mass integral, ``np.linalg.eigh``, the FE assembly)
     silently produces NaN-filled outputs on NaN inputs.
 
     The per-field checks below this one (``_check_span_monotonic`` /
@@ -395,7 +396,7 @@ def _check_rna_vs_tower_mass(
     mass_den = np.asarray(sp.mass_den, dtype=float)
     if span_phys.size < 2 or not np.all(np.diff(span_phys) > 0):
         return  # other checks will flag the bad span; skip cleanly here
-    tower_mass = float(np.trapezoid(mass_den, span_phys))
+    tower_mass = trapezoid(mass_den, span_phys)
     if tower_mass <= 0.0:
         return  # mass-density check will catch this
     rna = float(bmi.tip_mass.mass)

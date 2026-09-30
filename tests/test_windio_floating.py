@@ -763,6 +763,34 @@ def test_from_windio_floating_yaml_only_modal_smoke(tmp_path) -> None:
     assert f[6] > 5.0 * f[5]
 
 
+def test_from_windio_floating_adds_weight_to_the_hydrostatics(tmp_path) -> None:
+    """The member-waterplane restoring is buoyancy-only, like a WAMIT
+    ``.hst``; the assembled ``hydro_K`` must add ``−m g z`` for the
+    platform, tower and RNA exactly as ``from_elastodyn_with_mooring``
+    does (Faltinsen 1990, *Sea Loads on Ships and Offshore Structures*,
+    ch. 2: ``C44 = ρ g V (z_B − z_G) + ρ g I_wp``)."""
+    pytest.importorskip("yaml")
+    from pybmodes.io.windio_floating import (
+        hydrostatic_restoring,
+        read_windio_floating,
+    )
+    from pybmodes.models import Tower
+    from pybmodes.models._platform import _gravitational_restoring
+
+    p = tmp_path / "fowt.yaml"
+    p.write_text(_FLOAT_TURBINE, encoding="utf-8")
+    with pytest.warns(UserWarning, match="SCREENING-fidelity"):
+        tower = Tower.from_windio_floating(p, water_depth=200.0)
+    c_hst = hydrostatic_restoring(read_windio_floating(p))
+    c_w = _gravitational_restoring(tower._bmi, tower._sp)
+    np.testing.assert_allclose(
+        tower._bmi.support.hydro_K, c_hst + c_w, rtol=1e-12, atol=1e-6,
+    )
+    # A 20 m-deep column carrying a 128 m tower: the weight term is
+    # destabilising and material against the waterplane term.
+    assert c_w[3, 3] < -0.05 * c_hst[3, 3]
+
+
 def test_from_windio_floating_screening_honors_rna_tip(tmp_path) -> None:
     """Regression (issue #83): in the screening tier (no companion
     ElastoDyn deck, no injected ``platform_support``) the caller-

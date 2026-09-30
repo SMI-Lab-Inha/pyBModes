@@ -268,8 +268,10 @@ def hydrostatic_restoring(
 ) -> np.ndarray:
     """6×6 hydrostatic restoring (DOF order surge, sway, heave, roll,
     pitch, yaw) from member geometry — the WAMIT/`.hst` buoyancy +
-    waterplane convention (no gravitational term; that enters via the
-    body mass elsewhere). For a freely-floating semi the heave /
+    waterplane convention (no gravitational term: the ``−m g z_G``
+    weight restoring is added by :meth:`Tower.from_windio_floating`
+    through :func:`pybmodes.models._platform._gravitational_restoring`,
+    which also counts the tower and RNA). For a freely-floating semi the heave /
     roll / pitch entries are geometry-exact, so this matches a
     potential-flow `.hst` closely (integration anchor)."""
     S = Sx = Sy = Sxx = Syy = Sxy = 0.0

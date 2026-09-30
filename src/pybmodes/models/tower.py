@@ -40,6 +40,7 @@ from pybmodes.io.construction import ConstructionInputs, TubeSegment
 from pybmodes.io.sec_props import SectionProperties
 from pybmodes.models._pipeline import run_fem
 from pybmodes.models._platform import (
+    _gravitational_restoring,
     _platform_inertia_matrix,
     _scan_platform_fields,
 )
@@ -210,6 +211,12 @@ class Tower:
     # constructor, for the domain checks (issue #102). ``None`` on a
     # deck-derived model, where those numbers don't exist.
     _construction: ConstructionInputs | None = None
+
+    # Gravity used for the weight restoring folded into ``hydro_K`` by
+    # the deck-built floating constructors, so that ``add_point_mass``
+    # can add the new lump's share. ``None`` when no weight term was
+    # added (every other constructor, or a floater without HydroDyn).
+    _weight_g: float | None = None
 
     def __init__(
         self, bmi_path: str | pathlib.Path, *, n_nodes: int | None = None,
@@ -902,6 +909,15 @@ class Tower:
           to the WAMIT ``.1`` and ``.hst`` files). Optional — if
           ``hydrodyn_dat_path`` is omitted, both default to zero, so
           the resulting model couples only mooring + platform inertia.
+        - **Gravitational restoring** of the platform, tower and RNA,
+          ``−m g z`` in roll and pitch about the reference point, added
+          to ``hydro_K`` alongside ``C_hst``. The ``.hst`` excludes the
+          body weight, which OpenFAST applies through ElastoDyn's
+          gravity; without it a ballast-stabilised spar has negative
+          roll / pitch stiffness. Added only when a HydroDyn deck is
+          given, since weight without the buoyancy that balances it does
+          not describe a floating body. See
+          :func:`pybmodes.models._platform._gravitational_restoring`.
         - **Platform inertia** from the ``PtfmMass`` / ``PtfmRIner`` /
           ``PtfmPIner`` / ``PtfmYIner`` / ``PtfmCM*`` / ``PtfmRefzt``
           scalars in the ElastoDyn main file. The 6 × 6 ``i_matrix`` is
@@ -1059,9 +1075,23 @@ class Tower:
         bmi.tow_support = 1
         bmi.support = platform_support
 
+        # The WAMIT ``.hst`` excludes the body weight, which OpenFAST
+        # supplies through ElastoDyn's gravity loading of the platform,
+        # tower and RNA. Without it a ballast-stabilised spar reads as
+        # unstable in roll and pitch (OC3 Hywind: C44 = C55 = −5.0e9
+        # N·m/rad from the .hst alone), and those two rigid-body modes
+        # were lost. Only paired with hydrostatics: weight without the
+        # buoyancy that balances it is not a floating body.
+        if hydrodyn_dat_path is not None:
+            platform_support.hydro_K = C_hst + _gravitational_restoring(
+                bmi, sp, g=STANDARD_GRAVITY,
+            )
+
         obj = cls.__new__(cls)
         obj._bmi = bmi
         obj._sp = sp
+        if hydrodyn_dat_path is not None:
+            obj._weight_g = STANDARD_GRAVITY
         if n_nodes is not None:
             obj.refine_mesh(n_nodes)
         return obj
@@ -1434,10 +1464,18 @@ class Tower:
         bmi.hub_conn = 2
         bmi.tow_support = 1
         bmi.support = platform_support
+        # Both hydrostatic tiers — the WAMIT ``.hst`` and the member
+        # waterplane integration — are buoyancy-only; add the weight of
+        # platform, tower and RNA exactly as from_elastodyn_with_mooring
+        # does, so the deck-backed tier stays equivalent to it.
+        platform_support.hydro_K = C_hst + _gravitational_restoring(
+            bmi, sp, g=g,
+        )
 
         obj = cls.__new__(cls)
         obj._bmi = bmi
         obj._sp = sp
+        obj._weight_g = float(g)
         obj.coeff_validation = None
         return obj
 
@@ -1732,6 +1770,8 @@ class Tower:
         would also change the centrifugal tension distribution, which is
         a separate modelling track.
         """
+        import numpy as np
+
         from pybmodes.io.bmi import PlatformSupport, PointMass
 
         pm = PointMass(height=float(height), mass=float(mass))
@@ -1748,6 +1788,17 @@ class Tower:
                 f"the very top."
             )
         self._bmi.point_masses = (*self._bmi.point_masses, pm)
+        # A floater built from decks carries the system weight in hydro_K;
+        # the new lump's weight belongs there too, measured the same way
+        # as in _gravitational_restoring (beam base at z = -draft, relative
+        # to the reference point at z = -ref_msl).
+        ps = self._bmi.support
+        if self._weight_g is not None and isinstance(ps, PlatformSupport):
+            z_rel = -float(ps.draft) + pm.height + float(ps.ref_msl)
+            k = np.array(ps.hydro_K, dtype=float, copy=True)
+            k[3, 3] -= self._weight_g * pm.mass * z_rel
+            k[4, 4] -= self._weight_g * pm.mass * z_rel
+            ps.hydro_K = k
         return self
 
     def run(

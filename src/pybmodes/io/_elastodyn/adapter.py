@@ -44,6 +44,7 @@ import pathlib
 
 import numpy as np
 
+from pybmodes._numeric import trapezoid
 from pybmodes.io._elastodyn.types import (
     ElastoDynBlade,
     ElastoDynMain,
@@ -374,7 +375,7 @@ def _tower_top_assembly_mass(
         bl_len = main.tip_rad - main.hub_rad
         bmd = blade.b_mass_den * blade.adj_bl_ms
         s = blade.bl_fract * bl_len
-        m_bl_each = float(np.trapezoid(bmd, s))
+        m_bl_each = trapezoid(bmd, s)
     else:
         m_bl_each = 0.0
     m_blades = main.num_bl * m_bl_each

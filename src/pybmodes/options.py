@@ -73,18 +73,21 @@ class SolverOptions:
     residual_retry_threshold : float, default 0.1
         Largest per-mode relative residual
         ``||K x - λ M x|| / ||K x||`` a symmetric solve may return before
-        the general dense path is tried as well. ``scipy.linalg.eigh``
-        reduces the generalised problem through a Cholesky factor of the
-        **mass** matrix, which loses accuracy once that matrix is nearly
-        singular — a very light beam carrying a very heavy lump — and
-        returns confidently wrong low modes rather than failing.
+        the general dense path is tried as well. The mass-reduced
+        ``scipy.linalg.eigh(K, M)`` reduces the generalised problem
+        through a Cholesky factor of the **mass** matrix, which loses
+        accuracy once that matrix is nearly singular — a very light beam
+        carrying a very heavy lump — and returns confidently wrong low
+        modes rather than failing. The dense symmetric path now solves
+        the inverted pencil first, which does not have this failure, so
+        the retry only guards the mass-reduced fallback.
 
         The band this sits in is narrower than it looks. Ordinary solves
-        land at or below ~1e-3; a real deck whose adapter leaves ``M``
-        genuinely ill-conditioned (the bundled NREL 5MW land tower, cond
-        ~4e10) reaches ~2e-2 and is *not* meant to trigger; the degraded
-        regime starts around 0.7. The default splits the last two gaps
-        with roughly 5x either side.
+        land at or below ~1e-3; on the mass-reduced route a real deck
+        whose adapter leaves ``M`` genuinely ill-conditioned (the bundled
+        NREL 5MW land tower, cond ~4e10) reaches ~1e-2 and is *not*
+        meant to trigger; the degraded regime starts around 0.7. The
+        default splits the last two gaps with roughly 5x either side.
     residual_retry_resolved : float, default 1e-3
         Backward error the candidate must reach on a mode before that
         mode can justify a swap. Guards the case the ratio alone cannot:
@@ -124,11 +127,11 @@ class SolverOptions:
         default sits in the middle with roughly 60x margin on the noise
         side and 100x on the rescue side.
 
-        A marginal win is refused for a second reason as well: on the
-        bundled NREL 5MW land deck the general path is 1.4x better while
-        *breaking* a physically real degenerate fore-aft / side-side pair
-        the symmetric solver resolves exactly, which the downstream FA /
-        SS classifier depends on.
+        A marginal win is refused for a second reason as well: accepting
+        replaces the whole spectrum, and a general solve that is only
+        slightly better on one mode is no evidence that it is better on
+        the others — on the mass-reduced route the bundled NREL 5MW land
+        deck showed a 1.4x win that moved its fore-aft / side-side pair.
     """
 
     sparse_ndof_threshold: int = 500

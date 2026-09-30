@@ -289,6 +289,17 @@ Common pitfalls
 * **Leaving ``mooring_K`` in the platform/hull frame.** Like hydro, it
   must be referenced to the tower axis.
 
+* **Passing a WAMIT ``.hst`` as the whole restoring.** The ``.hst`` is
+  hydrostatic only (``ρ g I_wp + ρ g V z_B``); the body weight's
+  ``−m g z_G`` in roll / pitch is applied by OpenFAST through ElastoDyn
+  gravity. ``hydro_K + mooring_K`` must carry both. The deck
+  constructors add the weight of platform, tower and RNA — each mass
+  at its height above the ``ref_msl`` reference — for you; a
+  hand-built ``PlatformSupport`` has to include it itself. Without it
+  a ballast-stabilised spar is negative in roll / pitch (OC3 Hywind:
+  ``−5.0e9 N·m/rad``), and ``Tower.run`` warns that those rigid-body
+  modes are unstable rather than returning them.
+
 * **Confusing OpenFAST's two frames.** ``PtfmCMzt`` (CM) and
   ``PtfmRefzt`` (reference) are both in the tower-base *t*-frame;
   pyBmodes' ``ref_msl`` is ``PtfmRefzt``. Don't add one to the other.

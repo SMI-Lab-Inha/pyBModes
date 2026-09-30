@@ -50,21 +50,11 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from pybmodes._numeric import trapezoid
 from pybmodes.io.sec_props import SectionProperties
 
 if TYPE_CHECKING:
     from pybmodes.io.bmi import TipMassProps
-
-def _trapezoid(y: np.ndarray, x: np.ndarray) -> float:
-    """Trapezoidal integral of ``y`` over ``x``.
-
-    Implemented directly rather than via ``np.trapezoid`` (NumPy >= 2.0) /
-    ``np.trapz`` (the deprecated <2.0 spelling) so the reader works across
-    the advertised ``numpy>=1.26`` floor without a version shim.
-    """
-    y = np.asarray(y, dtype=float)
-    x = np.asarray(x, dtype=float)
-    return float(np.sum(0.5 * (y[1:] + y[:-1]) * np.diff(x)))
 
 
 def _second_moment(w: np.ndarray, c: np.ndarray, x: np.ndarray) -> float:
@@ -1021,7 +1011,7 @@ def _blade_span_mass_inertia(
     xyz = np.vstack(coords).T
     seg = np.linalg.norm(np.diff(xyz, axis=0), axis=1)
     s = np.concatenate([[0.0], np.cumsum(seg)])
-    mass = _trapezoid(mpl, s)
+    mass = trapezoid(mpl, s)
     # Resolve each section onto the rotor axes (r = in-plane radial from the
     # shaft, t = in-plane tangential, a = along the shaft). The reference axis
     # gives z spanwise, x prebend (flapwise, out of the rotor plane) and y

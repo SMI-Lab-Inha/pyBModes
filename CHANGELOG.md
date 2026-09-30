@@ -8,7 +8,109 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+### Fixed
+
+- **Dense symmetric solves depended on how many modes were requested.**
+  The dense path reduced `K x = λ M x` through a Cholesky factor of the
+  mass matrix, and a backward-stable symmetric eigensolver gets each
+  eigenvalue of the reduced matrix only to an *absolute* accuracy of
+  about `eps · λ_max`. The ElastoDyn adapters floor rotary inertia at
+  1e-6, which puts `λ_max / λ_min` near 1e15, so the lowest modes carried
+  errors of several percent that moved with the `subset_by_index`
+  window. On the bundled NREL 5MW blade at 12.1 rpm the first flap mode
+  read **0.7154 / 0.7096 / 0.7661 / 0.7282 Hz** for `n_modes` = 4 / 6 /
+  10 / 20, and first edge 1.1221 / 1.1184 / 1.0884 / 1.1303 Hz; the tower
+  fore-aft / side-side pair moved and swapped. Every model below the
+  500-DOF sparse threshold took this path — every ElastoDyn blade and
+  tower.
+
+  The dense path now solves the inverted pencil `M x = μ (K + s M) x`,
+  `μ = 1 / (λ + s)`, which puts the wanted modes at the top of the
+  spectrum where the same absolute accuracy is a relative one — the
+  shift-invert transformation the sparse path already used. The shift is
+  zero when `K` is positive definite and is otherwise grown from an
+  estimate of the lowest eigenvalues until `K + s M` factorises, so
+  rigid-body modes and the negative eigenvalues of a column loaded past
+  buckling are still returned. A request reaching into the upper half of
+  the spectrum takes those modes from the mass-reduced form, which is the
+  accurate one there. Results are now independent of `n_modes` and agree
+  with the sparse path to roundoff: blade flap1 / edge1 / flap2 =
+  **0.72865 / 1.09754 / 2.00842 Hz** at every window, tower 1st pair
+  0.33483 / 0.33561 Hz, backward error ~1e-10 (was ~5e-2). Frequencies of
+  every dense-path model change by up to the old error — on the NREL 5MW
+  blade up to ~5 % on the lowest flap / edge modes, on the tower ~0.3 %.
+
+  When one strongly negative eigenvalue forces a shift much larger than
+  the soft end of the spectrum, those soft modes all map to the same `μ`
+  to working precision. The window is then grown until its edge falls in
+  a resolvable gap, and each such cluster is re-solved by Rayleigh-Ritz
+  on its own subspace, so the soft modes come back in order and
+  independent of `n_modes` (`K = diag(−1e16, 1, 2, 3, 4)` returns
+  `[−1e16, 1]` for two modes, not `[−1e16, 4]`).
+
+  The mass-reduced form is kept as the fallback for a pencil no shift
+  makes definite, and the residual retry of 1.18.0 still stands behind
+  it; the near-singular-mass case it was built for now solves directly
+  on the dense path without a retry or a warning.
+  `tests/test_campbell.py::test_first_flap_lifts_endpoint_to_endpoint`,
+  which sat at 2.95 % against its 3 % gate on some BLAS builds, now
+  measures 7.6 %.
+- **Floating models built from OpenFAST decks lost their roll and pitch
+  modes.** `Tower.from_elastodyn_with_mooring` took the restoring from
+  the WAMIT `.hst`, which holds only the hydrostatic part
+  `ρ g I_wp + ρ g V z_B`. OpenFAST adds the body weight through
+  ElastoDyn's gravity; the model did not, so a ballast-stabilised spar
+  read as unstable — OC3 Hywind `C44 = C55 = −5.0e9 N·m/rad` — and the
+  general eigensolver silently dropped the two negative-eigenvalue modes,
+  returning four of the six rigid-body modes. The constructor now adds the
+  weight restoring `−g Σ mᵢ (zᵢ − z_ref)` of the platform, the tower and
+  the RNA to `hydro_K` (+6.17e9 N·m/rad on OC3: +6.58e9 of ballast,
+  −0.41e9 of tower and RNA). It is added only when a HydroDyn deck is
+  given, since weight without the buoyancy that balances it does not
+  describe a floating body. `Tower.from_windio_floating` adds the same
+  term in both of its tiers, so the deck-backed tier stays equivalent to
+  `from_elastodyn_with_mooring`. OC3 Hywind from the r-test decks now
+  gives surge / sway / heave / roll / pitch / yaw = 0.00806 / 0.00806 /
+  0.03241 / **0.03383 / 0.03383** / 0.04121 Hz against Jonkman (2010)
+  0.0080 / 0.0080 / 0.0324 / 0.0342 / 0.0343 Hz (roll and pitch were
+  absent before). Yaw is the catenary-only value; the published 0.1210 Hz
+  includes an additional 9.834e7 N·m/rad crowfoot spring the r-test
+  MoorDyn deck does not carry. The coupled first tower pair moves from
+  0.4887 / 0.4903 to 0.4922 / 0.4938 Hz.
+- **A negative-stiffness rigid-body mode is no longer dropped silently.**
+  `Tower.run` on a free-free floating model now warns (`UserWarning`)
+  when `hydro_K + mooring_K` has a negative direction, naming the
+  dominant DOFs: the platform is statically unstable there and the
+  general solver leaves those modes out of the result. The bundled
+  `08_nrel5mw_oc4semi` sample triggers it — the OC4 DeepCwind deck keeps
+  its ballast in HydroDyn filled members rather than `PtfmMass`, which
+  the platform model does not include, so its roll / pitch restoring is
+  negative and the modes labelled roll / pitch there are tower bending.
+- **`Tower.add_point_mass` on a deck-built floater now updates the
+  weight restoring.** The weight term is formed when the model is
+  constructed, so a lump added afterwards reached the FEM mass matrix but
+  not the roll / pitch restoring. The lump's `−m g (z − z_ref)` is now
+  added to `hydro_K` as well, which matches a model rebuilt with the lump
+  in place.
+- **NumPy 1.26 support.** Several code paths called `np.trapezoid`,
+  which only exists from NumPy 2.0, so on the supported `numpy>=1.26`
+  every `Tower.run()` (through the pre-solve checks), every ElastoDyn
+  blade read and every floating constructor failed with
+  `AttributeError`. They now share one version-independent trapezoid
+  helper, and a test keeps the NumPy-2-only spelling out of the package.
+- **The first tower pair of the IEA-3.4 and IFE UPSCALE 25MW decks is no
+  longer degenerate.** Both towers are symmetric in stiffness, but the
+  lumped RNA is not (pitch inertia 1.9× and 3.0× roll inertia, plus an
+  `ixz` product), which splits the first FA / SS pair by 0.09 % and 1.0 %.
+  The dense solver above, the sparse path and an `eigh(M, K)` solve all
+  agree on the split. The old dense path returned the pair degenerate
+  only because its error on the lowest modes was larger than the split,
+  and two integration tests had pinned that; they now pin the split.
+- **WindIO discovery ignored every yaml under a path containing
+  "OpenFAST".** The exclusion meant for the `OpenFAST/` deck directory of
+  an RWT layout matched the absolute path, so a checkout living under
+  e.g. `~/OpenFAST-GUI/` found no ontology at all. Only the part of the
+  path below the search root is examined now.
 
 ## [1.18.0] — 2026-08-13
 
