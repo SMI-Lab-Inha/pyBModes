@@ -939,9 +939,11 @@ def _solve_dense_inverted(
 
     shift = 0.0
     if not _definite(shift):
+        # The same estimate whatever ``k`` is, so the shift, and with it
+        # every returned mode, does not depend on the requested window.
         rough = eigh(
             gk_sym, gm_sym, eigvals_only=True,
-            subset_by_index=(0, min(k, _SHIFT_SCALE_MODES) - 1),
+            subset_by_index=(0, min(ngd, _SHIFT_SCALE_MODES) - 1),
         )
         scale = float(np.max(np.abs(rough)))
         if not np.isfinite(scale) or scale <= 0.0:
@@ -960,6 +962,10 @@ def _solve_dense_inverted(
             )
 
     eigvals, eigvecs = _inverted_window(gk_sym, gm_sym, k, shift)
+    if shift > 0.0:
+        eigvals, eigvecs = _resolve_swamped_modes(
+            gk_sym, gm_sym, k, shift, eigvals, eigvecs,
+        )
 
     if 2 * k > ngd:
         eigvals, eigvecs = _splice_upper_spectrum(
@@ -985,6 +991,98 @@ def _inverted_window(
         lam = np.where(mu > 0.0, 1.0 / np.where(mu > 0.0, mu, 1.0) - shift,
                        np.inf)
     return lam, np.ascontiguousarray(vecs)
+
+
+# A backward-stable solve of the inverted pencil fixes each μ to about
+# ``ngd * eps * μ_max``; this factor is the safety margin on that bound.
+_MU_RESOLUTION_ULPS = 100.0
+# A mode is swamped by the shift when the uncertainty that μ resolution
+# leaves on ``λ = 1/μ - s`` exceeds this fraction of ``|λ|``.
+_SWAMPED_RTOL = 1.0e-8
+
+
+def _resolve_swamped_modes(
+    gk_sym: np.ndarray,
+    gm_sym: np.ndarray,
+    k: int,
+    shift: float,
+    eigvals: np.ndarray,
+    eigvecs: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Recover modes a large shift has pushed below the μ resolution.
+
+    With ``μ = 1/(λ + s)`` the uncertainty on ``λ`` is about
+    ``δμ (λ + s)^2``. When ``s`` is much larger than the soft end of the
+    spectrum (one strongly negative eigenvalue forces a large shift),
+    every soft mode maps to the same ``μ`` to working precision: their
+    order is arbitrary, a window edge falling among them picks any of
+    them, and ``1/μ - s`` returns noise. ``K = diag(-1e16, 1, 2, 3, 4)``
+    with ``M = I`` gave ``[-1e16, 4]`` for two modes.
+
+    The subspace such a cluster spans is still well determined, because
+    it is separated from the rest of the μ spectrum. So the window is
+    grown until its edge falls in a resolvable gap, and each cluster that
+    holds a swamped mode is re-solved by Rayleigh-Ritz on ``(K, M)``
+    restricted to that subspace. A Rayleigh quotient is only quadratically
+    sensitive to the cluster's mixing with the well-separated modes, so
+    this recovers the soft modes to the accuracy ``(K, M)`` itself allows.
+    The lowest ``k`` of the result are returned.
+    """
+    ngd = gk_sym.shape[0]
+    eps = float(np.finfo(float).eps)
+
+    def swamped(lam: np.ndarray, tol_mu: float) -> np.ndarray:
+        finite = np.isfinite(lam)
+        out = np.zeros(lam.shape, dtype=bool)
+        dlam = tol_mu * (lam[finite] + shift) ** 2
+        out[finite] = dlam > _SWAMPED_RTOL * np.abs(lam[finite])
+        return out
+
+    def mu_of(lam: np.ndarray) -> np.ndarray:
+        with np.errstate(divide="ignore"):
+            return np.where(np.isfinite(lam), 1.0 / (lam + shift), 0.0)
+
+    mu_max = float(mu_of(eigvals[:1])[0])
+    if not np.isfinite(mu_max) or mu_max <= 0.0:
+        return eigvals, eigvecs
+    tol_mu = _MU_RESOLUTION_ULPS * ngd * eps * mu_max
+    if not swamped(eigvals, tol_mu).any():
+        return eigvals, eigvecs
+
+    # Grow the window until the μ just beyond it is resolvably below the
+    # last μ inside it, so no cluster is cut in two.
+    m = k
+    while m < ngd:
+        lam_w, vec_w = _inverted_window(gk_sym, gm_sym, m + 1, shift)
+        mu_w = mu_of(lam_w)
+        if mu_w[m - 1] - mu_w[m] > tol_mu:
+            lam_w, vec_w = lam_w[:m], vec_w[:, :m]
+            break
+        m = min(ngd, 2 * m)
+    else:
+        lam_w, vec_w = _inverted_window(gk_sym, gm_sym, ngd, shift)
+    mu_w = mu_of(lam_w)
+    flagged = swamped(lam_w, tol_mu)
+
+    lam_out = np.array(lam_w, dtype=float)
+    vec_out = np.array(vec_w, dtype=float)
+    start = 0
+    for stop in range(1, len(mu_w) + 1):
+        if stop < len(mu_w) and mu_w[stop - 1] - mu_w[stop] <= tol_mu:
+            continue
+        cols = np.arange(start, stop)
+        cols = cols[np.isfinite(lam_w[cols])]
+        if cols.size and flagged[cols].any():
+            v = vec_w[:, cols]
+            kr = v.T @ gk_sym @ v
+            mr = v.T @ gm_sym @ v
+            vals, y = eigh(0.5 * (kr + kr.T), 0.5 * (mr + mr.T))
+            lam_out[cols] = vals
+            vec_out[:, cols] = v @ y
+        start = stop
+
+    order = np.argsort(lam_out, kind="stable")[:k]
+    return lam_out[order], np.ascontiguousarray(vec_out[:, order])
 
 
 def _splice_upper_spectrum(

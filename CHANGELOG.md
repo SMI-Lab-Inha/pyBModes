@@ -40,6 +40,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   every dense-path model change by up to the old error — on the NREL 5MW
   blade up to ~5 % on the lowest flap / edge modes, on the tower ~0.3 %.
 
+  When one strongly negative eigenvalue forces a shift much larger than
+  the soft end of the spectrum, those soft modes all map to the same `μ`
+  to working precision. The window is then grown until its edge falls in
+  a resolvable gap, and each such cluster is re-solved by Rayleigh-Ritz
+  on its own subspace, so the soft modes come back in order and
+  independent of `n_modes` (`K = diag(−1e16, 1, 2, 3, 4)` returns
+  `[−1e16, 1]` for two modes, not `[−1e16, 4]`).
+
   The mass-reduced form is kept as the fallback for a pencil no shift
   makes definite, and the residual retry of 1.18.0 still stands behind
   it; the near-singular-mass case it was built for now solves directly

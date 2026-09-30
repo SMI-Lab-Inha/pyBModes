@@ -225,6 +225,34 @@ class TestShiftSelection:
             vals, eigh(gk, gm, eigvals_only=True)[:5], rtol=1.0e-10,
         )
 
+    @pytest.mark.parametrize("n_modes", [1, 2, 3, 4, 5])
+    def test_large_negative_mode_does_not_swamp_the_soft_ones(self, n_modes):
+        """One strongly negative eigenvalue forces a shift so large that
+        every soft mode maps to the same ``μ = 1/(λ + s)``. Their order was
+        then arbitrary and ``n_modes = 2`` returned ``[-1e16, 4]``."""
+        gk = np.diag([-1.0e16, 1.0, 2.0, 3.0, 4.0])
+        vals, vecs = solver._solve_dense_symmetric(gk, np.eye(5), n_modes)
+        np.testing.assert_allclose(
+            vals, [-1.0e16, 1.0, 2.0, 3.0, 4.0][:n_modes], rtol=1.0e-12,
+        )
+        residual = gk @ vecs - vecs * vals
+        assert np.max(np.abs(residual)) < 1.0e-6
+
+    def test_swamped_modes_do_not_depend_on_the_window(self):
+        """A rotated version, where the soft cluster is no longer aligned
+        with the coordinates. The soft modes can only be as accurate as
+        ``eps * 1e14`` allows, but they must not move with ``n_modes``."""
+        rng = np.random.default_rng(0)
+        q, _r = np.linalg.qr(rng.normal(size=(40, 40)))
+        d = np.concatenate([[-1.0e14, -3.0e13], np.arange(1.0, 39.0)])
+        gk = q @ np.diag(d) @ q.T
+        gk = 0.5 * (gk + gk.T)
+        gm = np.eye(40)
+        v3 = solver._solve_dense_symmetric(gk, gm, 3)[0]
+        v9 = solver._solve_dense_symmetric(gk, gm, 9)[0]
+        np.testing.assert_array_equal(v9[:3], v3)
+        np.testing.assert_allclose(v9, d[:9], rtol=1.0e-10, atol=1.0e-2)
+
 
 class TestFullSpectrum:
     def test_full_request_matches_a_subset_at_the_bottom(self):
