@@ -23,6 +23,7 @@ import warnings
 import numpy as np
 import pytest
 
+from pybmodes._numeric import trapezoid
 from pybmodes.io._hydrodyn_ballast import read_filled_ballast
 from pybmodes.models._platform import _add_filled_ballast
 
@@ -379,8 +380,7 @@ class TestOC4DeepCwind:
         ps = tower._bmi.support
         res = tower.run(n_modes=8, check_model=False)
         f = dict(zip(res.mode_labels, res.frequencies))["heave"]
-        m_tower = float(np.trapezoid(
-            tower._sp.mass_den, tower._sp.span_loc)) * (
+        m_tower = trapezoid(tower._sp.mass_den, tower._sp.span_loc) * (
             tower._bmi.radius + ps.draft)
         m_total = ps.mass_pform + m_tower + tower._bmi.tip_mass.mass
         k33 = ps.hydro_K[2, 2] + ps.mooring_K[2, 2]

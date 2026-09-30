@@ -33,13 +33,13 @@ This sample is a cantilever (`hub_conn = 1`) clamped at TowerBsHt with the RNA l
 
 ### Tower
 
-- 1st FA tower-bending: **0.4172 Hz**
+- 1st FA tower-bending: **0.4179 Hz**
 
 ### Blade  (spinning at deck `RotSpeed = 5 rpm`)
 
-- 1st flap: **0.7958 Hz**
-- 1st edge: **1.0294 Hz**
-- 2nd flap: **2.3593 Hz**
+- 1st flap: **0.7960 Hz**
+- 1st edge: **1.0296 Hz**
+- 2nd flap: **2.3592 Hz**
 
 ## Comparison with published values
 

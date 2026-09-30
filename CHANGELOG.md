@@ -81,11 +81,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Tower.run` on a free-free floating model now warns (`UserWarning`)
   when `hydro_K + mooring_K` has a negative direction, naming the
   dominant DOFs: the platform is statically unstable there and the
-  general solver leaves those modes out of the result. The bundled
-  `08_nrel5mw_oc4semi` sample triggers it — the OC4 DeepCwind deck keeps
-  its ballast in HydroDyn filled members rather than `PtfmMass`, which
-  the platform model does not include, so its roll / pitch restoring is
-  negative and the modes labelled roll / pitch there are tower bending.
+  general solver leaves those modes out of the result.
+- **Ballast held in HydroDyn filled members was missing from floating
+  models.** Some decks keep their water ballast out of ElastoDyn's
+  `PtfmMass` and declare it as HydroDyn filled-member groups, which
+  OpenFAST applies through HydroDyn at run time. The OC4 DeepCwind semi
+  is the standard case, with 3.852e6 kg of steel in `PtfmMass` and
+  9.62e6 kg of water in two fill groups. `Tower.from_elastodyn_with_mooring`
+  and the deck-backed tier of `Tower.from_windio_floating` now read the
+  joints, cross-sections, members and fill groups of the HydroDyn deck
+  and lump the fill into the platform as the rigid, body-fixed ballast
+  HydroDyn models it as: mass, centre of mass and full 3×3 inertia about
+  the combined centre of mass. On OC4 this gives 1.3476e7 kg with the
+  centre of mass 13.460 m below MSL, against 1.3473e7 kg and 13.46 m in
+  Robertson et al. (2014), NREL/TP-5000-60601. Roll / pitch restoring
+  goes from −3.8e8 to +9.85e8 N·m/rad and all six rigid-body modes come
+  back (surge / sway 0.0088, heave 0.0579, roll / pitch 0.0390, yaw
+  0.0125 Hz); before, the modes labelled roll and pitch were tower
+  bending. Decks without fill groups are unaffected. Only cylindrical
+  filled members are supported; a rectangular one raises
+  `NotImplementedError` rather than being skipped.
+- **Bundled floating samples regenerated.** `08_nrel5mw_oc4semi` now
+  carries the ballasted platform above (its first tower FA mode moves
+  from 0.4507 to 0.4284 Hz), and `09_iea15_umainesemi`,
+  `10_iea22_semi` and `11_upscale25_centraltower` now include the weight
+  restoring in `hydro_K` (roll / pitch +3.4e8, +1.3e7 and −1.4e9
+  N·m/rad; all stay positive). Every sample README picks up the
+  corrected dense-solver frequencies.
 - **`Tower.add_point_mass` on a deck-built floater now updates the
   weight restoring.** The weight term is formed when the model is
   constructed, so a lump added afterwards reached the FEM mass matrix but

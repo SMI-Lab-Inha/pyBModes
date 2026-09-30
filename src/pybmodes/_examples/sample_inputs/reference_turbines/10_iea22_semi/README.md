@@ -37,9 +37,9 @@ This sample is a free-free flexible-tower (`hub_conn = 2`) with a full PlatformS
 
 ### Blade  (spinning at deck `RotSpeed = 3 rpm`)
 
-- 1st flap: **0.3998 Hz**
-- 1st edge: **0.5381 Hz**
-- 2nd flap: **1.1032 Hz**
+- 1st flap: **0.3987 Hz**
+- 1st edge: **0.5388 Hz**
+- 2nd flap: **1.1031 Hz**
 
 ## Comparison with published values
 

@@ -299,6 +299,12 @@ Common pitfalls
   a ballast-stabilised spar is negative in roll / pitch (OC3 Hywind:
   ``−5.0e9 N·m/rad``), and ``Tower.run`` warns that those rigid-body
   modes are unstable rather than returning them.
+* **Leaving out ballast declared in HydroDyn.** Water ballast given as
+  HydroDyn filled-member groups is not in ElastoDyn's ``PtfmMass``
+  (OC4 DeepCwind keeps all of it there). The deck constructors lump it
+  into ``mass_pform``, ``cm_pform`` and ``i_matrix`` as the rigid ballast
+  HydroDyn treats it as; a hand-built ``PlatformSupport`` has to include
+  it itself.
 
 * **Confusing OpenFAST's two frames.** ``PtfmCMzt`` (CM) and
   ``PtfmRefzt`` (reference) are both in the tower-base *t*-frame;

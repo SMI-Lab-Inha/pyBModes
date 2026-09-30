@@ -50,12 +50,12 @@ Distance of element boundary nodes from tower base (norm. by tower length), el_l
 --------- Properties of tower support subsystem ---------------------------------------------
 1          tow_support: 1 = floating-platform with optional tension wires (-)
 -10.000000    draft        : depth of tower base from MSL (m)
-8.658800    cm_pform     : distance of platform c.m. below MSL (m)
-3.852180e+06    mass_pform   : platform mass (kg)
+13.460321  0.000002  0.000000    cm_pform_xyz : platform c.m. below MSL + horizontal (x downwind, y lateral) offsets from the tower axis (m)
+1.347603e+07    mass_pform   : platform mass (kg)
 Platform mass inertia 3X3 matrix (i_matrix_pform):  [OC4 DeepCwind semi (Robertson 2014) via HydroDyn+MoorDyn]
-        2.561930e+09     0.000000e+00     0.000000e+00
-        0.000000e+00     2.561930e+09     0.000000e+00
-        0.000000e+00     0.000000e+00     4.242650e+09
+        7.099696e+09     0.000000e+00     6.165441e+01
+        0.000000e+00     7.099696e+09     0.000000e+00
+        6.165441e+01     0.000000e+00     1.280537e+10
 -0.000000    ref_msl    : distance of platform reference point below MSL (m)
 Hydrodynamic 6X6 mass matrix at platform ref point (hydro_M)  [OC4 DeepCwind semi (Robertson 2014) via HydroDyn+MoorDyn]:
         8.740059e+06     0.000000e+00    -3.871260e-01     0.000000e+00    -1.075816e+08     0.000000e+00
@@ -68,16 +68,16 @@ Hydrodynamic 6X6 stiffness matrix at platform ref point (hydro_K)  [OC4 DeepCwin
         0.000000e+00     0.000000e+00     0.000000e+00     0.000000e+00     0.000000e+00     0.000000e+00
         0.000000e+00     0.000000e+00     0.000000e+00     0.000000e+00     0.000000e+00     0.000000e+00
         0.000000e+00     0.000000e+00     3.820308e+06     0.000000e+00    -1.541053e+02     0.000000e+00
-        0.000000e+00     0.000000e+00     0.000000e+00    -3.807176e+08     0.000000e+00     0.000000e+00
-        0.000000e+00     0.000000e+00    -1.541053e+02     0.000000e+00    -3.807153e+08     0.000000e+00
+        0.000000e+00     0.000000e+00     0.000000e+00     9.852074e+08     0.000000e+00     0.000000e+00
+        0.000000e+00     0.000000e+00    -1.541053e+02     0.000000e+00     9.852097e+08     0.000000e+00
         0.000000e+00     0.000000e+00     0.000000e+00     0.000000e+00     0.000000e+00     0.000000e+00
 Mooring-system 6X6 stiffness matrix (mooring_K):  [OC4 DeepCwind semi (Robertson 2014) via HydroDyn+MoorDyn]
         7.083634e+04    -0.000000e+00     1.049534e-01    -0.000000e+00    -1.095301e+05    -0.000000e+00
        -0.000000e+00     7.083592e+04    -0.000000e+00     1.095165e+05    -0.000000e+00    -1.105049e+01
-        1.049534e-01    -0.000000e+00     1.914043e+04    -0.000000e+00    -2.706354e+02    -5.820766e-10
+        1.049534e-01    -0.000000e+00     1.914043e+04    -0.000000e+00    -2.706354e+02    -0.000000e+00
        -0.000000e+00     1.095165e+05    -0.000000e+00     8.770363e+07    -0.000000e+00     5.655611e+04
-       -1.095301e+05    -0.000000e+00    -2.706354e+02    -0.000000e+00     8.770406e+07    -2.328306e-09
-       -0.000000e+00    -1.105049e+01    -5.820766e-10     5.655611e+04    -2.328306e-09     1.180255e+08
+       -1.095301e+05    -0.000000e+00    -2.706354e+02    -0.000000e+00     8.770406e+07     2.328306e-09
+       -0.000000e+00    -1.105049e+01    -0.000000e+00     5.655611e+04     2.328306e-09     1.180255e+08
 
 Distributed (hydrodynamic) added-mass per unit length along the flexible tower:
 0           n_secs_m_distr: number of distributed-added-mass stations (-)
