@@ -280,6 +280,27 @@ class TestDeckHandling:
         with pytest.raises(ValueError, match="non-physical"):
             read_filled_ballast(path)
 
+    @pytest.mark.parametrize("token", ["nan", "NaN", "inf", "-Infinity"])
+    @pytest.mark.parametrize("where", ["FillDens", "FillFSLoc", "joint", "PropD"])
+    def test_non_finite_deck_scalars_are_rejected(self, tmp_path, token, where):
+        joints = [(1, 0, 0, -10), (2, 0, 0, 0)]
+        props = [(1, 2.0, 0.0)]
+        fs, dens = "0.0", f"{RHO}"
+        if where == "FillDens":
+            dens = token
+        elif where == "FillFSLoc":
+            fs = token
+        elif where == "joint":
+            joints = [(1, 0, token, -10), (2, 0, 0, 0)]
+        else:
+            props = [(1, token, 0.0)]
+        path = _deck(
+            tmp_path, joints=joints, props=props,
+            members=[(1, 1, 2, 1, 1)], fills=[f"1 1 {fs} {dens}"],
+        )
+        with pytest.raises(ValueError, match="(?i)non-finite|malformed"):
+            read_filled_ballast(path)
+
     @pytest.mark.parametrize("bad", [0.0, -1.0, float("nan"), float("inf")])
     def test_bad_water_density_is_rejected(self, tmp_path, bad):
         path = _vertical_column(tmp_path, fs=-8.0)

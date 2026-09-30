@@ -141,10 +141,19 @@ def _table(
 
 
 def _float(tok: str, what: str, path: pathlib.Path) -> float:
+    """Parse one deck scalar, rejecting anything non-finite.
+
+    A NaN would slip past every later range check (comparisons with NaN
+    are false) and reach the platform mass matrix, so finiteness is
+    checked here rather than left to the shared parser.
+    """
     try:
-        return _parse_fortran_float(tok)
+        value = _parse_fortran_float(tok)
     except ValueError as err:
         raise ValueError(f"Malformed {what} in {path}: {tok!r}") from err
+    if not np.isfinite(value):
+        raise ValueError(f"Non-finite {what} in {path}: {tok!r}")
+    return value
 
 
 def _int(tok: str, what: str, path: pathlib.Path) -> int:
