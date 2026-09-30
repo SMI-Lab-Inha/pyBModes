@@ -142,6 +142,58 @@ def _platform_inertia_matrix(ptfm: dict[str, float]) -> np.ndarray:
     return i_mat
 
 
+def _add_filled_ballast(
+    ptfm: dict[str, float],
+    i_mat: np.ndarray,
+    hydrodyn_dat_path: pathlib.Path | str,
+) -> tuple[dict[str, float], np.ndarray]:
+    """Lump the HydroDyn filled-member ballast into the platform.
+
+    Returns an updated copy of the ``Ptfm*`` scalars (``PtfmMass`` and
+    the ``PtfmCM*`` centre of mass) and the 6×6 inertia matrix about the
+    combined centre of mass. When the deck declares no fill, both come
+    back unchanged.
+
+    OpenFAST applies filled-member ballast through HydroDyn rather than
+    ElastoDyn, so decks such as the OC4 DeepCwind semi carry only the
+    steel in ``PtfmMass``. Leaving the ballast out misses most of the
+    platform mass, raises its centre of gravity and, once the weight
+    restoring is formed from that mass, leaves roll and pitch unstable.
+    HydroDyn models a closed fill group as body-fixed ballast (see
+    :mod:`pybmodes.io._hydrodyn_ballast`), which is exactly a rigid mass
+    on the platform. The combined rotational block is a full 3×3 tensor;
+    for a symmetric platform its products of inertia vanish.
+    """
+    import numpy as np
+
+    from pybmodes.io._hydrodyn_ballast import read_filled_ballast
+
+    ballast = read_filled_ballast(hydrodyn_dat_path)
+    if ballast is None:
+        return ptfm, i_mat
+
+    m_s = float(ptfm["PtfmMass"])
+    c_s = np.array([ptfm["PtfmCMxt"], ptfm["PtfmCMyt"], ptfm["PtfmCMzt"]])
+    m_b = ballast.mass
+    m = m_s + m_b
+    c = (m_s * c_s + m_b * ballast.cg) / m
+
+    def shift(mass: float, d: np.ndarray) -> np.ndarray:
+        return mass * (float(d @ d) * np.eye(3) - np.outer(d, d))
+
+    rot = (
+        np.asarray(i_mat, dtype=float)[3:, 3:] + shift(m_s, c_s - c)
+        + ballast.inertia_cg + shift(m_b, ballast.cg - c)
+    )
+    out = dict(ptfm)
+    out["PtfmMass"] = m
+    out["PtfmCMxt"], out["PtfmCMyt"], out["PtfmCMzt"] = (float(v) for v in c)
+    new_i = np.zeros((6, 6))
+    new_i[0, 0] = new_i[1, 1] = new_i[2, 2] = m
+    new_i[3:, 3:] = 0.5 * (rot + rot.T)
+    return out, new_i
+
+
 #: Standard gravity (m/s²), the OpenFAST ``Gravity`` default.
 STANDARD_GRAVITY = 9.80665
 
