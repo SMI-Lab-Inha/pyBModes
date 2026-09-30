@@ -31,6 +31,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from pybmodes._numeric import trapezoid
+
 
 @dataclass
 class ElastoDynMain:
@@ -112,7 +114,7 @@ class ElastoDynMain:
         bl_len = self.tip_rad - self.hub_rad
         s = blade.bl_fract * bl_len
         bl_mass_per_blade = float(
-            blade.adj_bl_ms * np.trapezoid(blade.b_mass_den, s)
+            blade.adj_bl_ms * trapezoid(blade.b_mass_den, s)
         )
         return self.hub_mass + self.num_bl * bl_mass_per_blade
 

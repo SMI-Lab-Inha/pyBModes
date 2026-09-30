@@ -194,6 +194,7 @@ def _gravitational_restoring(
     """
     import numpy as np
 
+    from pybmodes._numeric import trapezoid
     from pybmodes.io.bmi import PlatformSupport
 
     ps = bmi.support
@@ -211,7 +212,7 @@ def _gravitational_restoring(
     z = base_z + span * (top_z - base_z)
     # First moment of each part about the reference point, in kg·m.
     moment = float(ps.mass_pform) * (-float(ps.cm_pform) - ref_z)
-    moment += float(np.trapezoid(mass_den * (z - ref_z), z))
+    moment += trapezoid(mass_den * (z - ref_z), z)
     for pm in bmi.point_masses:
         moment += float(pm.mass) * (base_z + float(pm.height) - ref_z)
     tip = bmi.tip_mass

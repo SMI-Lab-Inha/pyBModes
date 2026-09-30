@@ -237,26 +237,28 @@ def test_iea34_no_degeneracy_warning():
     """The IEA-3.4 modes 1-2 should resolve to clean FA/SS shapes with no
     warning emitted.
 
-    The deck's tower is symmetric in stiffness; with a sufficiently large
-    eigenvalue request scipy/LAPACK returns the degenerate pair at
-    *identical* frequencies but in an arbitrarily-rotated basis (≈ 52/48
-    FA/SS mix). We use ``n_modes=10`` here to match what the case-study
-    script in ``cases/iea3mw_land/run.py`` exercises and to put the
-    eigensolver on the full-solve path; smaller subset requests produce
-    slightly-different numerical answers where the eigensolver lifts the
-    degeneracy artificially and the modes come back already-separated.
+    The tower is symmetric in stiffness, but the lumped RNA is not: its
+    roll and pitch inertias differ by almost a factor of two (ixx 1.41e6,
+    iyy 2.70e6 kg·m²) and it carries an ixz product. That splits the first
+    pair by about 0.09 %, which the dense, sparse and inverted-pencil
+    solves all agree on. Solvers before 1.19 returned the pair exactly
+    degenerate in a mixed (≈ 52/48) basis only because their error on the
+    lowest modes exceeded the split; this test used to assert that
+    artefact. What it gates now is the user-facing contract that either
+    way the resolver stays silent and the first two modes come back
+    FA-pure and SS-pure.
     """
     tower = Tower.from_elastodyn(_IEA34_MAIN)
     modal = tower.run(n_modes=10)
 
-    # Sanity: this deck is expected to produce a degenerate first pair
-    # (gap exactly zero on a full solve — the structural model is symmetric
-    # in stiffness and the rigid-RNA c.m. offset is small enough not to
-    # lift the degeneracy at the FEM precision we operate at).
-    assert _is_degenerate_pair(modal.shapes[0], modal.shapes[1]), (
-        f"expected a degenerate first pair from the full solve; got "
-        f"freqs {modal.shapes[0].freq_hz:.6f}, {modal.shapes[1].freq_hz:.6f}"
+    f0, f1 = modal.shapes[0].freq_hz, modal.shapes[1].freq_hz
+    assert 1e-4 < (f1 - f0) / f0 < 5e-3, (
+        f"first pair should be split by the RNA inertia asymmetry; got "
+        f"{f0:.6f}, {f1:.6f} Hz"
     )
+    # The split is a property of the model, not of the requested window.
+    f4 = tower.run(n_modes=4).frequencies[:2]
+    np.testing.assert_allclose(f4, [f0, f1], rtol=1e-6)
 
     with warnings.catch_warnings(record=True) as captured:
         warnings.simplefilter("always")
@@ -267,14 +269,11 @@ def test_iea34_no_degeneracy_warning():
         + "\n  ".join(str(w.message) for w in runtime_warnings)
     )
 
-    # First rotated shape should be FA-pure (was ~ 0.52 pre-rotation).
-    p_fa, _ = _shape_participation(rotated[0])
-    assert p_fa > 0.99, (
-        f"After rotation, FA-aligned mode has p_FA = {p_fa:.4f} "
-        f"(expected > 0.99). Pre-rotation values were ~ 0.522 / 0.478."
-    )
-    # And the second SS-pure.
-    _, p_ss = _shape_participation(rotated[1])
+    # One of the first two modes is FA-pure and the other SS-pure.
+    parts = [_shape_participation(s) for s in rotated[:2]]
+    p_fa = max(p[0] for p in parts)
+    p_ss = max(p[1] for p in parts)
+    assert p_fa > 0.99, f"FA-aligned mode has p_FA = {p_fa:.4f}"
     assert p_ss > 0.99, f"SS-aligned mode has p_SS = {p_ss:.4f}"
 
 

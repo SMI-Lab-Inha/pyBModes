@@ -148,6 +148,31 @@ def _oc3_sample():
     return Tower(OC3_SAMPLE)
 
 
+class TestPointMassKeepsWeightInStep:
+    """``add_point_mass`` after construction must reach the weight term too,
+    or the FEM mass and the roll / pitch restoring disagree."""
+
+    def test_lump_adds_its_own_weight(self):
+        tower = _oc3_sample()
+        tower._weight_g = G   # as the deck-built constructors set it
+        ps = tower._bmi.support
+        before = np.array(ps.hydro_K, copy=True)
+        tower.add_point_mass(30.0, 5.0e4)
+        z_rel = -ps.draft + 30.0 + ps.ref_msl
+        delta = ps.hydro_K - before
+        assert delta[3, 3] == pytest.approx(-G * 5.0e4 * z_rel, rel=1e-12)
+        assert delta[4, 4] == delta[3, 3]
+        mask = np.ones((6, 6), dtype=bool)
+        mask[3, 3] = mask[4, 4] = False
+        assert np.all(delta[mask] == 0.0)
+
+    def test_model_without_a_weight_term_is_untouched(self):
+        tower = _oc3_sample()
+        before = np.array(tower._bmi.support.hydro_K, copy=True)
+        tower.add_point_mass(30.0, 5.0e4)
+        np.testing.assert_array_equal(tower._bmi.support.hydro_K, before)
+
+
 class TestNegativeRestoringIsNeverSilent:
     """A negative-stiffness rigid-body mode must be reported, not dropped."""
 
@@ -243,6 +268,17 @@ class TestOC3HywindFromDecks:
         f9 = tower.run(n_modes=9, check_model=False).frequencies
         f20 = tower.run(n_modes=20, check_model=False).frequencies
         np.testing.assert_allclose(f20[:9], f9, rtol=1e-6)
+
+    def test_point_mass_matches_a_full_recompute(self):
+        from pybmodes.io.wamit_reader import HydroDynReader
+
+        tower = _oc3_from_decks().add_point_mass(40.0, 1.0e5)
+        c_hst = HydroDynReader(OC3_HYDRODYN).read_platform_matrices().C_hst
+        np.testing.assert_allclose(
+            tower._bmi.support.hydro_K - c_hst,
+            _gravitational_restoring(tower._bmi, tower._sp),
+            rtol=1e-12, atol=1e-3,
+        )
 
     def test_mooring_only_model_gets_no_weight_term(self):
         """Without HydroDyn there is no buoyancy to balance the weight, so

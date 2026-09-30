@@ -78,6 +78,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   its ballast in HydroDyn filled members rather than `PtfmMass`, which
   the platform model does not include, so its roll / pitch restoring is
   negative and the modes labelled roll / pitch there are tower bending.
+- **`Tower.add_point_mass` on a deck-built floater now updates the
+  weight restoring.** The weight term is formed when the model is
+  constructed, so a lump added afterwards reached the FEM mass matrix but
+  not the roll / pitch restoring. The lump's `−m g (z − z_ref)` is now
+  added to `hydro_K` as well, which matches a model rebuilt with the lump
+  in place.
+- **NumPy 1.26 support.** Several code paths called `np.trapezoid`,
+  which only exists from NumPy 2.0, so on the supported `numpy>=1.26`
+  every `Tower.run()` (through the pre-solve checks), every ElastoDyn
+  blade read and every floating constructor failed with
+  `AttributeError`. They now share one version-independent trapezoid
+  helper, and a test keeps the NumPy-2-only spelling out of the package.
+- **The first tower pair of the IEA-3.4 and IFE UPSCALE 25MW decks is no
+  longer degenerate.** Both towers are symmetric in stiffness, but the
+  lumped RNA is not (pitch inertia 1.9× and 3.0× roll inertia, plus an
+  `ixz` product), which splits the first FA / SS pair by 0.09 % and 1.0 %.
+  The dense solver above, the sparse path and an `eigh(M, K)` solve all
+  agree on the split. The old dense path returned the pair degenerate
+  only because its error on the lowest modes was larger than the split,
+  and two integration tests had pinned that; they now pin the split.
 - **WindIO discovery ignored every yaml under a path containing
   "OpenFAST".** The exclusion meant for the `OpenFAST/` deck directory of
   an RWT layout matched the absolute path, so a checkout living under

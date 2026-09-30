@@ -212,6 +212,12 @@ class Tower:
     # deck-derived model, where those numbers don't exist.
     _construction: ConstructionInputs | None = None
 
+    # Gravity used for the weight restoring folded into ``hydro_K`` by
+    # the deck-built floating constructors, so that ``add_point_mass``
+    # can add the new lump's share. ``None`` when no weight term was
+    # added (every other constructor, or a floater without HydroDyn).
+    _weight_g: float | None = None
+
     def __init__(
         self, bmi_path: str | pathlib.Path, *, n_nodes: int | None = None,
     ) -> None:
@@ -1078,12 +1084,14 @@ class Tower:
         # buoyancy that balances it is not a floating body.
         if hydrodyn_dat_path is not None:
             platform_support.hydro_K = C_hst + _gravitational_restoring(
-                bmi, sp,
+                bmi, sp, g=STANDARD_GRAVITY,
             )
 
         obj = cls.__new__(cls)
         obj._bmi = bmi
         obj._sp = sp
+        if hydrodyn_dat_path is not None:
+            obj._weight_g = STANDARD_GRAVITY
         if n_nodes is not None:
             obj.refine_mesh(n_nodes)
         return obj
@@ -1467,6 +1475,7 @@ class Tower:
         obj = cls.__new__(cls)
         obj._bmi = bmi
         obj._sp = sp
+        obj._weight_g = float(g)
         obj.coeff_validation = None
         return obj
 
@@ -1761,6 +1770,8 @@ class Tower:
         would also change the centrifugal tension distribution, which is
         a separate modelling track.
         """
+        import numpy as np
+
         from pybmodes.io.bmi import PlatformSupport, PointMass
 
         pm = PointMass(height=float(height), mass=float(mass))
@@ -1777,6 +1788,17 @@ class Tower:
                 f"the very top."
             )
         self._bmi.point_masses = (*self._bmi.point_masses, pm)
+        # A floater built from decks carries the system weight in hydro_K;
+        # the new lump's weight belongs there too, measured the same way
+        # as in _gravitational_restoring (beam base at z = -draft, relative
+        # to the reference point at z = -ref_msl).
+        ps = self._bmi.support
+        if self._weight_g is not None and isinstance(ps, PlatformSupport):
+            z_rel = -float(ps.draft) + pm.height + float(ps.ref_msl)
+            k = np.array(ps.hydro_K, dtype=float, copy=True)
+            k[3, 3] -= self._weight_g * pm.mass * z_rel
+            k[4, 4] -= self._weight_g * pm.mass * z_rel
+            ps.hydro_K = k
         return self
 
     def run(
