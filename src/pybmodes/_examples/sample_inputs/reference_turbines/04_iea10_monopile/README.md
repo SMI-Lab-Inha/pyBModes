@@ -33,13 +33,13 @@ This sample is a combined pile + tower cantilever (`hub_conn = 1`) clamped at th
 
 ### Tower
 
-- 1st FA tower-bending: **0.3008 Hz**
+- 1st FA tower-bending: **0.3000 Hz**
 
 ### Blade  (spinning at deck `RotSpeed = 5 rpm`)
 
-- 1st flap: **0.4044 Hz**
-- 1st edge: **0.6496 Hz**
-- 2nd flap: **1.0430 Hz**
+- 1st flap: **0.4050 Hz**
+- 1st edge: **0.6494 Hz**
+- 2nd flap: **1.0433 Hz**
 
 ## Comparison with published values
 

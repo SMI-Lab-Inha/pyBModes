@@ -253,9 +253,10 @@ def _warn_on_negative_platform_restoring(plat: PlatformSupport) -> None:
         f"eigenvalues, which the general (non-symmetric) solver path "
         f"leaves out of the returned modes. A WAMIT "
         f".hst excludes the body weight (the -m g z_G term), and ballast "
-        f"carried outside PtfmMass — e.g. HydroDyn filled members — is not "
-        f"in the model either; check that the restoring includes every "
-        f"weight and buoyancy contribution.",
+        f"carried outside the platform mass is easy to miss in a hand-built "
+        f"model (the HydroDyn-deck constructors add filled-member ballast "
+        f"themselves); check that the restoring includes every weight and "
+        f"buoyancy contribution.",
         UserWarning,
         stacklevel=4,  # past run_fem and Tower.run, to the caller
     )

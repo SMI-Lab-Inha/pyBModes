@@ -40,6 +40,7 @@ from pybmodes.io.construction import ConstructionInputs, TubeSegment
 from pybmodes.io.sec_props import SectionProperties
 from pybmodes.models._pipeline import run_fem
 from pybmodes.models._platform import (
+    _add_filled_ballast,
     _gravitational_restoring,
     _platform_inertia_matrix,
     _scan_platform_fields,
@@ -1028,8 +1029,13 @@ class Tower:
             A_inf = wamit.A_inf
             C_hst = wamit.C_hst
 
-        M = ptfm["PtfmMass"]
         i_mat = _platform_inertia_matrix(ptfm)
+        # Ballast declared as HydroDyn filled members (the OC4 semi keeps
+        # all of its water ballast there) is platform mass that ElastoDyn
+        # never sees. Lump it in before the CM and weight terms are formed.
+        if hydrodyn_dat_path is not None:
+            ptfm, i_mat = _add_filled_ballast(ptfm, i_mat, hydrodyn_dat_path)
+        M = ptfm["PtfmMass"]
 
         # BModes file convention for these scalars (see the OC3 Hywind
         # sample BMI in ``src/pybmodes/_examples/sample_inputs/
@@ -1396,8 +1402,15 @@ class Tower:
                     blade = read_elastodyn_blade(bp)
             rna_tip = _tower_top_assembly_mass(main, blade)
             ptfm = _scan_platform_fields(ed_path)
-            M = ptfm["PtfmMass"]
             i_mat = _platform_inertia_matrix(ptfm)
+            # Filled-member ballast, as in from_elastodyn_with_mooring, with
+            # DEFAULT fill density resolved to the same rho the hydrostatics
+            # and mooring on this path use.
+            if hydrodyn_dat is not None:
+                ptfm, i_mat = _add_filled_ballast(
+                    ptfm, i_mat, hydrodyn_dat, water_density=rho,
+                )
+            M = ptfm["PtfmMass"]
             cm_pform = -ptfm["PtfmCMzt"]
             cm_x, cm_y = ptfm["PtfmCMxt"], ptfm["PtfmCMyt"]
             ref_msl = -ptfm["PtfmRefzt"]

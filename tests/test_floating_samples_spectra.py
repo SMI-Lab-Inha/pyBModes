@@ -34,6 +34,7 @@ floating path; these tests pin both invariants the old code violated:
 from __future__ import annotations
 
 import pathlib
+import warnings
 
 import numpy as np
 import pytest
@@ -133,3 +134,22 @@ def test_oc3hywind_sample_matches_bmodes_jj() -> None:
         f"(allowed 0.5%).\n  pyBmodes : {np.array2string(f[:9], precision=5)}"
         f"\n  BModes JJ: {np.array2string(_OC3_BMODES_JJ, precision=5)}"
     )
+
+
+@pytest.mark.parametrize("sample_id", _FLOATING)
+def test_floating_sample_is_statically_stable(sample_id: str) -> None:
+    """Every bundled floater has positive roll / pitch restoring and returns
+    all six rigid-body modes without the negative-stiffness warning.
+
+    The OC4 DeepCwind sample used to fail this: its water ballast sits in
+    HydroDyn filled members rather than ElastoDyn's PtfmMass, and until the
+    deck constructors lumped that ballast into the platform the sample
+    carried 3.85e6 kg of steel instead of 1.35e7 kg of platform, read
+    C44 = C55 = -3.8e8 N·m/rad, and labelled tower-bending modes as roll
+    and pitch."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        res = Tower(_tower_bmi(sample_id)).run(n_modes=9, check_model=False)
+    assert set(res.mode_labels[:6]) == {
+        "surge", "sway", "heave", "roll", "pitch", "yaw",
+    }, (sample_id, res.mode_labels[:6])
