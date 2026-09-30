@@ -146,6 +146,8 @@ def _add_filled_ballast(
     ptfm: dict[str, float],
     i_mat: np.ndarray,
     hydrodyn_dat_path: pathlib.Path | str,
+    *,
+    water_density: float | None = None,
 ) -> tuple[dict[str, float], np.ndarray]:
     """Lump the HydroDyn filled-member ballast into the platform.
 
@@ -163,12 +165,17 @@ def _add_filled_ballast(
     :mod:`pybmodes.io._hydrodyn_ballast`), which is exactly a rigid mass
     on the platform. The combined rotational block is a full 3×3 tensor;
     for a symmetric platform its products of inertia vanish.
+
+    ``water_density`` resolves ``FillDens = DEFAULT``; when omitted the
+    deck's own ``WtrDens`` (or 1025 kg/m³) is used.
     """
     import numpy as np
 
     from pybmodes.io._hydrodyn_ballast import read_filled_ballast
 
-    ballast = read_filled_ballast(hydrodyn_dat_path)
+    ballast = read_filled_ballast(
+        hydrodyn_dat_path, water_density=water_density,
+    )
     if ballast is None:
         return ptfm, i_mat
 

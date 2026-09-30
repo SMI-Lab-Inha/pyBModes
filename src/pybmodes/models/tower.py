@@ -1403,9 +1403,13 @@ class Tower:
             rna_tip = _tower_top_assembly_mass(main, blade)
             ptfm = _scan_platform_fields(ed_path)
             i_mat = _platform_inertia_matrix(ptfm)
-            # Filled-member ballast, as in from_elastodyn_with_mooring.
+            # Filled-member ballast, as in from_elastodyn_with_mooring, with
+            # DEFAULT fill density resolved to the same rho the hydrostatics
+            # and mooring on this path use.
             if hydrodyn_dat is not None:
-                ptfm, i_mat = _add_filled_ballast(ptfm, i_mat, hydrodyn_dat)
+                ptfm, i_mat = _add_filled_ballast(
+                    ptfm, i_mat, hydrodyn_dat, water_density=rho,
+                )
             M = ptfm["PtfmMass"]
             cm_pform = -ptfm["PtfmCMzt"]
             cm_x, cm_y = ptfm["PtfmCMxt"], ptfm["PtfmCMyt"]

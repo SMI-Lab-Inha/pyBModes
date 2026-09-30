@@ -328,6 +328,19 @@ class TestMergeIntoPlatform:
         # The input dict is not mutated.
         assert p["PtfmMass"] == 4.0e6
 
+    def test_water_density_resolves_default_fill(self, tmp_path):
+        """from_windio_floating passes its rho so the ballast and the
+        hydrostatics agree on the water density."""
+        path = _deck(
+            tmp_path, joints=[(1, 0, 0, -10), (2, 0, 0, 0)],
+            props=[(1, 2.0, 0.0)], members=[(1, 1, 2, 1, 1)],
+            fills=["1 1 0.0 DEFAULT"],
+        )
+        p = self._ptfm()
+        out, _ = _add_filled_ballast(
+            p, self._i_mat(p), path, water_density=1000.0)
+        assert out["PtfmMass"] == pytest.approx(4.0e6 + 1000.0 * np.pi * 10.0)
+
     def test_no_fill_leaves_platform_unchanged(self, tmp_path):
         path = _deck(
             tmp_path, joints=[(1, 0, 0, -1), (2, 0, 0, 1)],
