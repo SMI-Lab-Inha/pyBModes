@@ -4,14 +4,14 @@ File: NRELOffshrBsline5MW_OC3Hywind_ElastoDyn.dat
 
 Tower modes:
   TwFAM1Sh  file RMS= 0.0111  pyB RMS= 0.0000  ratio=  350    WARN
-  TwFAM2Sh  file RMS=10.6264  pyB RMS= 0.0024  ratio= 4476    FAIL <-
+  TwFAM2Sh  file RMS=10.6262  pyB RMS= 0.0024  ratio= 4476    FAIL <-
   TwSSM1Sh  file RMS= 0.0165  pyB RMS= 0.0000  ratio=  524    WARN
-  TwSSM2Sh  file RMS=14.1050  pyB RMS= 0.0027  ratio= 5311    FAIL <-
+  TwSSM2Sh  file RMS=14.1053  pyB RMS= 0.0027  ratio= 5311    FAIL <-
 
 Blade modes:
-  BldFl1Sh  file RMS= 0.0022  pyB RMS= 0.0008  ratio= 2.82    PASS
-  BldFl2Sh  file RMS= 0.0088  pyB RMS= 0.0035  ratio= 2.48    PASS
-  BldEdgSh  file RMS= 0.0006  pyB RMS= 0.0002  ratio= 3.17    PASS
+  BldFl1Sh  file RMS= 0.0018  pyB RMS= 0.0008  ratio= 2.25    PASS
+  BldFl2Sh  file RMS= 0.0087  pyB RMS= 0.0035  ratio= 2.46    PASS
+  BldEdgSh  file RMS= 0.0006  pyB RMS= 0.0002  ratio= 3.14    PASS
 
 Overall: FAIL (2 block(s))
 Recommendation: run `pybmodes patch NRELOffshrBsline5MW_OC3Hywind_ElastoDyn.dat` to update coefficients from structural inputs.

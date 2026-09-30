@@ -64,20 +64,20 @@ NREL 5.0 MW offshore baseline blade input properties.
  9.951200000000000E-01  2.300000000000000E-02  1.145300000000000E+01  2.500000000000000E+05  6.610000000000000E+06
  1.000000000000000E+00  0.000000000000000E+00  1.031900000000000E+01  1.700000000000000E+05  5.010000000000000E+06
 ---------------------- BLADE MODE SHAPES ---------------------------------------
-     -4.1664094E-02   BldFl1Sh(2) - Flap mode 1, coeff of x^2
-      2.6027083E+00   BldFl1Sh(3) -            , coeff of x^3
-    -5.9392598E+00   BldFl1Sh(4) -            , coeff of x^4
-      7.9473028E+00   BldFl1Sh(5) -            , coeff of x^5
-    -3.5690872E+00   BldFl1Sh(6) -            , coeff of x^6
-    -1.7166534E+00   BldFl2Sh(2) - Flap mode 2, coeff of x^2
-      1.0616840E+01   BldFl2Sh(3) -            , coeff of x^3
-   -4.0838288E+01   BldFl2Sh(4) -            , coeff of x^4
-     5.7114865E+01   BldFl2Sh(5) -            , coeff of x^5
-   -2.4176764E+01   BldFl2Sh(6) -            , coeff of x^6
-      3.1683246E-01   BldEdgSh(2) - Edge mode 1, coeff of x^2
-      2.9409506E+00   BldEdgSh(3) -            , coeff of x^3
-    -4.6800378E+00   BldEdgSh(4) -            , coeff of x^4
-       3.5603108E+00   BldEdgSh(5) -            , coeff of x^5
-    -1.1380561E+00   BldEdgSh(6) -            , coeff of x^6
+     -4.4055207E-02   BldFl1Sh(2) - Flap mode 1, coeff of x^2
+      2.6160273E+00   BldFl1Sh(3) -            , coeff of x^3
+    -5.9845574E+00   BldFl1Sh(4) -            , coeff of x^4
+      7.9993781E+00   BldFl1Sh(5) -            , coeff of x^5
+    -3.5867928E+00   BldFl1Sh(6) -            , coeff of x^6
+    -1.7180619E+00   BldFl2Sh(2) - Flap mode 2, coeff of x^2
+      1.0626695E+01   BldFl2Sh(3) -            , coeff of x^3
+   -4.0864158E+01   BldFl2Sh(4) -            , coeff of x^4
+     5.7136826E+01   BldFl2Sh(5) -            , coeff of x^5
+   -2.4181301E+01   BldFl2Sh(6) -            , coeff of x^6
+      3.1673217E-01   BldEdgSh(2) - Edge mode 1, coeff of x^2
+      2.9411570E+00   BldEdgSh(3) -            , coeff of x^3
+    -4.6809610E+00   BldEdgSh(4) -            , coeff of x^4
+       3.5617720E+00   BldEdgSh(5) -            , coeff of x^5
+    -1.1387002E+00   BldEdgSh(6) -            , coeff of x^6
 
 

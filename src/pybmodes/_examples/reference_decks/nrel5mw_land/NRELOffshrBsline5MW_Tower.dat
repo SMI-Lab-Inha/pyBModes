@@ -29,26 +29,26 @@ NREL 5.0 MW offshore baseline tower input properties.
 9.0000000E-01  2.7887500E+03  1.4177600E+11  1.4177600E+11  
 1.0000000E+00  2.5362700E+03  1.1582000E+11  1.1582000E+11  
 ---------------------- TOWER FORE-AFT MODE SHAPES ------------------------------
-      1.0444559E+00   TwFAM1Sh(2) - Mode 1, coefficient of x^2 term
-      1.9960100E-02   TwFAM1Sh(3) -       , coefficient of x^3 term
-     6.5401451E-02   TwFAM1Sh(4) -       , coefficient of x^4 term
-     -9.7664390E-02   TwFAM1Sh(5) -       , coefficient of x^5 term
-     -3.2153100E-02   TwFAM1Sh(6) -       , coefficient of x^6 term
-   -4.2195485E+01   TwFAM2Sh(2) - Mode 2, coefficient of x^2 term
-    2.5713675E+01   TwFAM2Sh(3) -       , coefficient of x^3 term
-     3.2189723E+01   TwFAM2Sh(4) -       , coefficient of x^4 term
-    1.3898364E-01   TwFAM2Sh(5) -       , coefficient of x^5 term
-    -1.4846897E+01   TwFAM2Sh(6) -       , coefficient of x^6 term
+      1.0444770E+00   TwFAM1Sh(2) - Mode 1, coefficient of x^2 term
+      2.0063319E-02   TwFAM1Sh(3) -       , coefficient of x^3 term
+     6.5002715E-02   TwFAM1Sh(4) -       , coefficient of x^4 term
+     -9.7202293E-02   TwFAM1Sh(5) -       , coefficient of x^5 term
+     -3.2340773E-02   TwFAM1Sh(6) -       , coefficient of x^6 term
+   -4.2194955E+01   TwFAM2Sh(2) - Mode 2, coefficient of x^2 term
+    2.5713097E+01   TwFAM2Sh(3) -       , coefficient of x^3 term
+     3.2190469E+01   TwFAM2Sh(4) -       , coefficient of x^4 term
+    1.3753314E-01   TwFAM2Sh(5) -       , coefficient of x^5 term
+    -1.4846143E+01   TwFAM2Sh(6) -       , coefficient of x^6 term
 ---------------------- TOWER SIDE-TO-SIDE MODE SHAPES --------------------------
-       1.0423231E+00   TwSSM1Sh(2) - Mode 1, coefficient of x^2 term
-     2.0691559E-02   TwSSM1Sh(3) -       , coefficient of x^3 term
-      6.6344552E-02   TwSSM1Sh(4) -       , coefficient of x^4 term
-    -9.7930561E-02   TwSSM1Sh(5) -       , coefficient of x^5 term
-     -3.1428682E-02   TwSSM1Sh(6) -       , coefficient of x^6 term
-    -4.4231546E+01   TwSSM2Sh(2) - Mode 2, coefficient of x^2 term
-     2.6409060E+01   TwSSM2Sh(3) -       , coefficient of x^3 term
-    2.9814517E+01   TwSSM2Sh(4) -       , coefficient of x^4 term
-     3.6984762E+00   TwSSM2Sh(5) -       , coefficient of x^5 term
-   -1.4690507E+01   TwSSM2Sh(6) -       , coefficient of x^6 term
+       1.0422204E+00   TwSSM1Sh(2) - Mode 1, coefficient of x^2 term
+     2.0846864E-02   TwSSM1Sh(3) -       , coefficient of x^3 term
+      6.6016501E-02   TwSSM1Sh(4) -       , coefficient of x^4 term
+    -9.7378888E-02   TwSSM1Sh(5) -       , coefficient of x^5 term
+     -3.1704905E-02   TwSSM1Sh(6) -       , coefficient of x^6 term
+    -4.4233328E+01   TwSSM2Sh(2) - Mode 2, coefficient of x^2 term
+     2.6410027E+01   TwSSM2Sh(3) -       , coefficient of x^3 term
+    2.9815977E+01   TwSSM2Sh(4) -       , coefficient of x^4 term
+     3.6981293E+00   TwSSM2Sh(5) -       , coefficient of x^5 term
+   -1.4690805E+01   TwSSM2Sh(6) -       , coefficient of x^6 term
 
 

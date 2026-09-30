@@ -3,14 +3,14 @@ pyBmodes coefficient validator
 File: IEA-15-240-RWT-UMaineSemi_ElastoDyn.dat
 
 Tower modes:
-  TwFAM1Sh  file RMS= 0.0078  pyB RMS= 0.0001  ratio= 95.8    PASS
-  TwFAM2Sh  file RMS= 0.7922  pyB RMS= 0.0013  ratio=  619    FAIL <-
-  TwSSM1Sh  file RMS= 0.0088  pyB RMS= 0.0001  ratio=  118    PASS
-  TwSSM2Sh  file RMS=102.4075  pyB RMS= 0.0163  ratio= 6276    FAIL <-
+  TwFAM1Sh  file RMS= 0.0078  pyB RMS= 0.0001  ratio= 95.7    PASS
+  TwFAM2Sh  file RMS= 0.7921  pyB RMS= 0.0013  ratio=  618    FAIL <-
+  TwSSM1Sh  file RMS= 0.0089  pyB RMS= 0.0001  ratio=  119    PASS
+  TwSSM2Sh  file RMS=102.4136  pyB RMS= 0.0163  ratio= 6281    FAIL <-
 
 Blade modes:
-  BldFl1Sh  file RMS= 0.0048  pyB RMS= 0.0002  ratio= 24.7    PASS
-  BldFl2Sh  file RMS= 0.0021  pyB RMS= 0.0018  ratio= 1.21    PASS
+  BldFl1Sh  file RMS= 0.0048  pyB RMS= 0.0002  ratio= 24.5    PASS
+  BldFl2Sh  file RMS= 0.0021  pyB RMS= 0.0018  ratio= 1.20    PASS
   BldEdgSh  file RMS= 0.0028  pyB RMS= 0.0008  ratio= 3.73    PASS
 
 Overall: FAIL (2 block(s))

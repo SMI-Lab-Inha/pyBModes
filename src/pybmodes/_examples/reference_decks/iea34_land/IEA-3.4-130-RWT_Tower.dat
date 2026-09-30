@@ -28,24 +28,24 @@ Generated with AeroElasticSE FAST driver
  8.890603301959574e-01  2.612164577054744e+03  1.183462147218628e+11  1.183462147218628e+11
  1.000000000000000e+00  2.303436347456938e+03  7.154633938556909e+10  7.154633938556909e+10
 ---------------------- TOWER FORE-AFT MODE SHAPES ------------------------------
- 1.1522064E+00     TwFAM1Sh(2) - Mode 1, coefficient of x^2 term
- 1.5830465E-01    TwFAM1Sh(3) -       , coefficient of x^3 term
--1.1520678E+00    TwFAM1Sh(4) -       , coefficient of x^4 term
- 1.3937467E+00     TwFAM1Sh(5) -       , coefficient of x^5 term
--5.5218999E-01    TwFAM1Sh(6) -       , coefficient of x^6 term
--1.7327380E+01     TwFAM2Sh(2) - Mode 2, coefficient of x^2 term
- 2.5918183E+01     TwFAM2Sh(3) -       , coefficient of x^3 term
--2.3065052E+01    TwFAM2Sh(4) -       , coefficient of x^4 term
- 2.7931199E+01     TwFAM2Sh(5) -       , coefficient of x^5 term
--1.2456951E+01     TwFAM2Sh(6) -       , coefficient of x^6 term
+ 1.1522159E+00     TwFAM1Sh(2) - Mode 1, coefficient of x^2 term
+ 1.5829724E-01    TwFAM1Sh(3) -       , coefficient of x^3 term
+-1.1520652E+00    TwFAM1Sh(4) -       , coefficient of x^4 term
+ 1.3937711E+00     TwFAM1Sh(5) -       , coefficient of x^5 term
+-5.5221902E-01    TwFAM1Sh(6) -       , coefficient of x^6 term
+-1.7327248E+01     TwFAM2Sh(2) - Mode 2, coefficient of x^2 term
+ 2.5917952E+01     TwFAM2Sh(3) -       , coefficient of x^3 term
+-2.3064771E+01    TwFAM2Sh(4) -       , coefficient of x^4 term
+ 2.7930829E+01     TwFAM2Sh(5) -       , coefficient of x^5 term
+-1.2456761E+01     TwFAM2Sh(6) -       , coefficient of x^6 term
 ---------------------- TOWER SIDE-TO-SIDE MODE SHAPES --------------------------
- 1.1509845E+00     TwSSM1Sh(2) - Mode 1, coefficient of x^2 term
- 1.5772771E-01     TwSSM1Sh(3) -       , coefficient of x^3 term
--1.1472912E+00    TwSSM1Sh(4) -       , coefficient of x^4 term
- 1.3872380E+00     TwSSM1Sh(5) -       , coefficient of x^5 term
--5.4865894E-01    TwSSM1Sh(6) -       , coefficient of x^6 term
--1.7262957E+01    TwSSM2Sh(2) - Mode 2, coefficient of x^2 term
- 2.5270177E+01      TwSSM2Sh(3) -       , coefficient of x^3 term
--2.1590538E+01    TwSSM2Sh(4) -       , coefficient of x^4 term
- 2.5975844E+01    TwSSM2Sh(5) -       , coefficient of x^5 term
--1.1392527E+01     TwSSM2Sh(6) -       , coefficient of x^6 term
+ 1.1510951E+00     TwSSM1Sh(2) - Mode 1, coefficient of x^2 term
+ 1.5753233E-01     TwSSM1Sh(3) -       , coefficient of x^3 term
+-1.1469363E+00    TwSSM1Sh(4) -       , coefficient of x^4 term
+ 1.3867281E+00     TwSSM1Sh(5) -       , coefficient of x^5 term
+-5.4841915E-01    TwSSM1Sh(6) -       , coefficient of x^6 term
+-1.7262438E+01    TwSSM2Sh(2) - Mode 2, coefficient of x^2 term
+ 2.5269543E+01      TwSSM2Sh(3) -       , coefficient of x^3 term
+-2.1590262E+01    TwSSM2Sh(4) -       , coefficient of x^4 term
+ 2.5975585E+01    TwSSM2Sh(5) -       , coefficient of x^5 term
+-1.1392428E+01     TwSSM2Sh(6) -       , coefficient of x^6 term

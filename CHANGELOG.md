@@ -8,6 +8,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+(nothing yet)
+
+## [1.19.0] — 2026-09-30
+
+### Changed
+
+- **Reference decks regenerated with the corrected dense solver.** The
+  six patched ElastoDyn decks under `reference_decks/` carry mode shapes
+  from the `n_modes`-independent solve described under *Fixed*, so their
+  polynomial coefficients shift, typically by a few percent on the blade
+  flap and edge blocks (NREL 5MW `BldFl1Sh(3)` 2.612 → 2.590) and by
+  less on the tower blocks. Every block keeps its verdict: all PASS,
+  apart from the documented `TwSSM2Sh` WARN on IEA-15 UMaine VolturnUS-S.
+
 ### Fixed
 
 - **Dense symmetric solves depended on how many modes were requested.**
