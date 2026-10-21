@@ -130,7 +130,7 @@ License
 -------
 
 Apache 2.0 — see `LICENSE
-<https://github.com/SMI-Lab-Inha/pyBModes/blob/master/LICENSE>`_.
+<https://github.com/SMI-Lab-Inha/pyBModes/blob/main/LICENSE>`_.
 
 Copyright 2024-2026 Jae Hoon Seo, Marine Structural Mechanics and
 Integrity Lab (SMI Lab), Inha University.

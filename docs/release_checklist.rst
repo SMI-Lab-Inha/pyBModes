@@ -208,12 +208,12 @@ commit's stat shows only those four files changed.
 
 .. code-block:: bash
 
-   git push origin master
+   git push origin main
    git tag -a vX.Y.Z -m "pyBmodes X.Y.Z — <one-line release headline>"
    git push origin vX.Y.Z
 
 The ``v`` prefix is the standard convention PyPI, GitHub Releases,
-and conda-forge all expect. Push the master branch *before* the
+and conda-forge all expect. Push the main branch *before* the
 tag so the tag refers to a commit that's on the remote.
 
 .. important::
@@ -222,9 +222,9 @@ tag so the tag refers to a commit that's on the remote.
    commit and confirm it is green before pushing the tag.** The
    publish workflow's ``validation-gate`` job refuses to publish
    unless a successful ``validation.yml`` run exists for the exact
-   commit the tag points at. After ``git push origin master``,
+   commit the tag points at. After ``git push origin main``,
    dispatch it from the Actions tab (Validation (external data) →
-   Run workflow → ``master``), wait for green, *then* push the tag.
+   Run workflow → ``main``), wait for green, *then* push the tag.
 
 The tag push fires the **PyPI publish workflow**
 (``.github/workflows/publish.yml``) — see step 10 below. Don't

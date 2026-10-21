@@ -7,7 +7,7 @@ each release block lists changes under *Added*, *Changed*,
 *Fixed*, *Deprecated*, *Removed*, and *Security* as
 appropriate.
 
-The version on ``master`` between tagged releases is the
+The version on ``main`` between tagged releases is the
 ``[Unreleased]`` block — work-in-progress that will land in
 the next minor or patch release.
 

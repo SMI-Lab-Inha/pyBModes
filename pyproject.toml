@@ -32,7 +32,7 @@ classifiers = [
 Homepage = "https://github.com/SMI-Lab-Inha/pybmodes"
 Repository = "https://github.com/SMI-Lab-Inha/pybmodes"
 Issues = "https://github.com/SMI-Lab-Inha/pybmodes/issues"
-Changelog = "https://github.com/SMI-Lab-Inha/pybmodes/blob/master/CHANGELOG.md"
+Changelog = "https://github.com/SMI-Lab-Inha/pybmodes/blob/main/CHANGELOG.md"
 
 [project.scripts]
 pybmodes = "pybmodes.cli:main"

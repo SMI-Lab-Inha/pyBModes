@@ -56,7 +56,7 @@ conda-forge packages alongside it, ``matplotlib`` for
 From source (editable)
 ----------------------
 
-For contributors and anyone tracking ``master``:
+For contributors and anyone tracking ``main``:
 
 .. code-block:: bash
 
