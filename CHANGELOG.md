@@ -8,7 +8,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-(nothing yet)
+### Fixed
+
+- **The sparse solver path dropped negative modes.** Above 500 DOF a
+  symmetric solve went through `eigsh` shift-invert at zero, which
+  returns the eigenvalues smallest in *magnitude*. Those are the lowest
+  only when `K` is positive definite. With an indefinite `K`, such as a
+  tower loaded past buckling by `run(gravity=...)`, a strongly negative
+  mode was left out and the window backfilled with positive ones, while
+  the dense path below the threshold kept it. The answer therefore
+  changed with mesh refinement alone. `K = diag(−100, 1, …, 500)` returned
+  `[1, 2, 3]` for three modes instead of `[−100, 1, 2]`, and the bundled
+  NREL 5MW land tower at 1000 times its RNA mass returned four buckled
+  modes on the default mesh but two buckled and two positive ones once
+  refined to 120 nodes. `solve_modes` now takes the sparse path only
+  after a banded Cholesky confirms `K` is positive definite, and sends
+  anything else to the dense path, which returns the algebraically
+  lowest modes. The check costs about a millisecond of factorisation at
+  9000 DOF because the assembled stiffness has a half-bandwidth of 10.
+  The sparse path also now builds its symmetrised matrices sparsely
+  instead of densely, which more than pays for the check: a 1000-node
+  tower solves in 5.3 s instead of 8.2 s. Positive-definite results are
+  unchanged within the run-to-run scatter of the sparse solver itself
+  (about 1e-10 relative, from ARPACK's random starting vector).
 
 ## [1.19.0] — 2026-09-30
 
