@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/ci.yml/badge.svg)](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/ci.yml)
 [![Validation](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/validation.yml/badge.svg)](https://github.com/SMI-Lab-Inha/pyBModes/actions/workflows/validation.yml)
-[![Docs](https://readthedocs.org/projects/pybmodes/badge/?version=latest)](https://pybmodes.readthedocs.io/en/latest/)
+[![Docs](https://img.shields.io/readthedocs/pybmodes/latest?label=docs)](https://pybmodes.readthedocs.io/en/latest/)
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/pybmodes.svg)](https://anaconda.org/conda-forge/pybmodes)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
