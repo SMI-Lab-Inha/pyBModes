@@ -26,7 +26,12 @@ Three dispatch paths in priority order:
    ``ngd``). Routes through ``scipy.sparse.linalg.eigsh`` with
    ``sigma=0`` shift-invert; an order-of-magnitude faster than the
    dense LAPACK solve for the few-lowest-modes case on a 500+ DOF
-   tower mesh.
+   tower mesh. Taken only when ``K`` is positive definite, checked by
+   a banded Cholesky (:func:`_is_positive_definite`): shift-invert at
+   zero returns the eigenvalues *smallest in magnitude*, which are the
+   lowest only when none is negative. An indefinite ``K`` (a column
+   loaded past buckling) goes to the dense path, which returns the
+   algebraically lowest modes.
 2. **Dense symmetric** — ``scipy.linalg.eigh`` on the symmetrised
    matrices, applied to the *inverted* pencil ``M x = μ (K + s M) x``
    so that the lowest modes are resolved to relative rather than
@@ -138,12 +143,15 @@ from __future__ import annotations
 import logging
 import warnings
 from dataclasses import dataclass
-from typing import Literal, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 import numpy as np
 from scipy.linalg import eig, eigh
 
 from pybmodes.options import DEFAULT_SOLVER_OPTIONS as _SOLVER_OPTIONS
+
+if TYPE_CHECKING:
+    from scipy.sparse import csc_matrix
 
 _log = logging.getLogger(__name__)
 
@@ -296,15 +304,30 @@ def solve_modes(
     eigvals: np.ndarray | None = None
     eigvecs: np.ndarray | None = None
 
-    # Sparse path — symmetric, big enough, small-subset request.
-    if (
+    # Sparse path — symmetric, big enough, small-subset request, and a
+    # positive-definite K. Shift-invert at zero returns the eigenvalues
+    # nearest zero in magnitude; with a negative one among them (a column
+    # past buckling) that is not the lowest window, and the unstable mode
+    # would be dropped silently. The dense path keeps it.
+    sparse_candidate = (
         sym
         and ngd > _SPARSE_NDOF_THRESHOLD
         and n_modes is not None
         and n_modes < ngd // 2
-    ):
+    )
+    k_sp = _symmetric_sparse(gk) if sparse_candidate else None
+    if k_sp is not None and not _is_positive_definite(k_sp):
+        k_sp = None
+        _log.info(
+            "solve_modes: K is not positive definite; using the dense "
+            "path so negative and zero modes stay in the window (ngd=%d)",
+            ngd,
+        )
+    if k_sp is not None and n_modes is not None:
         try:
-            eigvals, eigvecs = _solve_sparse_shift_invert(gk, gm, n_modes)
+            eigvals, eigvecs = _solve_sparse_shift_invert(
+                gk, gm, n_modes, k_sp=k_sp,
+            )
             path = "sparse_shift_invert"
             _log.info(
                 "solve_modes: sparse shift-invert path "
@@ -791,8 +814,47 @@ def _mass_matrix_cond(
 # Path implementations
 # ---------------------------------------------------------------------------
 
+def _symmetric_sparse(a: np.ndarray) -> csc_matrix:
+    """``0.5 (A + A^T)`` as a CSC matrix, without another dense copy.
+
+    Bit-identical to symmetrising densely first: the same pairwise sum,
+    and the halving is exact.
+    """
+    from scipy.sparse import csc_matrix
+
+    s = csc_matrix(a)
+    return csc_matrix((s + s.T) * 0.5)
+
+
+def _is_positive_definite(k_sp: csc_matrix) -> bool:
+    """Whether a symmetric sparse ``K`` admits a Cholesky factorisation.
+
+    The assembled stiffness is banded (half-bandwidth 10 on a tower mesh,
+    whatever its size), so the check runs on the band: ``O(n b²)``, about
+    a millisecond at 9000 DOF where a dense factorisation takes seconds.
+    The band is measured from ``K`` itself, so a model with wider coupling
+    is still checked exactly, only less cheaply.
+    """
+    from scipy.linalg import cholesky_banded
+    from scipy.sparse import triu
+
+    upper = triu(k_sp).tocoo()
+    if upper.nnz == 0:
+        return False
+    offset = upper.col - upper.row
+    b = int(offset.max())
+    ab = np.zeros((b + 1, k_sp.shape[0]))
+    np.add.at(ab, (b - offset, upper.col), upper.data)
+    try:
+        cholesky_banded(ab, lower=False, check_finite=False)
+    except np.linalg.LinAlgError:
+        return False
+    return True
+
+
 def _solve_sparse_shift_invert(
     gk: np.ndarray, gm: np.ndarray, n_modes: int,
+    *, k_sp: csc_matrix | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sparse symmetric generalised eigensolve via shift-invert near zero.
 
@@ -802,15 +864,17 @@ def _solve_sparse_shift_invert(
     ``OP = (K - σM)^-1 · M = K^-1 M`` under ``mode='normal'``. The
     eigenvalues of OP are ``1/λ``; ``which='LM'`` returns the largest,
     i.e. the smallest ``λ`` — exactly the modal-analysis ask.
+
+    Smallest in *magnitude*: that is the lowest window only when ``K`` is
+    positive definite, which :func:`solve_modes` checks before calling
+    this. ``k_sp`` passes in the symmetrised sparse ``K`` that check
+    already built.
     """
-    from scipy.sparse import csc_matrix
     from scipy.sparse.linalg import eigsh
 
     # Symmetrise to suppress sub-ULP scatter before factorisation.
-    gk_sym = 0.5 * (gk + gk.T)
-    gm_sym = 0.5 * (gm + gm.T)
-    K_sp = csc_matrix(gk_sym)
-    M_sp = csc_matrix(gm_sym)
+    K_sp = k_sp if k_sp is not None else _symmetric_sparse(gk)
+    M_sp = _symmetric_sparse(gm)
 
     eigvals, eigvecs = eigsh(
         K_sp,
