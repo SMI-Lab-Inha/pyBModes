@@ -330,9 +330,10 @@ Wait for ``linux_64_`` and ``conda-forge-linter`` to go green, then
 merge. If the PR still carries an older version because a release
 was missed, push the new version to its branch rather than merging
 the old one (maintainers can push to bot PR branches). If no PR has
-appeared a day after the PyPI release, comment
-``@conda-forge-admin, please update version`` on a feedstock issue
-to trigger one.
+appeared a day after the PyPI release, open a new issue on the
+feedstock **titled** ``@conda-forge-admin, please update version``
+(the admin bot reads the command from the issue title, not from a
+comment) to trigger one.
 
 Expected: within about an hour of the merge,
 
