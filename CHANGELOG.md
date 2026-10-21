@@ -8,6 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+(nothing yet)
+
+## [1.19.1] — 2026-10-21
+
+### Changed
+
+- **The default branch is now `main`**, renamed from `master`, with
+  development happening on `dev`. Existing `master` links on GitHub
+  redirect, but a local clone that tracks `master` should run
+  `git branch -m master main && git fetch && git branch -u origin/main main`.
+- **The documentation badge displays again** on GitHub and PyPI. It
+  pointed at Read the Docs' legacy badge endpoint, which rate-limits the
+  image proxies both sites fetch README images through (HTTP 429), so it
+  rendered as a broken image. It is now served through shields.io.
+
 ### Fixed
 
 - **The sparse solver path dropped negative modes.** Above 500 DOF a
