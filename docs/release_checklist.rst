@@ -298,7 +298,52 @@ On https://github.com/SMI-Lab-Inha/pyBModes/releases/new :
 The GitHub Actions CI badge in README will repaint to green on the
 new tag's commit automatically.
 
-11. Post-release sanity
+12. conda-forge feedstock
+-------------------------
+
+conda-forge does not build from this repository. It builds from
+https://github.com/conda-forge/pybmodes-feedstock, and a new version
+reaches the channel only when a PR there is merged. A few hours after
+PyPI publishes, ``regro-cf-autotick-bot`` opens one titled
+``pybmodes vX.Y.Z``. **Nothing happens until a maintainer merges it**:
+1.19.0 was skipped on conda-forge entirely because its bot PR sat
+unmerged.
+
+Before merging, check ``recipe/recipe.yaml`` in the PR:
+
+- ``context.version`` is ``X.Y.Z``.
+- ``source.sha256`` matches the sdist hash PyPI lists for
+  ``pybmodes-X.Y.Z.tar.gz``
+  (``https://pypi.org/pypi/pybmodes/X.Y.Z/json``).
+- ``source.url`` is the generic
+  ``https://pypi.org/packages/source/p/pybmodes/pybmodes-${{ version }}.tar.gz``.
+  The bot sometimes writes a ``files.pythonhosted.org/packages/<hash>/``
+  path instead, which is tied to one file and breaks on the next
+  version; restore the generic form.
+- ``requirements.run`` and ``context.python_min`` match
+  ``[project] dependencies`` and ``requires-python`` in
+  ``pyproject.toml``. The bot does not track new or raised runtime
+  dependencies, so a release that changes them needs the recipe
+  edited by hand.
+
+Wait for ``linux_64_`` and ``conda-forge-linter`` to go green, then
+merge. If the PR still carries an older version because a release
+was missed, push the new version to its branch rather than merging
+the old one (maintainers can push to bot PR branches). If no PR has
+appeared a day after the PyPI release, comment
+``@conda-forge-admin, please update version`` on a feedstock issue
+to trigger one.
+
+Expected: within about an hour of the merge,
+
+.. code-block:: bash
+
+   conda search -c conda-forge "pybmodes==X.Y.Z"
+
+lists the new version, and the conda-forge badge in the README
+repaints.
+
+13. Post-release sanity
 -----------------------
 
 .. code-block:: bash
@@ -316,6 +361,19 @@ Expected: the new tag is in the list and matches what's on origin.
 Expected: the version reported matches the tag exactly (no
 ``-dev`` suffix — the install picks up the value from
 ``pyproject.toml``).
+
+Finally, bring ``dev`` level with ``main`` so the next round of work
+starts from the released commit:
+
+.. code-block:: bash
+
+   git checkout dev
+   git merge --ff-only origin/main
+   git push origin dev
+
+Expected: the fast-forward succeeds. If it doesn't, ``dev`` holds
+commits that never reached ``main``; merge ``main`` into ``dev``
+rather than forcing it.
 
 If any step fails, **do not push the tag**. Fix the underlying
 issue and re-run from the point of failure. The checklist exists
