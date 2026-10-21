@@ -42,7 +42,7 @@ body:
     attributes:
       label: Review scope
       description: Branch, tag, or commit SHA the review was done against.
-      placeholder: "e.g. master @ b41a05c, dev @ 8af258e"
+      placeholder: "e.g. main @ b41a05c, dev @ 8af258e"
     validations:
       required: true
 

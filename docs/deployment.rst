@@ -23,7 +23,7 @@ Two consequences worth remembering:
 - **The strict build is the gate.** A docs PR that introduces any
   Sphinx warning fails RTD's build (matching the CI ``docs`` job's
   ``-W --keep-going`` flag). The deployed site only updates after a
-  green build on master.
+  green build on main.
 
 One-time setup (maintainer)
 ---------------------------
@@ -59,13 +59,13 @@ CHANGELOG / VALIDATION / CONTRIBUTING will 404.
 
        https://pybmodes.readthedocs.io/en/latest/
 
-   The ``latest`` URL tracks ``master``; tagged releases become
+   The ``latest`` URL tracks ``main``; tagged releases become
    versioned URLs like ``/en/v1.7.0/``.
 
 5. **Webhook is auto-installed (usually)**
 
    RTD installs a GitHub webhook on the repo as part of import,
-   so every push to ``master`` (and every tag matching the
+   so every push to ``main`` (and every tag matching the
    versioning policy) auto-triggers a fresh build.
 
    .. note::
@@ -93,7 +93,7 @@ CHANGELOG / VALIDATION / CONTRIBUTING will 404.
          and add the ``GitHub incoming webhook`` if it didn't
          auto-install on the return.
 
-      After that, every push to master fires a build automatically.
+      After that, every push to main fires a build automatically.
 
 What to do when a build fails
 -----------------------------
@@ -122,7 +122,7 @@ RTD supports per-tag versioning, so every release tag adds a new
 URL prefix that pins the docs at that point in time. Recommended
 policy:
 
-- ``latest`` — tracks ``master``; what users land on by default.
+- ``latest`` — tracks ``main``; what users land on by default.
 - ``stable`` — tracks the most recent tag matching ``v\d+\.\d+\.\d+``
   (no pre-release suffix); what most external links should point at.
 - ``v1.7.0`` (etc.) — per-tag versioned URL for citation and

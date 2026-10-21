@@ -65,7 +65,7 @@ print(modal.frequencies[:4])   # [0.5596, 1.7696, 3.5069, 9.8194]
 This case mirrors the parameters of the Bir 2009 / Wright 1982 Table
 3a non-rotating row (Ω = 0). The same analytical reference is used in
 the project's whitebox test
-[`tests/fem/test_cantilever.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/fem/test_cantilever.py).
+[`tests/fem/test_cantilever.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/main/tests/fem/test_cantilever.py).
 
 Citation: Wright, A. D.; Smith, C. E.; Thresher, R. W.; Wang, J. C.
 *Vibration Modes of Centrifugally Stiffened Beams*, ASME *Journal of

@@ -97,7 +97,7 @@ Apache 2.0 licence.
 
 ## See also
 
-- [`tests/fem/`](https://github.com/SMI-Lab-Inha/pyBModes/tree/master/tests/fem) — the project's whitebox FEM
+- [`tests/fem/`](https://github.com/SMI-Lab-Inha/pyBModes/tree/main/tests/fem) — the project's whitebox FEM
   validation tests, which build the FEM matrices directly without
   going through the BMI parser. Each case here mirrors one of the
   whitebox tests with the same physical parameters.
@@ -110,7 +110,7 @@ Apache 2.0 licence.
   tracked in git and the previous relative link
   (`../../external/BModes/docs/examples/`) didn't resolve from inside
   the packaged wheel anyway.
-- [`tests/_synthetic_bmi.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/tests/_synthetic_bmi.py) — the
+- [`tests/_synthetic_bmi.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/main/tests/_synthetic_bmi.py) — the
   programmatic `.bmi` writer used by tests for in-tmp_path round-trip
   fixtures. Useful as a starting point if you need to generate sample
   decks with parameter sweeps rather than by hand.

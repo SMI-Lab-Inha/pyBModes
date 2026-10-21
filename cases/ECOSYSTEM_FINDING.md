@@ -206,7 +206,7 @@ metric is what surfaces it.
 ### Independent corroboration: IEA-15 v1.1 release notes
 
 The IEA-15-240-RWT v1.1 release notes
-([IEAWindTask37/IEA-15-240-RWT/ReleaseNotes.md](https://github.com/IEAWindTask37/IEA-15-240-RWT/blob/master/ReleaseNotes.md))
+([IEAWindTask37/IEA-15-240-RWT/ReleaseNotes.md](https://github.com/IEAWindTask37/IEA-15-240-RWT/blob/main/ReleaseNotes.md))
 independently confirm the polynomial-fit error pyBmodes flags
 above:
 

@@ -41,7 +41,7 @@ polynomial coefficients that **do not represent the mode shapes
 produced by the same files' structural inputs**. The 2nd-mode tower
 coefficients (`TwFAM2Sh`, `TwSSM2Sh`) are the worst offenders, with
 RMS residuals 170×–2,500× higher than pyBmodes' own fits. See
-[`cases/ECOSYSTEM_FINDING.md`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/cases/ECOSYSTEM_FINDING.md)
+[`cases/ECOSYSTEM_FINDING.md`](https://github.com/SMI-Lab-Inha/pyBModes/blob/main/cases/ECOSYSTEM_FINDING.md)
 for the quantified evidence and the [`VALIDATION_SUMMARY.md`](VALIDATION_SUMMARY.md)
 in this directory for per-block before-and-after numbers across all
 three cases.
@@ -95,7 +95,7 @@ polynomial-coefficient lines are rewritten.
 ## How to regenerate
 
 The reference decks here are produced by
-[`scripts/build_reference_decks.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/master/scripts/build_reference_decks.py),
+[`scripts/build_reference_decks.py`](https://github.com/SMI-Lab-Inha/pyBModes/blob/main/scripts/build_reference_decks.py),
 which copies the upstream sources, runs `pybmodes patch`, and re-runs
 the validator. To regenerate from scratch:
 
